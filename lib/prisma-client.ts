@@ -1,0 +1,25 @@
+import { PrismaClient } from '@prisma/client'
+
+// Force database URL from environment
+const databaseUrl = process.env.DATABASE_URL || "postgresql://mlagent:nandao10@localhost:5432/mlagent_db?schema=public"
+
+declare global {
+  var prisma: PrismaClient | undefined
+}
+
+// Create new client with explicit connection string
+export const prisma = global.prisma || new PrismaClient({
+  datasources: {
+    db: {
+      url: databaseUrl
+    }
+  },
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+})
+
+if (process.env.NODE_ENV !== 'production') {
+  global.prisma = prisma
+}
+
+// Log connection info for debugging
+console.log('[Prisma] Connecting to database:', databaseUrl.replace(/:[^:@]+@/, ':****@'))

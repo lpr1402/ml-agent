@@ -1,0 +1,115 @@
+// New simplified schema - Only metrics per ML user
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER METRICS ====================
+model UserMetrics {
+  id              String    @id @default(cuid())
+  mlUserId        String    @unique // ML User ID (seller)
+  
+  // Performance Metrics
+  totalQuestions  Int       @default(0)
+  answeredQuestions Int     @default(0)
+  pendingQuestions Int      @default(0)
+  avgResponseTime Float?    // in seconds
+  avgApprovalTime Float?    // in seconds
+  
+  // Quality Metrics
+  autoApprovedCount Int     @default(0)
+  manualApprovedCount Int   @default(0)
+  revisedCount    Int       @default(0)
+  rejectedCount   Int       @default(0)
+  
+  // Business Impact
+  conversionRate  Float?    // % of questions that led to sales
+  satisfactionScore Float?  // Average customer satisfaction
+  
+  // Timestamps
+  firstQuestionAt DateTime?
+  lastQuestionAt  DateTime?
+  lastActiveAt    DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  questions       Question[]
+  
+  @@index([mlUserId])
+}
+
+// ==================== QUESTIONS (Temporary Storage) ====================
+model Question {
+  id              String    @id @default(cuid())
+  mlQuestionId    String    @unique // ML Question ID
+  mlUserId        String    // Seller ID
+  
+  // Question Data
+  text            String    @db.Text
+  itemId          String    // ML Item ID
+  itemTitle       String?
+  itemPrice       Float?
+  buyerId         String?
+  
+  // Processing Status
+  status          QuestionStatus @default(RECEIVED)
+  
+  // AI Response
+  aiResponse      String?   @db.Text
+  aiProcessedAt   DateTime?
+  
+  // User Action
+  finalResponse   String?   @db.Text
+  approvedAt      DateTime?
+  approvalType    String?   // AUTO, MANUAL, REVISED
+  
+  // WhatsApp
+  whatsappSentAt  DateTime?
+  
+  // ML Response
+  sentToMLAt      DateTime?
+  mlResponseCode  Int?
+  
+  // Timestamps
+  receivedAt      DateTime  @default(now())
+  
+  // Relations
+  user            UserMetrics @relation(fields: [mlUserId], references: [mlUserId])
+  revisions       Revision[]
+  
+  @@index([mlUserId])
+  @@index([mlQuestionId])
+  @@index([status])
+}
+
+// ==================== REVISION HISTORY ====================
+model Revision {
+  id              String    @id @default(cuid())
+  questionId      String
+  question        Question  @relation(fields: [questionId], references: [id])
+  
+  userFeedback    String    @db.Text // User's revision request
+  aiRevision      String    @db.Text // AI's revised response
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([questionId])
+}
+
+// ==================== ENUMS ====================
+enum QuestionStatus {
+  RECEIVED        // Just received from ML
+  PROCESSING      // Sent to N8N for processing
+  AWAITING_APPROVAL // AI responded, waiting for user
+  REVISING        // User requested revision
+  APPROVED        // User approved
+  SENT_TO_ML      // Sent back to ML
+  COMPLETED       // Successfully posted to ML
+  FAILED          // Failed at any step
+}

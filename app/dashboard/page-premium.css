@@ -1,0 +1,112 @@
+/* Dashboard Page Premium Styles */
+
+/* Override all light colors */
+.min-h-screen {
+  background-color: #0A0A0A !important;
+}
+
+/* Cards */
+.border-2.border-gray-800 {
+  background: linear-gradient(135deg, #111111 0%, #0A0A0A 100%) !important;
+  border: 1px solid rgba(255, 230, 0, 0.1) !important;
+  border-radius: 20px !important;
+}
+
+/* Text Colors */
+.text-gray-900 {
+  color: #FFFFFF !important;
+}
+
+.text-gray-600,
+.text-gray-700,
+.text-gray-500 {
+  color: #999999 !important;
+}
+
+.text-gray-400 {
+  color: #666666 !important;
+}
+
+/* Badges and Labels */
+.bg-green-100 {
+  background: rgba(0, 255, 136, 0.1) !important;
+}
+
+.text-green-600,
+.text-green-800 {
+  color: #00FF88 !important;
+}
+
+.bg-red-100 {
+  background: rgba(255, 68, 68, 0.1) !important;
+}
+
+.text-red-600 {
+  color: #FF4444 !important;
+}
+
+.bg-yellow-100 {
+  background: rgba(255, 230, 0, 0.1) !important;
+}
+
+.text-yellow-600,
+.text-yellow-800 {
+  color: #FFE600 !important;
+}
+
+/* Special Hover Effects */
+.hover\:shadow-xl:hover {
+  box-shadow: 0 20px 40px rgba(255, 230, 0, 0.1) !important;
+  transform: translateY(-5px);
+}
+
+/* Metric Cards Specific */
+.grid.gap-4 > div > div {
+  background: linear-gradient(135deg, #1A1A1A 0%, #111111 100%) !important;
+  border: 1px solid rgba(255, 230, 0, 0.1) !important;
+}
+
+/* Dashboard Cards Text */
+.text-2xl.font-bold {
+  color: #FFE600 !important;
+  font-weight: 200 !important;
+  letter-spacing: 0.02em;
+}
+
+.text-sm.font-medium {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #666666 !important;
+}
+
+/* Activity Badge */
+.bg-green-100.text-green-800 {
+  background: rgba(0, 255, 136, 0.1) !important;
+  color: #00FF88 !important;
+}
+
+/* Borders */
+.border-t {
+  border-color: rgba(255, 230, 0, 0.1) !important;
+}
+
+.border-b {
+  border-color: rgba(255, 230, 0, 0.1) !important;
+}
+
+/* Headers */
+header {
+  background: linear-gradient(90deg, #111111 0%, #0A0A0A 100%) !important;
+  border-bottom: 1px solid rgba(255, 230, 0, 0.1) !important;
+}
+
+/* Loading Spinner */
+.animate-spin {
+  border-color: #FFE600 !important;
+}
+
+/* Agente Card Special */
+.bg-gradient-to-br.from-\[\#FFE600\]\/5.to-\[\#FFE600\]\/10 {
+  background: linear-gradient(135deg, #111111 0%, #0A0A0A 100%) !important;
+  border: 1px solid rgba(255, 230, 0, 0.15) !important;
+}

@@ -1,0 +1,49 @@
+/* Dashboard Specific Overrides */
+
+/* Logo in header */
+.dashboard-logo {
+  background: transparent !important;
+  background-color: transparent !important;
+  filter: none !important;
+}
+
+/* Remove forced backgrounds from specific elements */
+.no-bg {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Metric cards proper styling */
+.metric-card-value {
+  color: #FFE600 !important;
+  font-weight: 200 !important;
+}
+
+/* Prevent text transform on specific elements */
+.no-transform {
+  text-transform: none !important;
+}
+
+/* Cards with proper dark theme */
+.dashboard-card {
+  background: linear-gradient(135deg, #111111 0%, #0A0A0A 100%) !important;
+  border: 1px solid rgba(255, 230, 0, 0.1) !important;
+  border-radius: 20px !important;
+}
+
+/* Buttons without forced backgrounds */
+.btn-transparent {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Fix for header elements */
+header img {
+  background: none !important;
+  background-color: transparent !important;
+}
+
+/* Fix charts background */
+.recharts-wrapper {
+  background: transparent !important;
+}

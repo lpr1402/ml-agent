@@ -1,0 +1,70 @@
+/* Login Page Specific Overrides */
+
+/* Remove forced backgrounds from logo area */
+.logo-container,
+.logo-container * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Remove text transform on specific elements */
+.no-uppercase {
+  text-transform: none !important;
+}
+
+/* Fix text sizes */
+.tagline-text {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+  color: #CCCCCC !important;
+}
+
+.tagline-subtext {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  color: #999999 !important;
+}
+
+/* Terms text */
+.terms-text {
+  font-size: 0.625rem !important; /* 10px */
+  text-transform: none !important;
+  letter-spacing: 0.05em !important;
+  color: #666666 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Override for login terms specifically */
+.login-terms {
+  background: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  color: #666666 !important;
+}
+
+/* Auth info positioning */
+.auth-info {
+  margin-top: 1rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Logo glow positioning */
+.logo-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  height: 400px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (min-width: 1024px) {
+  .logo-glow {
+    width: 600px;
+    height: 600px;
+  }
+}
