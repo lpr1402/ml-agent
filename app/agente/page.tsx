@@ -459,7 +459,7 @@ export default function AgenteNovoPage() {
                               e.stopPropagation()
                               handleReprocess(question.id)
                             }}
-                            disabled={reprocessingId === question.id || question.status === "PROCESSING"}
+                            disabled={reprocessingId === question.id || (question.status as string) === "PROCESSING"}
                           >
                             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${reprocessingId === question.id ? 'animate-spin' : ''}`} />
                             {reprocessingId === question.id ? "Reprocessando..." : "Reprocessar"}
@@ -599,8 +599,8 @@ export default function AgenteNovoPage() {
                 weekAgo.setDate(weekAgo.getDate() - 7)
                 return allQuestions.filter(q => {
                   if (new Date(q.receivedAt) <= weekAgo) return false
-                  if (!q.sentToMLAt) return false
-                  const responseTime = (new Date(q.sentToMLAt).getTime() - new Date(q.receivedAt).getTime()) / 1000 / 60
+                  if (!(q as any).sentToMLAt) return false
+                  const responseTime = (new Date((q as any).sentToMLAt).getTime() - new Date(q.receivedAt).getTime()) / 1000 / 60
                   return responseTime < 60
                 }).length
               })(),
@@ -671,8 +671,8 @@ export default function AgenteNovoPage() {
                   return Math.floor(allQuestions.length * 0.7) // 70% are fast if avg is good
                 }
                 return allQuestions.filter(q => {
-                  if (!q.sentToMLAt) return false
-                  const responseTime = (new Date(q.sentToMLAt).getTime() - new Date(q.receivedAt).getTime()) / 1000 / 60
+                  if (!(q as any).sentToMLAt) return false
+                  const responseTime = (new Date((q as any).sentToMLAt).getTime() - new Date(q.receivedAt).getTime()) / 1000 / 60
                   return responseTime < 60
                 }).length
               })(),

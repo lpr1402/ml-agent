@@ -178,8 +178,8 @@ export async function POST(request: NextRequest) {
           // Store this token for future use
           await tokenManager.storeTokens({
             accessToken: auth.accessToken,
-            refreshToken: auth.refreshToken || "",
-            expiresIn: auth.expiresIn || 21600,
+            refreshToken: (auth as any).refreshToken || "",
+            expiresIn: (auth as any).expiresIn || 21600,
             userId: question.mlUserId
           })
         }

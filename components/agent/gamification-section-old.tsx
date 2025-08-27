@@ -129,7 +129,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
   const getCurrentLevel = () => {
     const xp = totalXP
     for (let i = LEVELS.length - 1; i >= 0; i--) {
-      if (xp >= XP_PER_LEVEL[LEVELS[i].level]) {
+      if (xp >= (XP_PER_LEVEL as any)[LEVELS[i].level]) {
         return LEVELS[i]
       }
     }
@@ -140,8 +140,8 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
   const nextLevel = LEVELS[LEVELS.indexOf(currentLevel) + 1] || currentLevel
   
   // Calculate progress to next level
-  const currentLevelXP = XP_PER_LEVEL[currentLevel.level]
-  const nextLevelXP = XP_PER_LEVEL[nextLevel.level] || totalXP
+  const currentLevelXP = (XP_PER_LEVEL as any)[currentLevel.level]
+  const nextLevelXP = (XP_PER_LEVEL as any)[nextLevel.level] || totalXP
   const levelProgress = currentLevel === nextLevel ? 100 : 
     ((totalXP - currentLevelXP) / (nextLevelXP - currentLevelXP)) * 100
 
@@ -263,8 +263,8 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
     else if (todayQuestions >= 15) xp += XP_ACTIONS.DAILY_GOAL.xp
     
     // Streak XP
-    if (weeklyStats?.consecutiveDays >= 30) xp += XP_ACTIONS.MONTH_STREAK.xp
-    else if (weeklyStats?.consecutiveDays >= 7) xp += XP_ACTIONS.WEEK_STREAK.xp
+    if ((weeklyStats?.consecutiveDays || 0) >= 30) xp += XP_ACTIONS.MONTH_STREAK.xp
+    else if ((weeklyStats?.consecutiveDays || 0) >= 7) xp += XP_ACTIONS.WEEK_STREAK.xp
     
     setTotalXP(xp)
     
@@ -283,7 +283,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
             body: JSON.stringify({
               xp,
               level: currentLevel.level,
-              streak: weeklyStats?.consecutiveDays || 0,
+              streak: (weeklyStats?.consecutiveDays as any) || 0,
               achievements: unlockedAchievements
             })
           })
@@ -302,7 +302,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
   // Helper function to get level from XP
   const getCurrentLevelFromXP = (xp: number) => {
     for (let i = LEVELS.length - 1; i >= 0; i--) {
-      if (xp >= XP_PER_LEVEL[LEVELS[i].level]) {
+      if (xp >= (XP_PER_LEVEL as any)[LEVELS[i].level]) {
         return LEVELS[i]
       }
     }
@@ -401,8 +401,8 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
       }
     }
     
-    const config = achievementConfigs[category]
-    if (!config) return null
+    const config = (achievementConfigs as any)[category]
+    if (!config) return null as any
     
     let tier: "bronze" | "silver" | "gold" = "bronze"
     let tierData = config.bronze
@@ -433,7 +433,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
         name: config.bronze.name,
         requirement: config.bronze.req,
         reward: config.bronze.xp
-      }
+      } as any
     }
     
     const progress = tier === "gold" ? config.gold.req : 
@@ -487,7 +487,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
         (metrics.avgResponseTime <= 60 ? 1 : 0) + // Fast responses
         (metrics.conversionRate >= 0.15 ? 1 : 0) + // Good conversion
         ((metrics.autoApprovedCount / Math.max(metrics.totalQuestions, 1)) >= 0.8 ? 1 : 0) + // High quality
-        (weeklyStats?.consecutiveDays >= 7 ? 1 : 0) + // Consistency
+        ((weeklyStats?.consecutiveDays || 0) >= 7 ? 1 : 0) + // Consistency
         (metrics.answeredQuestions >= 100 ? 1 : 0) + // Volume
         (nightResponses >= 50 ? 1 : 0) + // Dedication
         (perfectDays >= 1 ? 1 : 0) // Perfection
@@ -607,7 +607,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
                   Próximo: {nextLevel.title}
                 </p>
                 <p style={{ color: "#666", fontSize: "12px" }}>
-                  {(XP_PER_LEVEL[nextLevel.level] - totalXP).toLocaleString()} XP restantes
+                  {((XP_PER_LEVEL as any)[nextLevel.level] - totalXP).toLocaleString()} XP restantes
                 </p>
               </div>
               <button

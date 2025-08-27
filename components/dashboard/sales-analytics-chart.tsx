@@ -282,7 +282,7 @@ export function SalesAnalyticsChart({ data }: SalesAnalyticsChartProps) {
             <Bar
               yAxisId="right"
               dataKey="sales"
-              fill={(entry: any) => entry.isProjection ? 'rgba(74, 222, 128, 0.3)' : 'rgba(74, 222, 128, 0.6)'}
+              fill={((entry: any) => entry.isProjection ? 'rgba(74, 222, 128, 0.3)' : 'rgba(74, 222, 128, 0.6)') as any}
               name="Vendas"
               radius={[4, 4, 0, 0]}
             />

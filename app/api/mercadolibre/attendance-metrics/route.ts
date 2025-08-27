@@ -219,7 +219,7 @@ async function getResponseEffectiveness(accessToken: string, userId: string) {
       fastResponseRate: fastResponseRate.toFixed(1),
       potentialLost: answeredQuestions.length - questionsConverted,
       revenueFromQuestions: orders.filter((o: any) => 
-        [...askerToItem.keys()].includes(o.buyer?.id)
+        [...(askerToItem as any).keys()].includes(o.buyer?.id)
       ).reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0).toFixed(2),
       effectiveness: conversionRate > 20 ? 'excellent' : conversionRate > 10 ? 'good' : 'needs_improvement'
     }

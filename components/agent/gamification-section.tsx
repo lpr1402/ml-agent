@@ -235,12 +235,12 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
     } else if (value >= config.silver.req) {
       tier = "silver"
       tierData = config.silver
-      nextTier = { name: config.gold.name, requirement: config.gold.req, reward: config.gold.xp }
+      nextTier = { name: config.gold.name, requirement: config.gold.req, reward: config.gold.xp } as any
     } else if (value >= config.bronze.req) {
       tierData = config.bronze
-      nextTier = { name: config.silver.name, requirement: config.silver.req, reward: config.silver.xp }
+      nextTier = { name: config.silver.name, requirement: config.silver.req, reward: config.silver.xp } as any
     } else {
-      nextTier = { name: config.bronze.name, requirement: config.bronze.req, reward: config.bronze.xp }
+      nextTier = { name: config.bronze.name, requirement: config.bronze.req, reward: config.bronze.xp } as any
     }
     
     return {
@@ -256,7 +256,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
       xpReward: tierData.xp,
       nextTier
     }
-  }, [])
+  }, []) as any
 
   // Calculate metrics for achievements
   const fastResponses = useMemo(() => 

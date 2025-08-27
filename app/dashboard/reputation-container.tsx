@@ -37,7 +37,7 @@ export function ReputationContainer({ reputationMetrics }: any) {
       'silver': { color: '#D1D5DB', label: 'Silver', gradient: 'linear-gradient(135deg, #D1D5DB 0%, #9CA3AF 100%)' }
     }
     
-    return badges[status] || null
+    return (badges as any)[status] || null
   }
 
   const mercadoLider = getMercadoLiderBadge()
