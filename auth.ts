@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import NextAuth from "next-auth"
 import type { NextAuthConfig, DefaultSession } from "next-auth"
 import type { JWT } from "next-auth/jwt"
@@ -23,6 +24,7 @@ declare module "next-auth/jwt" {
     refreshToken?: string
     expiresAt?: number
     userId?: string
+    nickname?: string
     error?: string
   }
 }
@@ -39,8 +41,8 @@ async function refreshAccessToken(token: JWT) {
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: process.env.AUTH_MERCADOLIBRE_ID!,
-        client_secret: process.env.AUTH_MERCADOLIBRE_SECRET!,
+        client_id: process.env['ML_CLIENT_ID']!,
+        client_secret: process.env['ML_CLIENT_SECRET']!,
         refresh_token: token.refreshToken as string,
       }),
     })
@@ -58,7 +60,7 @@ async function refreshAccessToken(token: JWT) {
       expiresAt: Math.floor(Date.now() / 1000) + refreshedTokens.expires_in,
     }
   } catch (error) {
-    console.error("Error refreshing access token:", error)
+    logger.error("Error refreshing access token:", { error })
     return {
       ...token,
       error: "RefreshAccessTokenError",
@@ -69,8 +71,8 @@ async function refreshAccessToken(token: JWT) {
 export const config: NextAuthConfig = {
   providers: [
     MercadoLibre({
-      clientId: process.env.AUTH_MERCADOLIBRE_ID!,
-      clientSecret: process.env.AUTH_MERCADOLIBRE_SECRET!,
+      clientId: process.env['AUTH_MERCADOLIBRE_ID']!,
+      clientSecret: process.env['AUTH_MERCADOLIBRE_SECRET']!,
       authorization: {
         params: {
           scope: "offline_access read write",
@@ -113,7 +115,9 @@ export const config: NextAuthConfig = {
       session.accessToken = token.accessToken as string
       session.refreshToken = token.refreshToken as string
       session.expiresAt = token.expiresAt as number
-      session.error = token.error as string | undefined
+      if (token.error) {
+        session.error = token.error as string
+      }
       
       if (token.userId) {
         session.user.id = token.userId as string

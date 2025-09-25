@@ -6,7 +6,7 @@ const querystring = require('querystring');
 // Configurações
 const CLIENT_ID = '8077330788571096';
 const CLIENT_SECRET = 'jy9KhpXPASCMVsmUuZ2LBtZEhIhsqWha';
-const REDIRECT_URI = 'https://arabic-breeding-greatly-citizens.trycloudflare.com/api/auth/callback/mercadolibre';
+const REDIRECT_URI = 'https://gugaleo.axnexlabs.com.br/api/auth/callback/mercadolibre';
 
 const code = process.argv[2];
 const state = process.argv[3];

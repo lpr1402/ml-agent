@@ -1,41 +1,59 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
+import { logger } from "@/lib/logger"
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: Request) {
   try {
-    // Get user authentication from request headers (Bearer token)
-    const auth = await getAuthFromRequest(request)
+    // Use session-based authentication
+    const auth = await getAuthenticatedAccount()
     
     if (!auth) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
     
-    // Get user ID from ML API using the token
-    const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-      },
-    })
+    // const sellerId = auth.mlAccount.mlUserId // Reserved for future seller validation
     
-    if (!userResponse.ok) {
-      return NextResponse.json({ error: "Failed to get user info" }, { status: 401 })
-    }
-    
-    const userData = await userResponse.json()
-    const sellerId = String(userData.id)
-    
-    // Get all questions for this seller
+    // Buscar todas as perguntas da conta ativa
     const questions = await prisma.question.findMany({
-      where: { mlUserId: sellerId },
-      orderBy: { receivedAt: "desc" },
+      where: { 
+        mlAccountId: auth.mlAccount.id // Usar conta ML específica
+      },
+      orderBy: { receivedAt: "desc" }, // Usar receivedAt que agora existe
       take: 100 // Limit to last 100 questions
     })
     
-    return NextResponse.json(questions)
+    logger.info(`[Agent Questions] Found ${questions.length} questions for account ${auth.mlAccount.nickname}`, {
+      count: questions.length,
+      account: auth.mlAccount.nickname
+    })
+    
+    // Mapear para formato esperado pelo frontend com campos CORRETOS
+    const mappedQuestions = questions.map(q => ({
+      id: q.id,
+      mlQuestionId: q.mlQuestionId,
+      text: q.text,
+      itemTitle: q.itemTitle,
+      itemPrice: q.itemPrice || 0,
+      itemId: q.itemId,
+      itemPermalink: q.itemPermalink,
+      status: q.status,
+      aiSuggestion: q.aiSuggestion, // Campo correto para resposta da IA
+      finalResponse: q.answer,
+      receivedAt: q.receivedAt, // Campo agora existe!
+      aiProcessedAt: q.aiProcessedAt || q.processedAt, // Usar o campo correto
+      approvedAt: q.approvedAt || q.answeredAt, // Usar approvedAt
+      approvalType: q.approvalType, // Campo agora existe!
+      failedAt: q.failedAt, // Campo agora existe!
+      sentToMLAt: q.sentToMLAt, // Campo agora existe!
+      mlResponseCode: q.mlResponseCode,
+      mlResponseData: q.mlResponseData
+    }))
+    
+    return NextResponse.json(mappedQuestions)
     
   } catch (error) {
-    console.error("Questions fetch error:", error)
+    logger.error("Questions fetch error", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

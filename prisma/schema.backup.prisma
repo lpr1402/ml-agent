@@ -1,0 +1,336 @@
+// Schema Multi-Tenant ML Agent SaaS
+// Autenticação PRINCIPAL via Mercado Livre OAuth
+// Suporte para múltiplas contas ML por organização
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== ORGANIZAÇÃO (Baseada na conta ML principal) ==========
+
+model Organization {
+  id                 String             @id @default(cuid())
+  
+  // Conta ML principal (owner)
+  primaryMLAccountId String             @unique
+  primaryMLUserId    String             @unique
+  primaryNickname    String
+  primaryEmail       String?
+  primarySiteId      String             // MLB, MLA, MLM
+  
+  // Assinatura
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  subscriptionEndsAt DateTime?
+  trialEndsAt        DateTime           @default(dbgenerated("NOW() + INTERVAL '7 days'"))
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  
+  // Relations
+  mlAccounts    MLAccount[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  payments      Payment[]
+  webhookEvents WebhookEvent[]
+  
+  @@index([primaryMLUserId])
+  @@index([subscriptionStatus])
+}
+
+// ========== CONTAS ML (Múltiplas por organização) ==========
+
+model MLAccount {
+  id              String   @id @default(cuid())
+  mlUserId        String   @unique
+  nickname        String
+  email           String?
+  siteId          String   // MLB, MLA, MLM
+  permalink       String?
+  thumbnail       String?
+  
+  // Indica se é a conta primária
+  isPrimary       Boolean  @default(false)
+  
+  // Tokens criptografados (AES-256-GCM)
+  accessTokenIV   String   
+  accessTokenTag  String   
+  accessToken     String   
+  refreshTokenIV  String
+  refreshTokenTag String
+  refreshToken    String   
+  tokenExpiresAt  DateTime
+  
+  // Rate limiting (erro 429)
+  rateLimitReset  DateTime?
+  rateLimitCount  Int      @default(0)
+  lastRequestAt   DateTime?
+  
+  // Organização
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Status
+  isActive        Boolean  @default(true)
+  lastSyncAt      DateTime?
+  connectionError String?
+  
+  // Seller info cache
+  sellerReputation Json?
+  powerSellerStatus String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  questions       Question[]
+  metrics         MLMetrics[]
+  webhooks        WebhookEvent[]
+  
+  @@index([organizationId])
+  @@index([mlUserId])
+  @@index([isPrimary])
+}
+
+// ========== SESSÕES (Login via ML OAuth) ==========
+
+model Session {
+  id             String   @id @default(cuid())
+  sessionToken   String   @unique
+  
+  // Vinculado à organização (via conta ML principal)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Conta ML ativa na sessão (pode alternar)
+  activeMLAccountId String?
+  
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@index([sessionToken])
+  @@index([organizationId])
+}
+
+// ========== OAUTH STATE (PKCE) ==========
+
+model OAuthState {
+  id             String   @id @default(cuid())
+  state          String   @unique
+  codeVerifier   String   // PKCE
+  
+  // Para adicionar nova conta ML
+  organizationId String?  // Null no primeiro login
+  isPrimaryLogin Boolean  @default(false)
+  
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  
+  @@index([state])
+  @@index([expiresAt])
+}
+
+// ========== TOKEN BACKUP REMOVIDO - Agora usa MLAccount ==========
+// Todos os tokens são gerenciados através do modelo MLAccount
+// com criptografia AES-256-GCM para segurança
+
+// ========== MÉTRICAS ML ==========
+
+model MLMetrics {
+  id          String    @id @default(cuid())
+  mlAccountId String
+  mlAccount   MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  
+  date        DateTime  
+  metricType  String    // SALES, VISITS, CONVERSION, REPUTATION
+  metricName  String    // total_sales, pending_sales, etc
+  value       Float
+  period      String    // day, week, month
+  
+  metadata    Json?     // Dados extras
+  
+  createdAt   DateTime  @default(now())
+  
+  @@unique([mlAccountId, date, metricType, metricName])
+  @@index([mlAccountId, date])
+}
+
+// ========== USER METRICS (Cache) ==========
+
+model UserMetrics {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  totalQuestions  Int      @default(0)
+  answeredToday   Int      @default(0)
+  pendingQuestions Int     @default(0)
+  avgResponseTime Float    @default(0)
+  
+  lastQuestionAt  DateTime?
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+// ========== PERGUNTAS DO ML ==========
+
+model Question {
+  id            String    @id @default(cuid())
+  mlQuestionId  String    @unique
+  mlAccountId   String
+  mlAccount     MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  
+  itemId        String
+  itemTitle     String?
+  sellerId      String
+  customerId    String?
+  text          String    @db.Text
+  status        String    // UNANSWERED, ANSWERED, DELETED
+  dateCreated   DateTime
+  
+  answer        String?   @db.Text
+  answeredAt    DateTime?
+  answeredBy    String?   // AI, MANUAL, AUTO
+  
+  // AI Processing
+  aiConfidence  Float?
+  aiSuggestion  String?   @db.Text
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  revisions     Revision[]
+  
+  @@index([mlAccountId, status])
+  @@index([mlQuestionId])
+  @@index([dateCreated])
+}
+
+// ========== REVISÕES ==========
+
+model Revision {
+  id           String   @id @default(cuid())
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  originalText String   @db.Text
+  revisedText  String   @db.Text
+  confidence   Float
+  approved     Boolean  @default(false)
+  approvedBy   String?
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([questionId])
+}
+
+// ========== PAGAMENTOS ==========
+
+model Payment {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  amount         Float         @default(500.00)
+  currency       String        @default("BRL")
+  method         PaymentMethod @default(PIX)
+  
+  // PIX Info Hardcoded
+  pixCode        String?       @default("00020101021126330014br.gov.bcb.pix0111496118808555204000053039865406500.005802BR5925LUIS FERNANDO PEREIRA ROD6009SAO PAULO622905251K3PC743YN7DR3JGS3EXE3RPW630449B9") @db.Text
+  pixKey         String?       @default("496118808-55")
+  pixQRUrl       String?       @default("https://www.dropbox.com/scl/fi/r6zrsjvz2pbo6pgc0tlgw/IMG_3881.jpeg?rlkey=yyrtf2n0nz4zt6ogqx2a8870h&st=q3rhjrkk&raw=1")
+  
+  status         PaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  confirmedBy    String?       
+  
+  metadata       Json?
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  
+  @@index([organizationId, status])
+}
+
+// ========== WEBHOOKS ==========
+
+model WebhookEvent {
+  id             String    @id @default(cuid())
+  mlAccountId    String?
+  mlAccount      MLAccount? @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  topic          String    // questions, orders, items, messages
+  resourceId     String
+  userId         String    // ML user ID
+  applicationId  String
+  attemptId      String    @unique
+  
+  sentAt         DateTime
+  receivedAt     DateTime  @default(now())
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  processingError String?
+  
+  payload        Json
+  signature      String?   
+  
+  @@index([mlAccountId, topic])
+  @@index([processed, receivedAt])
+}
+
+// ========== AUDIT LOG ==========
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  action         String       // ml_account.connected, payment.confirmed
+  entityType     String       
+  entityId       String
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  mlAccountId    String?      // Conta ML que executou a ação
+  
+  metadata       Json         
+  ipAddress      String?
+  userAgent      String?
+  
+  createdAt      DateTime     @default(now())
+  
+  @@index([organizationId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ========== ENUMS ==========
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  BOLETO
+}

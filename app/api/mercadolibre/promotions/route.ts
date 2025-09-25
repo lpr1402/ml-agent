@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../base"
 
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
               }
               return promo
             } catch (error) {
-              console.error(`Error fetching promotion details for ${promo.id}:`, error)
+              logger.error(`Error fetching promotion details for ${promo.id}:`, { error })
               return promo
             }
           })
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
         })
       }
     } catch (error) {
-      console.error("Error fetching promotions:", error)
+      logger.error("Error fetching promotions:", { error })
     }
 
     // If no promotions or error, return empty list
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("Error fetching promotions:", error)
+    logger.error("Error fetching promotions:", { error })
     return NextResponse.json(
       { error: "Failed to fetch promotions" },
       { status: 500 }

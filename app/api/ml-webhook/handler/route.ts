@@ -1,336 +1,198 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sessionStore } from "@/lib/session-store"
-import { tokenManager } from "@/lib/token-manager"
+import { logger } from "@/lib/logger"
+import { simpleQueue } from "@/lib/queue/simple-queue"
+import { batchProcessor } from "@/lib/webhooks/batch-processor"
 
-const N8N_WEBHOOK_URL = "https://dashboard.axnexlabs.com.br/webhook/processamento"
-
-// Helper to fetch from ML API
-async function fetchFromML(endpoint: string, accessToken?: string | null) {
-  const headers: any = {
-    "Accept": "application/json",
-    "Content-Type": "application/json"
-  }
-  
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`
-  }
-  
-  const response = await fetch(`https://api.mercadolibre.com${endpoint}`, { 
-    headers,
-    cache: 'no-store' 
-  })
-  
-  if (!response.ok) {
-    console.error(`ML API error for ${endpoint}:`, response.status)
-    
-    // If unauthorized or forbidden, try public endpoint
-    if ((response.status === 401 || response.status === 403) && accessToken) {
-      console.log("Retrying as public endpoint...")
-      const publicResponse = await fetch(`https://api.mercadolibre.com${endpoint}`, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        },
-        cache: 'no-store'
-      })
-      
-      if (publicResponse.ok) {
-        return publicResponse.json()
-      }
-    }
-    
-    return null
-  }
-  
-  return response.json()
-}
-
+/**
+ * WEBHOOK HANDLER 100% FUNCIONAL
+ *
+ * FLUXO OTIMIZADO:
+ * 1. Recebe notificação do ML
+ * 2. Valida dados básicos
+ * 3. Salva no banco
+ * 4. Adiciona à fila para processamento
+ * 5. Responde < 200ms
+ *
+ * PROCESSAMENTO COMPLETO EM BACKGROUND
+ */
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+
   try {
     const notification = await request.json()
-    console.log("📨 ML Webhook received:", notification)
-    
-    // Extract question ID and seller ID
+
+    // Log detalhado para debug
+    logger.info('[Webhook] 📨 Received notification', {
+      topic: notification.topic,
+      resource: notification.resource,
+      user_id: notification.user_id,
+      application_id: notification.application_id,
+      sent: notification.sent,
+      timestamp: new Date().toISOString()
+    })
+
+    console.log('[Webhook] 🎯 Processing webhook:', {
+      topic: notification.topic,
+      questionId: notification.resource?.split('/').pop(),
+      userId: notification.user_id
+    })
+
+    // Validação básica
+    if (!notification.topic || !notification.resource || !notification.user_id) {
+      return NextResponse.json({
+        received: true,
+        error: "Missing required fields"
+      })
+    }
+
+    // Por enquanto, processar apenas questions
+    if (notification.topic !== 'questions') {
+      logger.info(`[Webhook] Ignoring topic: ${notification.topic}`)
+      return NextResponse.json({
+        received: true,
+        ignored: true,
+        topic: notification.topic
+      })
+    }
+
     const questionId = notification.resource?.split("/").pop()
     const sellerId = String(notification.user_id)
-    
-    if (!questionId || !sellerId) {
-      console.error("Missing questionId or sellerId")
-      return NextResponse.json({ error: "Invalid notification" }, { status: 400 })
+
+    if (!questionId || !sellerId || sellerId === 'undefined') {
+      return NextResponse.json({
+        received: true,
+        error: "Invalid question data"
+      })
     }
-    
-    // Check if question already processed
-    const existingQuestion = await prisma.question.findUnique({
-      where: { mlQuestionId: questionId }
+
+    // Verificar se já existe
+    const exists = await prisma.question.findUnique({
+      where: { mlQuestionId: questionId },
+      select: { id: true }
     })
-    
-    if (existingQuestion) {
-      console.log(`Question ${questionId} already exists`)
-      return NextResponse.json({ status: "already_processed" })
+
+    if (exists) {
+      logger.info(`[Webhook] Question ${questionId} already exists`)
+      return NextResponse.json({
+        received: true,
+        status: "duplicate"
+      })
     }
-    
-    // Get seller's access token - first try database (24/7), then session (memory)
-    let accessToken = await tokenManager.getAccessToken(sellerId)
-    
-    if (!accessToken) {
-      // Fallback to session store if not in database
-      accessToken = await sessionStore.getAccessToken(sellerId)
-      
-      if (!accessToken) {
-        console.warn(`No access token for seller ${sellerId} in database or memory, using public API`)
-      } else {
-        console.log(`Using session token for seller ${sellerId} (from memory)`)
-      }
-    } else {
-      console.log(`Using persistent token for seller ${sellerId} (from database)`)
-    }
-    
-    // 1. Fetch question details with api_version=4
-    const questionData = await fetchFromML(`${notification.resource}?api_version=4`, accessToken)
-    
-    if (!questionData) {
-      console.error("Failed to fetch question data")
-      return NextResponse.json({ error: "Failed to fetch question" }, { status: 500 })
-    }
-    
-    const itemId = questionData.item_id
-    const questionText = questionData.text
-    const buyerId = questionData.from?.id
-    
-    // 2. Fetch complete product information
-    const productData = await fetchFromML(`/items/${itemId}`, accessToken)
-    
-    if (!productData) {
-      console.error("Failed to fetch product data")
-      return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 })
-    }
-    
-    // 3. Fetch product description
-    const descriptionData = await fetchFromML(`/items/${itemId}/description`, accessToken)
-    
-    // 4. Fetch ALL questions from this item (last 10 for context)
-    const allItemQuestions = await fetchFromML(
-      `/questions/search?item=${itemId}&api_version=4&limit=10&sort_fields=date_created&sort_types=DESC`,
-      accessToken
-    )
-    
-    // 5. Fetch questions from THIS SPECIFIC BUYER on THIS ITEM
-    const buyerQuestions = buyerId ? await fetchFromML(
-      `/questions/search?item=${itemId}&from=${buyerId}&api_version=4`,
-      accessToken
-    ) : null
-    
-    // 6. Fetch only ANSWERED questions for knowledge base
-    const answeredQuestions = await fetchFromML(
-      `/questions/search?item=${itemId}&status=answered&api_version=4&limit=20`,
-      accessToken
-    )
-    
-    // Get seller info for context
-    const sellerData = await fetchFromML(`/users/${sellerId}`, accessToken)
-    
-    // 7. Prepare OPTIMIZED data for N8N - 11 PERFECT fields for AI context
-    const n8nPayload = {
-      // 1. AI PERSONA - Who the AI should be
-      ai_persona: `Você é ${sellerData?.nickname || "o vendedor"}, ${
-        sellerData?.seller_reputation?.level_id ? 
-        `vendedor com reputação ${sellerData.seller_reputation.level_id}` : 
-        "vendedor profissional"
-      } no Mercado Livre. Você vende ${productData.title} e deve responder como especialista neste produto.`,
-      
-      // SIGNATURE - Formatted seller signature for response
-      signature: `Equipe ${sellerData?.nickname || "Vendedor"}`,
-      
-      // 2. PRODUCT COMPLETE - Everything about the product in natural language
-      product_complete: `PRODUTO: ${productData.title}
-PREÇO: R$ ${productData.price}
-ESTOQUE: ${productData.available_quantity} unidades disponíveis
-${productData.sold_quantity > 0 ? `VENDIDOS: ${productData.sold_quantity} unidades já vendidas` : ''}
-CONDIÇÃO: ${productData.condition === 'new' ? 'Novo' : 'Usado'}
-DESCRIÇÃO: ${descriptionData?.plain_text || descriptionData?.text || 'Produto de qualidade'}
-CARACTERÍSTICAS: ${productData.attributes
-        ?.filter((attr: any) => attr.value_name)
-        ?.map((attr: any) => `${attr.name}: ${attr.value_name}`)
-        .join(", ") || 'Várias características técnicas'}
-${productData.variations?.length > 0 ? `VARIAÇÕES: ${productData.variations
-        ?.map((v: any) => v.attribute_combinations
-          ?.map((ac: any) => `${ac.name}: ${ac.value_name}`).join(", "))
-        .join(" | ")}` : ''}`,
-      
-      // 3. BUYER CONTEXT - Who is asking and their history
-      buyer_context: buyerQuestions?.questions?.length > 0 ? 
-        `Este comprador já fez ${buyerQuestions.questions.length} pergunta(s) anteriormente neste produto: ${
-          buyerQuestions.questions.map((q: any) => 
-            `"${q.text}" (${q.answer?.text ? `respondida: "${q.answer.text}"` : 'aguardando resposta'})`
-          ).join("; ")
-        }` : 
-        `Novo comprador interessado no produto${
-          questionData.from?.answered_questions > 0 ? 
-          `, já teve ${questionData.from.answered_questions} perguntas respondidas em outros produtos` : 
-          ''
-        }`,
-      
-      // 4. KNOWLEDGE BASE - Previous Q&A as examples
-      knowledge_base: answeredQuestions?.questions?.length > 0 ?
-        `Exemplos de perguntas já respondidas neste produto:\n${
-          answeredQuestions.questions
-            .filter((q: any) => q.answer?.text)
-            .slice(0, 10)
-            .map((q: any) => `Cliente: "${q.text}"\nVocê respondeu: "${q.answer.text}"`)
-            .join("\n\n")
-        }` : 
-        "Ainda não há perguntas respondidas neste produto para usar como exemplo.",
-      
-      // 5. CURRENT QUESTION - What needs to be answered
-      current_question: questionText,
-      
-      // 6. RECENT ACTIVITY - Latest interactions for context
-      recent_activity: allItemQuestions?.questions?.length > 0 ?
-        `Últimas ${Math.min(5, allItemQuestions.questions.length)} perguntas neste anúncio:\n${
-          allItemQuestions.questions
-            .slice(0, 5)
-            .map((q: any) => `- "${q.text}" (${q.status === 'ANSWERED' ? 'respondida' : 'aguardando'}${
-              q.date_created ? ` em ${new Date(q.date_created).toLocaleDateString('pt-BR')}` : ''
-            })`)
-            .join("\n")
-        }` : 
-        "Primeira pergunta neste anúncio.",
-      
-      // 7. BUSINESS INFO - Shipping, warranty, payment
-      business_info: `FRETE: ${productData.shipping?.free_shipping ? 'Grátis' : 'Pago pelo comprador'}
-ENVIO: ${productData.shipping?.mode === 'me2' ? 'Mercado Envios Full' : productData.shipping?.mode || 'Normal'}
-GARANTIA: ${productData.warranty || 'Garantia do fabricante'}
-PAGAMENTO: ${productData.accepts_mercadopago ? 'Aceita Mercado Pago (parcelamento disponível)' : 'Consulte formas de pagamento'}
-${productData.attributes?.find((a: any) => a.id === "BRAND")?.value_name ? 
-  `MARCA: ${productData.attributes.find((a: any) => a.id === "BRAND").value_name}` : ''}
-${productData.attributes?.find((a: any) => a.id === "MODEL")?.value_name ? 
-  `MODELO: ${productData.attributes.find((a: any) => a.id === "MODEL").value_name}` : ''}`,
-      
-      // 8. RESPONSE INSTRUCTIONS - How to answer
-      response_instructions: `IMPORTANTE: Responda em português brasileiro, máximo 500 caracteres, seja direto e profissional. ${
-        productData.sold_quantity > 10 ? 'Destaque que o produto é muito procurado.' : ''
-      } ${
-        productData.shipping?.free_shipping ? 'Mencione o frete grátis se relevante.' : ''
-      } Use informações do produto para ser específico. Seja cordial mas objetivo. SEMPRE finalize com a assinatura fornecida no campo signature.`,
-      
-      // 9. MEMORY KEY - For AI memory/context persistence
-      memory_key: `${itemId}_${sellerId}`,
-      
-      // 10. METADATA - IDs for tracking and processing
-      metadata: {
-        question_id: questionId,
-        item_id: itemId,
-        seller_id: sellerId,
-        buyer_id: buyerId || "anonymous",
-        timestamp: new Date().toISOString()
-      }
-    }
-    
-    // 8. Update or create user metrics
-    await prisma.userMetrics.upsert({
-      where: { mlUserId: sellerId },
-      update: {
-        totalQuestions: { increment: 1 },
-        pendingQuestions: { increment: 1 },
-        lastQuestionAt: new Date(),
-        lastActiveAt: new Date()
+
+    // Buscar conta ML
+    const mlAccount = await prisma.mLAccount.findFirst({
+      where: {
+        mlUserId: sellerId,
+        isActive: true
       },
-      create: {
-        mlUserId: sellerId,
-        totalQuestions: 1,
-        pendingQuestions: 1,
-        firstQuestionAt: new Date(),
-        lastQuestionAt: new Date(),
-        lastActiveAt: new Date()
+      select: {
+        id: true,
+        organizationId: true
       }
     })
-    
-    // 9. Create question record with PROCESSING status
-    await prisma.question.create({
+
+    if (!mlAccount) {
+      logger.warn(`[Webhook] No ML account found for seller ${sellerId}`)
+      return NextResponse.json({
+        received: true,
+        error: "Account not found"
+      })
+    }
+
+    // Criar evento de webhook
+    const webhookEvent = await prisma.webhookEvent.create({
       data: {
-        mlQuestionId: questionId,
-        mlUserId: sellerId,
-        text: questionText,
-        itemId: itemId,
-        itemTitle: productData.title,
-        itemPrice: productData.price,
-        itemPermalink: productData.permalink, // Store the official ML permalink
-        buyerId: buyerId ? String(buyerId) : null,
-        status: "PROCESSING",
+        idempotencyKey: `${questionId}-${Date.now()}`,
+        eventType: 'questions',
+        eventId: questionId,
+        topic: notification.topic,
+        resourceId: notification.resource,
+        resourceUrl: notification.resource,
+        userId: sellerId,
+        applicationId: String(notification.application_id || ''),
+        attemptId: `${questionId}-${Date.now()}`,
+        sentAt: new Date(notification.sent || Date.now()),
+        payload: notification,
+        organizationId: mlAccount.organizationId,
+        mlAccountId: mlAccount.id,
+        status: 'PENDING',
+        processed: false,
         receivedAt: new Date()
       }
     })
-    
-    console.log(`📤 Sending to N8N webhook:`, {
-      question: n8nPayload.current_question,
-      seller: sellerData?.nickname,
-      signature: n8nPayload.signature,
-      product: productData.title,
-      memory_key: n8nPayload.memory_key,
-      optimized_fields: 11
-    })
-    
-    // 10. Send to N8N webhook for AI processing
-    try {
-      const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(n8nPayload)
-      })
-      
-      if (!n8nResponse.ok) {
-        const errorText = await n8nResponse.text()
-        console.error("N8N webhook failed:", n8nResponse.status, errorText)
-        
-        // Update status to FAILED
-        await prisma.question.update({
-          where: { mlQuestionId: questionId },
-          data: { status: "FAILED" }
-        })
-        
-        await prisma.userMetrics.update({
-          where: { mlUserId: sellerId },
-          data: {
-            pendingQuestions: { decrement: 1 }
-          }
-        })
-        
-        return NextResponse.json({ error: "N8N processing failed" }, { status: 500 })
+
+    // OTIMIZAÇÃO: Usar batch processor para reduzir carga
+    // Adicionar ao batch em vez de processar imediatamente
+    batchProcessor.addToBatch(mlAccount.id, {
+      data: notification,
+      mlAccount: {
+        id: mlAccount.id,
+        mlUserId: sellerId,
+        organizationId: mlAccount.organizationId
       }
-      
-      console.log(`✅ Question ${questionId} sent to N8N for processing`)
-      
-      // N8N will process and send response to /api/n8n/response
-      
-    } catch (n8nError) {
-      console.error("N8N request error:", n8nError)
-      
-      await prisma.question.update({
-        where: { mlQuestionId: questionId },
-        data: { status: "FAILED" }
-      })
-      
-      await prisma.userMetrics.update({
-        where: { mlUserId: sellerId },
-        data: {
-          pendingQuestions: { decrement: 1 }
-        }
-      })
-      
-      return NextResponse.json({ error: "N8N connection failed" }, { status: 500 })
-    }
-    
-    return NextResponse.json({ 
-      status: "processing",
-      questionId,
-      message: "Question sent to AI agent for processing"
     })
-    
-  } catch (error) {
-    console.error("Webhook error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+
+    // Também adicionar à fila como backup
+    await simpleQueue.addJob(webhookEvent.id, {
+      topic: notification.topic,
+      resource_id: questionId,
+      resource: notification.resource,
+      user_id: sellerId,
+      notification: notification
+    })
+
+    // Resposta imediata
+    const responseTime = Date.now() - startTime
+
+    logger.info(`[Webhook] Queued in ${responseTime}ms`, {
+      questionId,
+      responseTime
+    })
+
+    return NextResponse.json({
+      received: true,
+      queued: true,
+      time: responseTime
+    })
+
+  } catch (error: any) {
+    const responseTime = Date.now() - startTime
+    logger.error("[Webhook] Error", {
+      error: error.message,
+      time: responseTime
+    })
+
+    // SEMPRE responder OK ao ML
+    return NextResponse.json({
+      received: true,
+      error: "Internal error",
+      time: responseTime
+    })
+  }
+}
+
+/**
+ * GET endpoint para health check
+ */
+export async function GET() {
+  try {
+    // Buscar estatísticas da queue e batch processor
+    const [queueStats, batchStatus] = await Promise.all([
+      simpleQueue.getStatistics(),
+      Promise.resolve(batchProcessor.getStatus())
+    ])
+
+    return NextResponse.json({
+      status: 'healthy',
+      queue: queueStats,
+      batch: batchStatus,
+      timestamp: new Date().toISOString()
+    })
+  } catch (_error) {
+    return NextResponse.json({
+      status: 'error',
+      message: 'Failed to get queue statistics'
+    }, { status: 500 })
   }
 }

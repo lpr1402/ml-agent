@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger'
+
 interface QuestionNotification {
   questionId: string
   sequentialId: number
@@ -8,6 +10,9 @@ interface QuestionNotification {
   productPrice: number
   productImage?: string
   approvalUrl: string
+  sellerName?: string  // Nome da conta ML do vendedor
+  sellerEmail?: string
+  organizationName?: string
 }
 
 interface RevisionNotification {
@@ -24,27 +29,36 @@ interface ApprovalConfirmation {
   questionText: string
   finalAnswer: string
   productTitle: string
+  sellerName?: string
   approved: boolean
 }
 
 export async function sendQuestionNotification(data: QuestionNotification): Promise<boolean> {
   try {
-    // Format the message with sequential ID
-    const messageText = `🔔 *PERGUNTA #${data.sequentialId}*
+    // Incluir nome do vendedor ML na notificação
+    const sellerInfo = data.sellerName ? `\n🏪 *Vendedor ML:* ${data.sellerName}` : ''
+    
+    // Format the message with seller info and AI response
+    const messageText = `🔔 *NOVA PERGUNTA #${data.sequentialId}*${sellerInfo}
 
 📦 *Produto:* ${data.productTitle}
+💰 *Preço:* R$ ${data.productPrice.toFixed(2)}
 
 👤 *Cliente perguntou:*
 _"${data.question}"_
 
-🔗 *Link de Aprovação:*
+🤖 *Resposta sugerida pela IA:*
+_"${data.aiResponse}"_
+
+🔗 *Link de Aprovação Rápida:*
 ${data.approvalUrl}
 
 ━━━━━━━━━━━━━━━━━━━
-_Clique no link acima para visualizar e responder a pergunta_`
+⚡ *Clique no link para aprovar, editar ou revisar a resposta*
+_Você será logado automaticamente na conta ${data.sellerName || 'do vendedor'}_`
 
     const payload = {
-      recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+      recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
       text: messageText
     }
 
@@ -57,28 +71,28 @@ _Clique no link acima para visualizar e responder a pergunta_`
       delete (payload as any).text
     }
 
-    console.log("📤 Sending WhatsApp notification for question #" + data.sequentialId)
+    logger.info("📤 Sending WhatsApp notification for question #" + data.sequentialId)
 
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        "Authorization": `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
-        "X-Instance-ID": process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl"
+        "X-Instance-ID": process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl"
       },
       body: JSON.stringify(payload)
     })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("WhatsApp API error:", errorText)
+      logger.error("WhatsApp API error:", { error: { error: errorText } })
       return false
     }
 
-    console.log("✅ WhatsApp notification sent for question #" + data.sequentialId)
+    logger.info("✅ WhatsApp notification sent for question #" + data.sequentialId)
     return true
   } catch (error) {
-    console.error("WhatsApp notification error:", error)
+    logger.error("WhatsApp notification error:", { error })
     return false
   }
 }
@@ -102,29 +116,29 @@ ${data.approvalUrl}
 _Clique no link para aprovar a nova resposta_`
 
     const payload = {
-      recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+      recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
       text: messageText
     }
 
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        "Authorization": `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
-        "X-Instance-ID": process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl"
+        "X-Instance-ID": process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl"
       },
       body: JSON.stringify(payload)
     })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("WhatsApp API error:", errorText)
+      logger.error("WhatsApp API error:", { error: { error: errorText } })
       return false
     }
 
     return true
   } catch (error) {
-    console.error("WhatsApp revision notification error:", error)
+    logger.error("WhatsApp revision notification error:", { error })
     return false
   }
 }
@@ -149,19 +163,19 @@ ${data.approved ? "✅ Resposta publicada no Mercado Livre!" : "⏳ Aguardando n
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        "Authorization": `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
-        "X-Instance-ID": process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl"
+        "X-Instance-ID": process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl"
       },
       body: JSON.stringify({
-        recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+        recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
         text: message
       })
     })
 
     return response.ok
   } catch (error) {
-    console.error("WhatsApp confirmation error:", error)
+    logger.error("WhatsApp confirmation error:", { error })
     return false
   }
 }

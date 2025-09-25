@@ -1,0 +1,130 @@
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { addSecurityHeaders } from "@/lib/security/headers"
+import { validateMLWebhook } from "@/lib/security/webhook-validator"
+// import { enforceSubscriptionLimits } from "@/lib/subscription/plan-middleware"
+
+// Rate limiting map
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+  const response = NextResponse.next()
+  
+  // Security headers
+  response.headers.set("X-Frame-Options", "DENY")
+  response.headers.set("X-Content-Type-Options", "nosniff")
+  response.headers.set("X-XSS-Protection", "1; mode=block")
+  
+  // ML Webhook validation - Validar IPs oficiais do ML
+  if (pathname.startsWith("/api/ml-webhook")) {
+    const validation = validateMLWebhook(request, request.headers)
+    
+    if (!validation.isValid) {
+      logger.warn(`[Webhook] Blocked request from IP: ${validation.ip} - ${validation.reason}`)
+      return NextResponse.json(
+        { error: "Forbidden - Invalid source IP" },
+        { status: 403 }
+      )
+    }
+    
+    // IP válido do ML - processar webhook
+    logger.info(`[Webhook] Valid ML request from IP: ${validation.ip}`)
+    
+    // ML espera resposta em até 500ms
+    response.headers.set("X-ML-Webhook", "true")
+    return response
+  }
+  
+  // Rate limiting for API routes
+  if (pathname.startsWith("/api")) {
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1"
+    const now = Date.now()
+    const rateLimitKey = `${ip}:${pathname}`
+    const rateLimit = rateLimitMap.get(rateLimitKey)
+    
+    // Different limits for different endpoints
+    let maxRequests = 20 // Default: 20 req/min for most endpoints
+    
+    // More permissive for public health checks
+    if (pathname.startsWith("/api/health")) {
+      maxRequests = 60 // 60 req/min for health checks
+    }
+    // Stricter for auth endpoints
+    else if (pathname.startsWith("/api/auth")) {
+      maxRequests = 10 // 10 req/min for auth (prevent brute force)
+    }
+    // Stricter for ML API proxy endpoints
+    else if (pathname.startsWith("/api/mercadolibre")) {
+      maxRequests = 30 // 30 req/min for ML API calls (respecting ML limits)
+    }
+    // Very strict for payment endpoints
+    else if (pathname.startsWith("/api/payments")) {
+      maxRequests = 5 // 5 req/min for payments
+    }
+    
+    if (rateLimit) {
+      if (rateLimit.resetTime > now) {
+        rateLimit.count++
+        if (rateLimit.count > maxRequests) {
+          logger.warn(`[RateLimit] Blocked ${ip} on ${pathname} - ${rateLimit.count} requests`)
+          return NextResponse.json(
+            { error: "Too many requests. Please wait before trying again." },
+            { status: 429, headers: { 'Retry-After': '60' } }
+          )
+        }
+      } else {
+        rateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60000 })
+      }
+    } else {
+      rateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60000 })
+    }
+  }
+  
+  // Verificar autenticação para rotas protegidas
+  const publicRoutes = ['/login', '/auth', '/api/auth', '/api/ml-webhook', '/api/health', '/approve']
+  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+  
+  if (!isPublicRoute) {
+    // Verificar cookie de sessão - USAR NOME CORRETO
+    const sessionCookie = request.cookies.get('ml-agent-session')
+    
+    if (!sessionCookie && pathname !== '/') {
+      // Não tem sessão - redirecionar para login
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    
+    // Verificar limites de plano de assinatura - temporariamente desabilitado
+    // if (pathname.startsWith('/api')) {
+    //   const planResponse = await enforceSubscriptionLimits(request, pathname)
+    //   if (planResponse) {
+    //     return planResponse // Retorna erro de limite de plano
+    //   }
+    // }
+  }
+  
+  // Redirect root to agente (central de atendimento) if authenticated, login if not
+  if (pathname === "/") {
+    const sessionCookie = request.cookies.get('ml-agent-session')
+    if (sessionCookie) {
+      return NextResponse.redirect(new URL("/agente", request.url))
+    } else {
+      return NextResponse.redirect(new URL("/login", request.url))
+    }
+  }
+  
+  // Redirect dashboard to agente (central de atendimento)
+  if (pathname === "/dashboard") {
+    return NextResponse.redirect(new URL("/agente", request.url))
+  }
+  
+  // Aplicar todos os headers de segurança OWASP
+  return addSecurityHeaders(response)
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+}

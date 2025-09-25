@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers"
 
 export interface MercadoLibreProfile {
@@ -60,7 +61,7 @@ export default function MercadoLibre<P extends MercadoLibreProfile>(
     token: {
       url: "https://api.mercadolibre.com/oauth/token",
       async request({ params, checks, provider }: any) {
-        console.log("Custom token request called with:", {
+        logger.info("Custom token request called with:", {
           code: params.code,
           clientId: options.clientId,
           clientSecret: options.clientSecret,
@@ -76,7 +77,7 @@ export default function MercadoLibre<P extends MercadoLibreProfile>(
           ...(checks?.codeVerifier && { code_verifier: checks.codeVerifier })
         }
         
-        console.log("Token exchange body:", bodyParams)
+        logger.info("Token exchange body:", { error: { error: bodyParams } })
         
         const response = await fetch("https://api.mercadolibre.com/oauth/token", {
           method: "POST",
@@ -88,7 +89,7 @@ export default function MercadoLibre<P extends MercadoLibreProfile>(
         })
 
         const tokens = await response.json()
-        console.log("Token exchange response:", response.status, tokens)
+        logger.info("Token exchange response:", { status: response.status, tokens })
         
         if (!response.ok) {
           throw new Error(`Token exchange failed: ${JSON.stringify(tokens)}`)

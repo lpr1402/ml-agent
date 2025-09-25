@@ -1,0 +1,18 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "@next/next/no-img-element": "off",
+    "no-var": ["error", { "allowGlobal": true }],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "prefer-const": "off"
+  },
+  "overrides": [
+    {
+      "files": ["lib/prisma-singleton.ts", "lib/prisma-singleton.js"],
+      "rules": {
+        "no-var": "off"
+      }
+    }
+  ]
+}

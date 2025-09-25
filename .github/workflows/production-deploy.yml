@@ -1,0 +1,319 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20.x'
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+  ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
+  ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
+
+jobs:
+  # ================================================
+  # SECURITY SCAN
+  # ================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+      
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'ml-agent'
+          path: '.'
+          format: 'HTML'
+      
+      - name: Upload Security Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-results
+          path: reports
+  
+  # ================================================
+  # BUILD & TEST
+  # ================================================
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    needs: security
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: mlagent
+          POSTGRES_PASSWORD: mlagent2025
+          POSTGRES_DB: mlagent_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Run Migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://mlagent:mlagent2025@localhost:5432/mlagent_test
+      
+      - name: Run Type Check
+        run: npm run typecheck
+      
+      - name: Run Linter
+        run: npm run lint
+      
+      - name: Run Tests
+        run: npm run test:ci
+        env:
+          DATABASE_URL: postgresql://mlagent:mlagent2025@localhost:5432/mlagent_test
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Build Application
+        run: npm run build
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            .next
+            public
+            package.json
+            package-lock.json
+            prisma
+            ecosystem.config.js
+  
+  # ================================================
+  # PERFORMANCE TEST
+  # ================================================
+  performance:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: build-test
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            http://localhost:3000
+            http://localhost:3000/login
+            http://localhost:3000/agente
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+      
+      - name: Load Testing with k6
+        uses: grafana/k6-action@v0.3.0
+        with:
+          filename: tests/load-test.js
+  
+  # ================================================
+  # DEPLOY TO STAGING
+  # ================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-test, performance]
+    if: github.event_name == 'pull_request'
+    environment:
+      name: staging
+      url: https://staging.gugaleo.axnexlabs.com.br
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /var/www/ml-agent-staging
+            git pull origin ${{ github.head_ref }}
+            npm ci --production
+            npx prisma migrate deploy
+            pm2 reload ecosystem.staging.config.js
+      
+      - name: Run Smoke Tests
+        run: |
+          curl -f https://staging.gugaleo.axnexlabs.com.br/api/health || exit 1
+      
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Staging deployment completed'
+        if: always()
+  
+  # ================================================
+  # DEPLOY TO PRODUCTION
+  # ================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-test, performance]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://gugaleo.axnexlabs.com.br
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Create Backup
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /var/www/ml-agent
+            ./scripts/backup.sh
+      
+      - name: Blue-Green Deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            # Deploy to Blue environment
+            cd /var/www/ml-agent-blue
+            git pull origin main
+            npm ci --production
+            npx prisma migrate deploy
+            npm run build
+            
+            # Health check Blue
+            pm2 start ecosystem.blue.config.js
+            sleep 10
+            curl -f http://localhost:3001/api/health || exit 1
+            
+            # Switch traffic to Blue
+            sudo nginx -s reload
+            
+            # Stop Green
+            cd /var/www/ml-agent-green
+            pm2 stop ecosystem.green.config.js
+            
+            # Sync Green with Blue for next deployment
+            rsync -av --delete /var/www/ml-agent-blue/ /var/www/ml-agent-green/
+      
+      - name: Verify Deployment
+        run: |
+          sleep 30
+          curl -f https://gugaleo.axnexlabs.com.br/api/health || exit 1
+      
+      - name: Run Production Tests
+        run: |
+          npm run test:production
+      
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Production deployment successful
+            Commit: ${{ github.sha }}
+      
+      - name: Notify Team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment completed successfully!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        if: always()
+  
+  # ================================================
+  # ROLLBACK (Manual Trigger)
+  # ================================================
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment:
+      name: production-rollback
+    
+    steps:
+      - name: Rollback Deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            # Switch back to Green
+            cd /var/www/ml-agent-green
+            pm2 start ecosystem.green.config.js
+            
+            # Switch traffic to Green
+            sudo nginx -s reload
+            
+            # Stop Blue
+            cd /var/www/ml-agent-blue
+            pm2 stop ecosystem.blue.config.js
+      
+      - name: Notify Rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'warning'
+          text: 'PRODUCTION ROLLBACK EXECUTED!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

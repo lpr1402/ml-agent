@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger'
+
 interface WhatsAppNotification {
   questionId: string
   question: string
@@ -24,8 +26,8 @@ export async function notifyWhatsApp({
     const confidenceText = getConfidenceText(confidence)
     
     // Construir URLs para os botões
-    const approvalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/agente/aprovar/${questionId}`
-    const approveDirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/agent/quick-approve/${questionId}?action=approve&quick=true`
+    const approvalUrl = `${process.env['NEXT_PUBLIC_APP_URL']}/agente/aprovar/${questionId}`
+    const approveDirectUrl = `${process.env['NEXT_PUBLIC_APP_URL']}/api/agent/quick-approve/${questionId}?action=approve&quick=true`
     
     // Formatar mensagem com formatação melhorada
     const message = `📣 *${sellerName || "Vendedor"}*
@@ -45,9 +47,9 @@ _"${suggestedAnswer}"_
 
     // Preparar body com botões interativos
     const bodyData: any = {
-      recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+      recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
       text: message,
-      instance_id: process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl",
+      instance_id: process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl",
       // Adicionar botões interativos
       buttons: [
         {
@@ -73,7 +75,7 @@ _"${suggestedAnswer}"_
           caption: `${productTitle}${productPrice ? ` - R$ ${productPrice.toFixed(2)}` : ""}`
         }
       } catch (error) {
-        console.log("Erro ao processar imagem:", error)
+        logger.info("Erro ao processar imagem:", { error })
       }
     }
 
@@ -81,29 +83,29 @@ _"${suggestedAnswer}"_
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        Authorization: `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
-        "X-Instance-ID": process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl"
+        "X-Instance-ID": process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl"
       },
       body: JSON.stringify(bodyData),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      console.error("WhatsApp API error:", error)
+      logger.error("WhatsApp API error:", { error })
       return false
     }
 
-    console.log("WhatsApp notification sent successfully")
+    logger.info("WhatsApp notification sent successfully")
     return true
   } catch (error) {
-    console.error("Error sending WhatsApp notification:", error)
+    logger.error("Error sending WhatsApp notification:", { error })
     return false
   }
 }
 
 export async function sendApprovalConfirmation(
-  questionId: string,
+  _questionId: string,
   action: "approved" | "edited" | "rejected",
   productTitle?: string
 ): Promise<boolean> {
@@ -135,19 +137,19 @@ _ML Agent IA - Atendimento Inteligente_`
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        Authorization: `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+        recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
         text: message,
-        instance_id: process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl",
+        instance_id: process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl",
       }),
     })
 
     return response.ok
   } catch (error) {
-    console.error("Error sending approval confirmation:", error)
+    logger.error("Error sending approval confirmation:", { error })
     return false
   }
 }
@@ -173,7 +175,7 @@ export async function sendQuestionNotification(
   productInfo: any
 ): Promise<boolean> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://arabic-breeding-greatly-citizens.trycloudflare.com"
+    const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || "https://gugaleo.axnexlabs.com.br"
     const approvalUrl = `${baseUrl}/agente/aprovar/${questionId}`
     const approveDirectUrl = `${baseUrl}/api/agent/quick-approve/${questionId}?action=approve&quick=true`
     
@@ -192,9 +194,9 @@ _"${aiResponse}"_
 Aprove ou edite a resposta antes do envio ao cliente.`
 
     const bodyData: any = {
-      recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+      recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
       text: message,
-      instance_id: process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl",
+      instance_id: process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl",
       buttons: [
         {
           label: "✅ Aprovar e Enviar",
@@ -220,23 +222,23 @@ Aprove ou edite a resposta antes do envio ao cliente.`
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        Authorization: `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
-        "X-Instance-ID": process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl"
+        "X-Instance-ID": process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl"
       },
       body: JSON.stringify(bodyData),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      console.error("WhatsApp API error:", error)
+      logger.error("WhatsApp API error:", { error })
       return false
     }
 
-    console.log("Question notification sent to WhatsApp")
+    logger.info("Question notification sent to WhatsApp")
     return true
   } catch (error) {
-    console.error("Error sending question notification:", error)
+    logger.error("Error sending question notification:", { error })
     return false
   }
 }
@@ -272,19 +274,19 @@ _Sistema de IA - Atendimento Automatizado ML_`
     const response = await fetch("https://api.zapsterapi.com/v1/wa/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.ZAPSTER_API_TOKEN}`,
+        Authorization: `Bearer ${process.env['ZAPSTER_API_TOKEN']}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        recipient: process.env.ZAPSTER_GROUP_ID || "group:120363420949294702",
+        recipient: process.env['ZAPSTER_GROUP_ID'] || "group:120363420949294702",
         text: message,
-        instance_id: process.env.ZAPSTER_INSTANCE_ID || "21iwlxlswck0m95497nzl",
+        instance_id: process.env['ZAPSTER_INSTANCE_ID'] || "21iwlxlswck0m95497nzl",
       }),
     })
 
     return response.ok
   } catch (error) {
-    console.error("Error sending daily report:", error)
+    logger.error("Error sending daily report:", { error })
     return false
   }
 }

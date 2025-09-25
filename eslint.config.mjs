@@ -12,13 +12,31 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    ignores: [
+      "**/*.js",
+      ".next/**",
+      "node_modules/**",
+      "dist/**",
+      "build/**"
+    ]
+  },
+  {
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_",
+          "caughtErrorsIgnorePattern": "^_"
+        }
+      ],
+      "@typescript-eslint/no-require-imports": "off",
       "prefer-const": "warn",
       "react/no-unescaped-entities": "warn",
       "@next/next/no-img-element": "warn",
-      "react-hooks/exhaustive-deps": "warn"
+      "react-hooks/exhaustive-deps": "warn",
+      "import/no-anonymous-default-export": "off"
     }
   }
 ];

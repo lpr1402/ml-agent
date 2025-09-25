@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../base"
 
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("Error fetching reviews:", error)
+    logger.error("Error fetching reviews:", { error })
     return NextResponse.json(
       { 
         reviews: [],

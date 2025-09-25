@@ -1,223 +1,310 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
+import { fetchCompleteProductData } from "@/lib/ml-api/enhanced-product-fetcher"
 
-const N8N_WEBHOOK_URL = "https://dashboard.axnexlabs.com.br/webhook/processamento"
+const N8N_WEBHOOK_URL = process.env['N8N_WEBHOOK_URL'] || "https://dashboard.axnexlabs.com.br/webhook/processamento"
 
 export async function POST(request: NextRequest) {
   try {
-    // Get user authentication
-    const auth = await getAuthFromRequest(request)
-    
-    if (!auth) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    // Log detalhado para debug
+    logger.info('[Reprocess] Endpoint called', {
+      method: request.method,
+      url: request.url,
+      headers: {
+        contentType: request.headers.get('content-type'),
+        origin: request.headers.get('origin'),
+        referer: request.headers.get('referer')
+      }
+    })
+
+    // Parse do body com tratamento de erro
+    let questionId: string
+    try {
+      const body = await request.json()
+      questionId = body.questionId
+      logger.info('[Reprocess] Body parsed successfully', { questionId })
+    } catch (parseError) {
+      logger.error('[Reprocess] Failed to parse request body', {
+        error: parseError instanceof Error ? parseError.message : String(parseError)
+      })
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
     }
-    
-    const { questionId } = await request.json()
-    
+
     if (!questionId) {
+      logger.warn('[Reprocess] Missing question ID in request')
       return NextResponse.json({ error: "Missing question ID" }, { status: 400 })
     }
-    
-    // Get question details
+
+    logger.info(`[Reprocess] Starting reprocess for question ${questionId}`)
+
+    // Buscar a pergunta com informações completas da conta ML
     const question = await prisma.question.findUnique({
-      where: { id: questionId }
+      where: {
+        id: questionId
+      },
+      include: {
+        mlAccount: {
+          select: {
+            id: true,
+            mlUserId: true,
+            nickname: true,
+            organizationId: true,
+            accessToken: true,
+            accessTokenIV: true,
+            accessTokenTag: true,
+            isActive: true
+          }
+        }
+      }
     })
-    
+
     if (!question) {
+      logger.warn(`[Reprocess] Question ${questionId} not found`)
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
-    
-    // Only allow reprocessing of failed questions
-    if (question.status !== "FAILED" && question.status !== "TOKEN_ERROR") {
-      return NextResponse.json({ 
+
+    if (!question.mlAccount) {
+      return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
+    }
+
+    // Permite reprocessar apenas perguntas com erro
+    const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR"]
+    if (!allowedStatuses.includes(question.status)) {
+      return NextResponse.json({
         error: "Only failed questions can be reprocessed",
-        currentStatus: question.status 
+        currentStatus: question.status
       }, { status: 400 })
     }
-    
-    console.log(`[Reprocess] Reprocessing question ${question.mlQuestionId}`)
-    
-    // Update status to PROCESSING
+
+    // Verificar se a conta está ativa
+    if (!question.mlAccount.isActive) {
+      return NextResponse.json({ error: "ML Account is not active" }, { status: 400 })
+    }
+
+    // Verificar se tem token
+    if (!question.mlAccount.accessToken) {
+      return NextResponse.json({ error: "No access token available for this ML account" }, { status: 400 })
+    }
+
+    // Descriptografar o token da conta específica que recebeu a pergunta
+    const { decryptToken } = await import('@/lib/security/encryption')
+
+    let mlToken: string
+    try {
+      mlToken = decryptToken({
+        encrypted: question.mlAccount.accessToken,
+        iv: question.mlAccount.accessTokenIV!,
+        authTag: question.mlAccount.accessTokenTag!
+      })
+    } catch (error) {
+      logger.error("[Reprocess] Failed to decrypt token", { error })
+      return NextResponse.json({ error: "Failed to decrypt ML token" }, { status: 500 })
+    }
+
+    const sellerId = question.mlAccount.mlUserId
+    const nickname = question.mlAccount.nickname
+
+    logger.info(`[Reprocess] Processing question ${question.mlQuestionId} for seller ${nickname} (${sellerId})`)
+
+    // Atualizar status para PROCESSING
     await prisma.question.update({
       where: { id: questionId },
-      data: { 
-        status: "PROCESSING"
+      data: {
+        status: "PROCESSING",
+        failureReason: null,
+        failedAt: null,
+        retryCount: {
+          increment: 1
+        }
       }
     })
-    
-    // Get user's access token for API calls
+
+    // Get user data from ML
     const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${mlToken}`,
       },
     })
     
-    if (!userResponse.ok) {
-      return NextResponse.json({ error: "Failed to get user info" }, { status: 401 })
+    // Validate user authentication with ML API
+    if (userResponse.ok) {
+      await userResponse.json() // Validate token is working
     }
     
-    const userData = await userResponse.json()
-    const sellerId = String(userData.id)
-    
-    // Verify this is the seller's question
-    if (question.mlUserId !== sellerId) {
-      return NextResponse.json({ error: "Unauthorized - not your question" }, { status: 403 })
-    }
-    
-    // Fetch complete product data from ML API
-    const productResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}`, {
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-      },
-    })
-    
-    let productData = null
-    if (productResponse.ok) {
-      productData = await productResponse.json()
-    } else {
-      // Try without auth
-      const publicResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}`)
-      if (publicResponse.ok) {
-        productData = await publicResponse.json()
-      }
-    }
-    
-    if (!productData) {
+    // Fetch COMPLETE product data using Enhanced Product Fetcher
+    logger.info(`[Reprocess] Fetching complete product data for item ${question.itemId}`)
+    let completeProductData = await fetchCompleteProductData(question.itemId, mlToken)
+
+    if (!completeProductData) {
+      logger.warn(`[Reprocess] Could not fetch complete product data, using fallback`)
       // Use stored data as fallback
-      productData = {
-        title: question.itemTitle,
-        price: question.itemPrice,
+      completeProductData = {
+        id: question.itemId,
+        title: question.itemTitle || 'Produto',
+        price: question.itemPrice || 0,
+        permalink: question.itemPermalink || '',
         available_quantity: 1,
-        condition: 'new'
+        sold_quantity: 0,
+        condition: 'not_specified',
+        status: '',
+        category_id: '',
+        listing_type_id: ''
       }
-    }
-    
-    // Fetch product description
-    let descriptionData = null
-    try {
-      const descResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}/description`, {
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-        },
+    } else {
+      logger.info(`[Reprocess] Complete product data fetched:`, {
+        hasDescription: !!completeProductData.description,
+        variationsCount: completeProductData.variations?.length || 0,
+        picturesCount: completeProductData.pictures?.length || 0
       })
-      if (descResponse.ok) {
-        descriptionData = await descResponse.json()
-      }
-    } catch (error) {
-      console.log("Could not fetch description")
     }
     
-    // Get seller info
-    const sellerData = await fetch(`https://api.mercadolibre.com/users/${question.mlUserId}`, {
+    // Get seller info (não utilizado atualmente)
+    await fetch(`https://api.mercadolibre.com/users/${sellerId}`, {
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${mlToken}`,
       },
     }).then(r => r.ok ? r.json() : null)
     
-    // Prepare EXACT same payload format as original webhook
-    const n8nPayload = {
-      // 1. AI PERSONA
-      ai_persona: `Você é ${sellerData?.nickname || "o vendedor"}, ${
-        sellerData?.seller_reputation?.level_id ? 
-        `vendedor com reputação ${sellerData.seller_reputation.level_id}` : 
-        "vendedor profissional"
-      } no Mercado Livre. Você vende ${productData.title} e deve responder como especialista neste produto.`,
-      
-      // SIGNATURE
-      signature: `Equipe ${sellerData?.nickname || "Vendedor"}`,
-      
-      // 2. PRODUCT COMPLETE
-      product_complete: `PRODUTO: ${productData.title}
-PREÇO: R$ ${productData.price}
-ESTOQUE: ${productData.available_quantity || 1} unidades disponíveis
-${productData.sold_quantity > 0 ? `VENDIDOS: ${productData.sold_quantity} unidades já vendidas` : ''}
-CONDIÇÃO: ${productData.condition === 'new' ? 'Novo' : 'Usado'}
-DESCRIÇÃO: ${descriptionData?.plain_text || descriptionData?.text || 'Produto de qualidade'}
-CARACTERÍSTICAS: ${productData.attributes
-        ?.filter((attr: any) => attr.value_name)
-        ?.map((attr: any) => `${attr.name}: ${attr.value_name}`)
-        .join(", ") || 'Várias características técnicas'}
-${productData.variations?.length > 0 ? `VARIAÇÕES: ${productData.variations
-        ?.map((v: any) => v.attribute_combinations
-          ?.map((ac: any) => `${ac.name}: ${ac.value_name}`).join(", "))
-        .join(" | ")}` : ''}`,
-      
-      // 3. BUYER CONTEXT
-      buyer_context: "Comprador interessado no produto (reprocessamento de pergunta)",
-      
-      // 4. KNOWLEDGE BASE
-      knowledge_base: "Use seu conhecimento sobre o produto para responder adequadamente.",
-      
-      // 5. CURRENT QUESTION
-      current_question: question.text,
-      
-      // 6. RECENT ACTIVITY
-      recent_activity: "Pergunta sendo reprocessada por solicitação do vendedor.",
-      
-      // 7. BUSINESS INFO
-      business_info: `FRETE: ${productData.shipping?.free_shipping ? 'Grátis' : 'Pago pelo comprador'}
-ENVIO: ${productData.shipping?.mode === 'me2' ? 'Mercado Envios Full' : productData.shipping?.mode || 'Normal'}
-GARANTIA: ${productData.warranty || 'Garantia do fabricante'}
-PAGAMENTO: ${productData.accepts_mercadopago ? 'Aceita Mercado Pago (parcelamento disponível)' : 'Consulte formas de pagamento'}
-${productData.attributes?.find((a: any) => a.id === "BRAND")?.value_name ? 
-        `MARCA: ${productData.attributes.find((a: any) => a.id === "BRAND").value_name}` : ''}
-${productData.attributes?.find((a: any) => a.id === "MODEL")?.value_name ? 
-        `MODELO: ${productData.attributes.find((a: any) => a.id === "MODEL").value_name}` : ''}`,
-      
-      // 8. RESPONSE INSTRUCTIONS
-      response_instructions: `IMPORTANTE: Responda em português brasileiro, máximo 500 caracteres, seja direto e profissional. ${
-        productData.sold_quantity > 10 ? 'Destaque que o produto é muito procurado.' : ''
-      } ${
-        productData.shipping?.free_shipping ? 'Mencione o frete grátis se relevante.' : ''
-      } Use informações do produto para ser específico. Seja cordial mas objetivo. SEMPRE finalize com a assinatura fornecida no campo signature.`,
-      
-      // 9. MEMORY KEY
-      memory_key: `${question.itemId}_${question.mlUserId}`,
-      
-      // 10. METADATA
-      metadata: {
-        question_id: question.mlQuestionId,
-        item_id: question.itemId,
-        seller_id: question.mlUserId,
-        buyer_id: question.buyerId || "anonymous",
-        timestamp: new Date().toISOString(),
-        reprocessed: true
+    // Buscar informações do COMPRADOR - SEMPRE tentar buscar
+    let buyerData = null
+    if (question.customerId) {
+      try {
+        // Primeiro tentar com token
+        const buyerResponse = await fetch(`https://api.mercadolibre.com/users/${question.customerId}`, {
+          headers: {
+            Authorization: `Bearer ${mlToken}`,
+          },
+        })
+        if (buyerResponse.ok) {
+          buyerData = await buyerResponse.json()
+          logger.info(`[Reprocess] Buyer data found for ${question.customerId}:`, { nickname: buyerData.nickname })
+        } else {
+          // Tentar sem token
+          const publicResponse = await fetch(`https://api.mercadolibre.com/users/${question.customerId}`)
+          if (publicResponse.ok) {
+            buyerData = await publicResponse.json()
+            logger.info(`[Reprocess] Public buyer data found for ${question.customerId}:`, { nickname: buyerData.nickname })
+          }
+        }
+      } catch (error) {
+        logger.warn("Could not fetch buyer data:", { customerId: question.customerId, error })
       }
     }
     
-    // Send to N8N for reprocessing
+    // Buscar histórico completo de perguntas do comprador usando o builder
+    const previousQuestions = await fetchBuyerQuestionsHistory(
+      question.customerId || '',
+      question.mlAccount.organizationId,
+      question.mlQuestionId,
+      prisma,
+      decryptToken
+    )
+    
+    // Construir payload unificado com dados COMPLETOS
+    const n8nPayload = await buildN8NPayload(
+      {
+        mlQuestionId: question.mlQuestionId,
+        text: question.text,
+        item_id: question.itemId,
+        customerId: question.customerId
+      },
+      completeProductData, // Dados completos incluindo descrição e variações
+      completeProductData?.description || null, // Descrição já está em completeProductData
+      previousQuestions,
+      {
+        sellerNickname: question.mlAccount.nickname || 'Vendedor'
+      }
+    )
+    
+    // Send to N8N for reprocessing with 2 minute timeout
     try {
-      const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(n8nPayload)
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes timeout
+
+      let n8nResponse: Response
+      try {
+        n8nResponse = await fetch(N8N_WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(n8nPayload),
+          signal: controller.signal
+        })
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        const errorMessage = fetchError.name === 'AbortError'
+          ? "IA demorou mais de 2 minutos para responder"
+          : `Erro de conexão: ${fetchError.message}`
+
+        logger.error("[Reprocess] N8N request failed:", { error: errorMessage })
+
+        // Update status to FAILED
+        await prisma.question.update({
+          where: { id: questionId },
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            failureReason: errorMessage
+          }
+        })
+
+        return NextResponse.json({
+          error: fetchError.name === 'AbortError'
+            ? "Timeout: A IA não respondeu em 2 minutos"
+            : "Erro de conexão com serviço de IA"
+        }, { status: 500 })
+      } finally {
+        clearTimeout(timeoutId)
+      }
       
       if (!n8nResponse.ok) {
         const errorText = await n8nResponse.text()
-        console.error("[Reprocess] N8N webhook failed:", errorText)
-        
-        // Update status back to FAILED
+        logger.error("[Reprocess] N8N webhook failed:", { error: { error: errorText } })
+
+        // Update status to FAILED with clear error message
         await prisma.question.update({
           where: { id: questionId },
-          data: { 
-            status: "FAILED"
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            failureReason: `Erro na IA: ${errorText.substring(0, 200)}`
           }
         })
-        
-        return NextResponse.json({ 
-          error: "Failed to reprocess question",
-          details: errorText 
+
+        return NextResponse.json({
+          error: "A IA retornou um erro. Tente novamente.",
+          details: errorText
         }, { status: 500 })
       }
       
-      console.log(`[Reprocess] Question ${question.mlQuestionId} sent to N8N for reprocessing`)
-      
+      logger.info(`[Reprocess] Question ${question.mlQuestionId} sent to N8N for reprocessing`)
+
+      // Set a timeout check after 2 minutes
+      setTimeout(async () => {
+        // Check if question is still PROCESSING after 2 minutes
+        const checkQuestion = await prisma.question.findUnique({
+          where: { id: questionId },
+          select: { status: true }
+        })
+
+        if (checkQuestion && checkQuestion.status === 'PROCESSING') {
+          logger.error("[Reprocess] Question still processing after 2 minutes", { questionId })
+
+          await prisma.question.update({
+            where: { id: questionId },
+            data: {
+              status: 'FAILED',
+              failedAt: new Date(),
+              failureReason: 'IA não respondeu em 2 minutos. Tente novamente.'
+            }
+          })
+        }
+      }, 120000) // 2 minutes
+
       // N8N will send response back to /api/n8n/response
-      
       return NextResponse.json({
         success: true,
         message: "Question sent for reprocessing",
@@ -225,7 +312,7 @@ ${productData.attributes?.find((a: any) => a.id === "MODEL")?.value_name ?
       })
       
     } catch (n8nError) {
-      console.error("[Reprocess] N8N request error:", n8nError)
+      logger.error("[Reprocess] N8N request error:", { error: { error: n8nError } })
       
       // Update status back to FAILED
       await prisma.question.update({
@@ -241,15 +328,38 @@ ${productData.attributes?.find((a: any) => a.id === "MODEL")?.value_name ?
     }
     
   } catch (error) {
-    console.error("[Reprocess] Error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logger.error("[Reprocess] Unexpected error:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      type: typeof error
+    })
+
+    // Retornar erro mais específico em desenvolvimento
+    const errorMessage = process.env.NODE_ENV === 'development'
+      ? `Internal server error: ${error instanceof Error ? error.message : String(error)}`
+      : "Internal server error"
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 
+// OPTIONS handler for CORS preflight
+export async function OPTIONS(_request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400',
+    }
+  })
+}
+
 // GET endpoint to check if question can be reprocessed
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(_request.url)
     const questionId = searchParams.get("questionId")
     
     if (!questionId) {
@@ -268,7 +378,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
     
-    const canReprocess = question.status === "FAILED" || question.status === "TOKEN_ERROR"
+    const canReprocess = question.status === "FAILED" || question.status === "TOKEN_ERROR" || question.status === "ERROR"
     
     return NextResponse.json({
       canReprocess,
@@ -276,7 +386,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("[Reprocess] Check error:", error)
+    logger.error("[Reprocess] Check error:", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

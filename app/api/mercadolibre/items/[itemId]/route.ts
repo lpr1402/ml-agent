@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../base"
 
@@ -37,7 +38,7 @@ export async function PATCH(
 
     if (!updateResponse.ok) {
       const error = await updateResponse.text()
-      console.error("Error updating item:", error)
+      logger.error("Error updating item:", { error })
       return NextResponse.json(
         { error: "Failed to update item" },
         { status: updateResponse.status }
@@ -56,7 +57,7 @@ export async function PATCH(
     })
     
   } catch (error) {
-    console.error("Error updating item:", error)
+    logger.error("Error updating item:", { error })
     return NextResponse.json(
       { error: "Failed to update item" },
       { status: 500 }

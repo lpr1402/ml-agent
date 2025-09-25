@@ -1,7 +1,9 @@
 "use client"
 
+import { logger } from '@/lib/logger'
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from 'next/image'
 
 export default function AuthSuccessPage() {
   const router = useRouter()
@@ -21,7 +23,7 @@ export default function AuthSuccessPage() {
       const expiresIn = urlParams.get("expires_in")
       const error = urlParams.get("error")
 
-      console.log("Auth Success - Processing params:", {
+      logger.info("Auth Success - Processing params:", {
         hasAccessToken: !!accessToken,
         hasUserId: !!userId,
         hasRefreshToken: !!refreshToken,
@@ -29,7 +31,7 @@ export default function AuthSuccessPage() {
       })
 
       if (error) {
-        console.error("Auth error:", error)
+        logger.error("Auth error:", { error })
         router.push(`/login?error=${error}`)
         return
       }
@@ -46,7 +48,7 @@ export default function AuthSuccessPage() {
         const expiresAt = Date.now() + (parseInt(expiresIn || "21600") * 1000)
         localStorage.setItem("ml_expires_at", expiresAt.toString())
         
-        console.log("Auth Success - Tokens stored, redirecting to dashboard")
+        logger.info("Auth Success - Tokens stored, redirecting to dashboard")
         
         // Clear URL params for security
         window.history.replaceState({}, document.title, "/auth/success")
@@ -58,7 +60,7 @@ export default function AuthSuccessPage() {
           router.push("/dashboard")
         }, 500)
       } else {
-        console.error("Missing required auth data")
+        logger.error("Missing required auth data")
         setStatus("error")
         router.push("/login?error=missing_data")
       }
@@ -80,9 +82,11 @@ export default function AuthSuccessPage() {
           position: 'relative',
           marginBottom: '32px'
         }}>
-          <img 
-            src="/mlagent-logo-3d.png" 
-            alt="ML Agent" 
+          <Image
+            src="/mlagent-logo-3d.svg"
+            alt="ML Agent"
+            width={80}
+            height={80}
             style={{
               width: '100%',
               height: '100%',

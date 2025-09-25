@@ -1,6 +1,11 @@
-// New simplified schema - Only metrics per ML user
+// Schema Multi-Tenant ML Agent SaaS
+// Autenticação PRINCIPAL via Mercado Livre OAuth
+// Suporte para múltiplas contas ML por organização
+
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["tracing"]
+  binaryTargets = ["native"]
 }
 
 datasource db {
@@ -8,135 +13,474 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================== USER TOKENS (For 24/7 operation) ====================
-model UserToken {
-  id              String    @id @default(cuid())
-  mlUserId        String    @unique // ML User ID (seller)
-  accessToken     String    @db.Text
-  refreshToken    String    @db.Text
-  expiresAt       DateTime  // When access token expires
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+// ========== ORGANIZAÇÃO (Baseada na conta ML principal) ==========
+
+model Organization {
+  id                 String             @id @default(cuid())
+
+  // Sistema de login com PIN
+  username           String?            @unique // Nome de usuário para login
+  pinHash            String?            // PIN de 3 dígitos (hash)
+  organizationName   String?            // Nome da organização
+
+  // Conta ML principal (owner) - opcional até o primeiro login
+  primaryMLAccountId String?            @unique
+  primaryMLUserId    String?            @unique
+  primaryNickname    String?
+  primaryEmail       String?
+  primarySiteId      String?            // MLB, MLA, MLM
+
+  // Assinatura
+  plan               PlanType           @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  subscriptionEndsAt DateTime?
+  trialEndsAt        DateTime           @default(dbgenerated("NOW() + INTERVAL '7 days'"))
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   
-  @@index([mlUserId])
+  // Relations
+  mlAccounts     MLAccount[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  payments       Payment[]
+  webhookEvents  WebhookEvent[]
+  approvalTokens ApprovalToken[]
+  
+  @@index([primaryMLUserId])
+  @@index([subscriptionStatus])
 }
 
-// ==================== USER METRICS ====================
-model UserMetrics {
-  id              String    @id @default(cuid())
-  mlUserId        String    @unique // ML User ID (seller)
+// ========== CONTAS ML (Múltiplas por organização) ==========
+
+model MLAccount {
+  id              String   @id @default(cuid())
+  mlUserId        String   @unique
+  nickname        String
+  email           String?
+  siteId          String   // MLB, MLA, MLM
+  permalink       String?
+  thumbnail       String?
   
-  // Performance Metrics
-  totalQuestions  Int       @default(0)
-  answeredQuestions Int     @default(0)
-  pendingQuestions Int      @default(0)
-  avgResponseTime Float?    // in seconds
-  avgApprovalTime Float?    // in seconds
+  // Indica se é a conta primária
+  isPrimary       Boolean  @default(false)
   
-  // Quality Metrics
-  autoApprovedCount Int     @default(0)
-  manualApprovedCount Int   @default(0)
-  revisedCount    Int       @default(0)
-  rejectedCount   Int       @default(0)
-  failedQuestions Int       @default(0)
+  // Tokens criptografados (AES-256-GCM)
+  accessTokenIV   String   
+  accessTokenTag  String   
+  accessToken     String   
+  refreshTokenIV  String
+  refreshTokenTag String
+  refreshToken    String   
+  tokenExpiresAt  DateTime
   
-  // Business Impact
-  conversionRate  Float?    // % of questions that led to sales
-  satisfactionScore Float?  // Average customer satisfaction
+  // Rate limiting (erro 429)
+  rateLimitReset  DateTime?
+  rateLimitCount  Int      @default(0)
+  lastRequestAt   DateTime?
   
-  // Gamification
-  totalXP         Int       @default(0)
-  currentLevel    Int       @default(1)
-  currentStreak   Int       @default(0)
-  maxStreak       Int       @default(0)
-  achievements    Json?     // Store unlocked achievements
-  lastXPUpdate    DateTime?
+  // Organização
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
-  // Timestamps
-  firstQuestionAt DateTime?
-  lastQuestionAt  DateTime?
-  lastActiveAt    DateTime?
+  // Status
+  isActive        Boolean  @default(true)
+  lastSyncAt      DateTime?
+  connectionError String?
   
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  // Seller info cache
+  sellerReputation Json?
+  powerSellerStatus String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   
   // Relations
   questions       Question[]
+  metrics         MLMetrics[]
+  webhooks        WebhookEvent[]
+  approvalTokens  ApprovalToken[]
   
+  @@index([organizationId])
   @@index([mlUserId])
+  @@index([isPrimary])
 }
 
-// ==================== QUESTIONS (Temporary Storage) ====================
-model Question {
-  id              String    @id @default(cuid())
-  sequentialId    Int       @unique @default(autoincrement()) // Sequential counter
-  mlQuestionId    String    @unique // ML Question ID
-  mlUserId        String    // Seller ID
+// ========== SESSÕES (Login via ML OAuth) ==========
+
+model Session {
+  id             String   @id @default(cuid())
+  sessionToken   String   @unique
   
-  // Question Data
-  text            String    @db.Text
-  itemId          String    // ML Item ID
-  itemTitle       String?
-  itemPrice       Float?
-  itemPermalink   String?   // ML Item permalink URL
-  buyerId         String?
+  // Vinculado à organização (via conta ML principal)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
-  // Processing Status
-  status          QuestionStatus @default(RECEIVED)
+  // Conta ML ativa na sessão (pode alternar)
+  activeMLAccountId String?
   
-  // AI Response
-  aiResponse      String?   @db.Text
-  aiProcessedAt   DateTime?
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?
+  lastActivityAt DateTime @default(now())
   
-  // User Action
-  finalResponse   String?   @db.Text
-  approvedAt      DateTime?
-  approvalType    String?   // AUTO, MANUAL, REVISED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   
-  // WhatsApp
-  whatsappSentAt  DateTime?
+  @@index([sessionToken])
+  @@index([organizationId])
+}
+
+// ========== OAUTH STATE (PKCE) ==========
+
+model OAuthState {
+  id             String   @id @default(cuid())
+  state          String   @unique
+  codeVerifier   String   // PKCE
   
-  // ML Response
-  sentToMLAt      DateTime?
-  mlResponseCode  Int?
-  mlResponseData  String?   @db.Text // Store error details
-  failedAt        DateTime? // When the question failed
+  // Para adicionar nova conta ML
+  organizationId String?  // Null no primeiro login
+  isPrimaryLogin Boolean  @default(false)
+  
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  
+  @@index([state])
+  @@index([expiresAt])
+}
+
+// ========== TOKEN BACKUP REMOVIDO - Agora usa MLAccount ==========
+// Todos os tokens são gerenciados através do modelo MLAccount
+// com criptografia AES-256-GCM para segurança
+
+// ========== MÉTRICAS ML ==========
+
+model MLMetrics {
+  id          String    @id @default(cuid())
+  mlAccountId String
+  mlAccount   MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  
+  date        DateTime  
+  metricType  String    // SALES, VISITS, CONVERSION, REPUTATION
+  metricName  String    // total_sales, pending_sales, etc
+  value       Float
+  period      String    // day, week, month
+  
+  metadata    Json?     // Dados extras
+  
+  createdAt   DateTime  @default(now())
+  
+  @@unique([mlAccountId, date, metricType, metricName])
+  @@index([mlAccountId, date])
+}
+
+// ========== USER METRICS (Cache) ==========
+
+model UserMetrics {
+  id              String   @id @default(cuid())
+  mlUserId        String   @unique  // ML User ID do vendedor
+  
+  // Métricas de Perguntas
+  totalQuestions  Int      @default(0)
+  answeredQuestions Int    @default(0)
+  pendingQuestions Int     @default(0)
+  answeredToday   Int      @default(0)
+  avgResponseTime Float    @default(0)
+  
+  // Métricas de Qualidade
+  autoApprovedCount   Int  @default(0)
+  manualApprovedCount Int  @default(0)
+  revisedCount        Int  @default(0)
+  rejectedCount       Int  @default(0)
+  failedQuestions     Int  @default(0)
+  
+  // Gamificação e XP
+  totalXP         Int      @default(0)
+  currentLevel    Int      @default(1)
+  currentStreak   Int      @default(0)
+  maxStreak       Int      @default(0)
+  achievements    Json[]   @default([])
+  lastXPUpdate    DateTime?
   
   // Timestamps
-  receivedAt      DateTime  @default(now())
-  
-  // Relations
-  user            UserMetrics @relation(fields: [mlUserId], references: [mlUserId])
-  revisions       Revision[]
+  lastQuestionAt  DateTime?
+  lastActiveAt    DateTime?
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
   
   @@index([mlUserId])
-  @@index([mlQuestionId])
-  @@index([status])
 }
 
-// ==================== REVISION HISTORY ====================
+// ========== PERGUNTAS DO ML ==========
+
+model Question {
+  id            String    @id @default(cuid())
+  mlQuestionId  String    @unique
+  mlAccountId   String
+  mlAccount     MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  
+  // Dados do item/produto
+  itemId        String
+  itemTitle     String?
+  itemPrice     Float?    @default(0)
+  itemPermalink String?   // Link do produto no ML
+  
+  // Dados da pergunta
+  sellerId      String    // ID do vendedor no ML
+  customerId    String?   // ID do cliente que perguntou
+  text          String    @db.Text
+
+  // ID sequencial único (formato XX/DDMM)
+  sequentialId  String?   // ID único gerado uma vez para rastreio
+  
+  // Status e timestamps críticos
+  status        String    @default("RECEIVED") // Estados do sistema
+  dateCreated   DateTime  // Data que o ML criou a pergunta
+  receivedAt    DateTime  @default(now()) // Quando nós recebemos
+  sentToAIAt    DateTime? // Quando enviamos para o n8n/IA processar
+
+  // Processamento IA
+  aiSuggestion  String?   @db.Text // Sugestão da IA
+  aiConfidence  Float?    // Confiança da IA (0-1)
+  aiProcessedAt DateTime? // Quando a IA processou
+  processedAt   DateTime? // Alias para compatibilidade
+
+  // Respostas editadas/revisadas
+  editedResponse String?  @db.Text // Resposta editada manualmente (antes de aprovar)
+  finalResponse  String?  @db.Text // Resposta final que será enviada
+
+  // Resposta final e envio
+  answer        String?   @db.Text // Resposta final aprovada
+  answeredAt    DateTime? // Quando foi respondida
+  answeredBy    String?   // AI_AUTO, AI_REVISED, MANUAL
+  approvalType  String?   // AUTO, MANUAL, REVISED
+  approvedAt    DateTime? // Quando foi aprovada
+  
+  // Tracking de envio ao ML
+  sentToMLAt    DateTime? // Quando enviamos ao ML
+  mlResponseCode Int?     // Código de resposta do ML
+  mlResponseData Json?    // Dados da resposta do ML
+  
+  // Controle de falhas
+  failedAt      DateTime? // Quando falhou
+  failureReason String?   // Motivo da falha
+  retryCount    Int       @default(0) // Tentativas de reenvio
+
+  // Tracking de notificações
+  whatsappSentAt   DateTime? // Quando notificação WhatsApp foi enviada
+  whatsappSentTo   String?   // Número que recebeu notificação
+  browserNotified  Boolean   @default(false) // Se notificação browser foi enviada
+  notificationError String?  // Erro ao enviar notificação
+
+  // Performance tracking
+  responseTimeMs   Int?      // Tempo de resposta em ms
+  processingTimeMs Int?      // Tempo de processamento IA em ms
+
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  revisions     Revision[]
+  approvalTokens ApprovalToken[]
+  
+  // Índices otimizados para máxima performance
+  @@index([mlAccountId, status])
+  @@index([mlQuestionId])
+  @@index([dateCreated])
+  @@index([receivedAt])
+  @@index([status])
+  @@index([sellerId, status, dateCreated]) // Query de métricas
+  @@index([mlAccountId, dateCreated]) // Histórico por conta
+  @@index([status, answeredAt]) // Análise de performance
+}
+
+// ========== REVISÕES ==========
+
 model Revision {
-  id              String    @id @default(cuid())
-  questionId      String
-  question        Question  @relation(fields: [questionId], references: [id])
+  id           String   @id @default(cuid())
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
   
-  userFeedback    String    @db.Text // User's revision request
-  aiRevision      String    @db.Text // AI's revised response
+  // Novos campos para revisão
+  userFeedback String   @db.Text  // Feedback do usuário para revisão
+  aiRevision   String   @db.Text  // Resposta revisada pela IA
   
-  createdAt       DateTime  @default(now())
+  // Campos legados (mantidos para compatibilidade)
+  originalText String?  @db.Text
+  revisedText  String?  @db.Text
+  confidence   Float    @default(0)
+  approved     Boolean  @default(false)
+  approvedBy   String?
+  
+  createdAt    DateTime @default(now())
   
   @@index([questionId])
 }
 
-// ==================== ENUMS ====================
-enum QuestionStatus {
-  RECEIVED        // Just received from ML
-  PROCESSING      // Sent to N8N for processing
-  AWAITING_APPROVAL // AI responded, waiting for user
-  REVISING        // User requested revision
-  APPROVED        // User approved
-  SENT_TO_ML      // Sent back to ML
-  COMPLETED       // Successfully posted to ML
-  FAILED          // Failed at any step
-  TOKEN_ERROR     // Failed due to token/auth issues
+// ========== PAGAMENTOS ==========
+
+model Payment {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  amount         Float         @default(500.00)
+  currency       String        @default("BRL")
+  method         PaymentMethod @default(PIX)
+  
+  // PIX Info Hardcoded
+  pixCode        String?       @default("00020101021126330014br.gov.bcb.pix0111496118808555204000053039865406500.005802BR5925LUIS FERNANDO PEREIRA ROD6009SAO PAULO622905251K3PC743YN7DR3JGS3EXE3RPW630449B9") @db.Text
+  pixKey         String?       @default("496118808-55")
+  pixQRUrl       String?       @default("https://www.dropbox.com/scl/fi/r6zrsjvz2pbo6pgc0tlgw/IMG_3881.jpeg?rlkey=yyrtf2n0nz4zt6ogqx2a8870h&st=q3rhjrkk&raw=1")
+  
+  status         PaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  confirmedBy    String?       
+  
+  metadata       Json?
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  
+  @@index([organizationId, status])
+}
+
+// ========== WEBHOOKS ==========
+
+model WebhookEvent {
+  id             String    @id @default(cuid())
+  mlAccountId    String?
+  mlAccount      MLAccount? @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Idempotency key to prevent duplicate processing
+  idempotencyKey String    @unique // Unique constraint prevents duplicates
+  
+  // Campos obrigatórios para webhooks
+  eventType      String    @default("questions") // tipo do evento
+  eventId        String?   // ID do evento específico (opcional para nossos eventos)
+  topic          String?   // questions, orders, items, messages (opcional para nossos eventos)
+  resourceId     String
+  resourceUrl    String?   // URL do recurso afetado
+  userId         String?   // ML user ID (opcional para nossos eventos)
+  applicationId  String?   // (opcional para nossos eventos)
+  attemptId      String?   // (opcional para nossos eventos)
+  priority       Int?      @default(0) // Prioridade do evento
+  
+  // Status do processamento
+  status         String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  sentAt         DateTime?
+  receivedAt     DateTime  @default(now())
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  processingError String?
+  error          String?
+  createdAt      DateTime  @default(now())
+  
+  payload        Json
+  signature      String?   
+  
+  @@index([mlAccountId, topic])
+  @@index([processed, receivedAt])
+  @@index([eventType, eventId])
+  @@index([status, receivedAt])
+  @@index([idempotencyKey])
+  @@index([resourceId, topic])
+}
+
+// ========== AUDIT LOG ==========
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  action         String       // ml_account.connected, payment.confirmed
+  entityType     String       
+  entityId       String
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  mlAccountId    String?      // Conta ML que executou a ação
+  
+  metadata       Json         
+  ipAddress      String?
+  userAgent      String?
+  
+  createdAt      DateTime     @default(now())
+  
+  @@index([organizationId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ========== APPROVAL TOKENS (SEGURANÇA CRÍTICA) ==========
+// Sistema de tokens únicos para aprovação via WhatsApp
+// Garante que cada link só pode ser usado uma vez
+
+model ApprovalToken {
+  id              String       @id @default(cuid())
+  
+  // Token único para o link de aprovação
+  token           String       @unique
+  
+  // Relacionamento com a pergunta
+  questionId      String       
+  question        Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  // Conta ML e organização para isolamento multi-tenant
+  mlAccountId     String
+  mlAccount       MLAccount    @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Controle de uso e expiração
+  used            Boolean      @default(false)
+  usedAt          DateTime?
+  expiresAt       DateTime     // Token expira em 24 horas por padrão
+  
+  // Metadata
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  // Informações adicionais
+  ipAddress       String?      // IP que criou o token
+  userAgent       String?      // User agent do WhatsApp/browser
+  approvalType    String?      // QUICK, MANUAL, REVISED
+  
+  @@index([token])
+  @@index([questionId])
+  @@index([mlAccountId])
+  @@index([organizationId])
+  @@index([expiresAt])
+  @@index([used])
+}
+
+// ========== ENUMS ==========
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  BOLETO
+}
+
+enum PlanType {
+  FREE
+  PRO
 }

@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
       map: methodsMap
     })
   } catch (error) {
-    console.error("Error fetching shipping methods:", error)
+    logger.error("Error fetching shipping methods:", { error })
     return NextResponse.json(
       { error: "Failed to fetch shipping methods" },
       { status: 500 }

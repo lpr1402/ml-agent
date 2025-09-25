@@ -1,35 +1,25 @@
-import { NextRequest, NextResponse } from "next/server"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!auth) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
     
-    // Get user ID from ML API
-    const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-      },
-    })
-    
-    if (!userResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch user" }, { status: 401 })
-    }
-    
-    const userData = await userResponse.json()
-    const userId = String(userData.id)
+    // Use the userId from authenticated account
+    const userId = String(auth.mlAccount.mlUserId)
     
     // Buscar total de perguntas respondidas (status APPROVED, SENT_TO_ML ou COMPLETED)
     const answeredQuestions = await prisma.question.count({
       where: {
-        mlUserId: userId,
+        sellerId: userId,
         status: {
-          in: ['APPROVED', 'SENT_TO_ML', 'COMPLETED']
+          in: ['RESPONDED', 'APPROVED', 'SENT_TO_ML', 'COMPLETED']
         }
       }
     })
@@ -40,11 +30,11 @@ export async function GET(request: NextRequest) {
     
     const questionsToday = await prisma.question.count({
       where: {
-        mlUserId: userId,
+        sellerId: userId,
         status: {
-          in: ['APPROVED', 'SENT_TO_ML', 'COMPLETED']
+          in: ['RESPONDED', 'APPROVED', 'SENT_TO_ML', 'COMPLETED']
         },
-        approvedAt: {
+        dateCreated: {
           gte: today
         }
       }
@@ -53,18 +43,17 @@ export async function GET(request: NextRequest) {
     // Buscar tempo médio de resposta das últimas 50 perguntas aprovadas
     const recentQuestions = await prisma.question.findMany({
       where: {
-        mlUserId: userId,
+        sellerId: userId,
         status: {
-          in: ['APPROVED', 'SENT_TO_ML', 'COMPLETED']
+          in: ['RESPONDED', 'APPROVED', 'SENT_TO_ML', 'COMPLETED']
         }
       },
       select: {
-        receivedAt: true,
-        approvedAt: true,
-        aiProcessedAt: true
+        dateCreated: true,
+        answeredAt: true
       },
       orderBy: {
-        approvedAt: 'desc'
+        answeredAt: 'desc'
       },
       take: 50
     })
@@ -73,10 +62,9 @@ export async function GET(request: NextRequest) {
     let validCount = 0
     
     recentQuestions.forEach(q => {
-      // Usar aiProcessedAt se disponível, senão usar approvedAt
-      const respondedAt = q.aiProcessedAt || q.approvedAt
-      if (respondedAt && q.receivedAt) {
-        const responseTime = (respondedAt.getTime() - q.receivedAt.getTime()) / 1000 / 60 // em minutos
+      // Usar answeredAt para calcular tempo de resposta
+      if (q.answeredAt && q.dateCreated) {
+        const responseTime = (q.answeredAt.getTime() - q.dateCreated.getTime()) / 1000 / 60 // em minutos
         if (responseTime > 0 && responseTime < 1440) { // menos de 24 horas
           totalResponseTime += responseTime
           validCount++
@@ -89,7 +77,7 @@ export async function GET(request: NextRequest) {
     // Buscar perguntas pendentes
     const pendingQuestions = await prisma.question.count({
       where: {
-        mlUserId: userId,
+        sellerId: userId,
         status: {
           in: ['RECEIVED', 'PROCESSING', 'AWAITING_APPROVAL', 'REVISING']
         }
@@ -108,7 +96,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Error fetching agent stats:', error)
+    logger.error('Error fetching agent stats:', { error })
     return NextResponse.json(
       { 
         error: 'Failed to fetch agent stats',

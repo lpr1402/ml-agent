@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -65,7 +66,7 @@ export async function GET(
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error fetching price to win:", error)
+    logger.error("Error fetching price to win:", { error })
     return NextResponse.json(
       { error: "Failed to fetch competition data" },
       { status: 500 }

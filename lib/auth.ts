@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest } from "next/server"
 
 export async function getAuthFromRequest(request: NextRequest) {
@@ -14,7 +15,7 @@ export async function getAuthFromRequest(request: NextRequest) {
     
     return null
   } catch (error) {
-    console.error("Auth extraction failed:", error)
+    logger.error("Auth extraction failed:", { error })
     return null
   }
 }

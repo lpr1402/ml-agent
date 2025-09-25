@@ -1,5 +1,13 @@
-// Production-ready session store for managing ML access tokens
-// Tokens are stored in memory with expiration handling
+/**
+ * Session Store para Sistema Multi-Tenant
+ * Gerencia sessões e tokens em memória
+ * Integrado com MLAccount (novo sistema)
+ */
+
+import { logger } from '@/lib/logger'
+import { prisma } from "./prisma"
+import { decryptToken } from "./security/encryption"
+import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
 
 interface SessionData {
   accessToken: string
@@ -7,13 +15,68 @@ interface SessionData {
   expiresAt: Date
   userId: string
   nickname: string
+  mlAccountId?: string
+  organizationId?: string
 }
 
 class SessionStore {
   private sessions: Map<string, SessionData> = new Map()
   
   constructor() {
-    console.log(`[SessionStore] Initialized new session store`)
+    logger.info(`[SessionStore] Initialized - Multi-tenant MLAccount System`)
+    this.loadActiveSessions()
+  }
+  
+  /**
+   * Carrega sessões ativas do banco na inicialização
+   */
+  private async loadActiveSessions() {
+    try {
+      const activeAccounts = await prisma.mLAccount.findMany({
+        where: {
+          isActive: true,
+          tokenExpiresAt: { gt: new Date() }
+        }
+      })
+
+      for (const account of activeAccounts) {
+        if (account.accessToken && account.accessTokenIV && account.accessTokenTag) {
+          try {
+            const accessToken = decryptToken({
+              encrypted: account.accessToken,
+              iv: account.accessTokenIV,
+              authTag: account.accessTokenTag
+            })
+            
+            const refreshToken = account.refreshToken && account.refreshTokenIV && account.refreshTokenTag
+              ? decryptToken({
+                  encrypted: account.refreshToken,
+                  iv: account.refreshTokenIV,
+                  authTag: account.refreshTokenTag
+                })
+              : ""
+
+            this.sessions.set(account.mlUserId, {
+              accessToken,
+              refreshToken,
+              expiresAt: account.tokenExpiresAt,
+              userId: account.mlUserId,
+              nickname: account.nickname,
+              mlAccountId: account.id,
+              organizationId: account.organizationId
+            })
+
+            logger.info(`[SessionStore] Loaded session for ${account.nickname} (${account.mlUserId})`)
+          } catch {
+            logger.error(`[SessionStore] Failed to decrypt token for ${account.nickname}`)
+          }
+        }
+      }
+
+      logger.info(`[SessionStore] Loaded ${this.sessions.size} active sessions`)
+    } catch (error) {
+      logger.error('[SessionStore] Error loading sessions:', { error })
+    }
   }
   
   // Store session data for a user
@@ -33,7 +96,7 @@ class SessionStore {
       nickname: data.nickname
     })
     
-    console.log(`[SessionStore] Stored session for user ${userId} (${data.nickname}), expires at ${expiresAt}`)
+    logger.info(`[SessionStore] Stored session for user ${userId} (${data.nickname}), expires at ${expiresAt}`)
   }
   
   // Get access token for a user
@@ -41,14 +104,14 @@ class SessionStore {
     const session = this.sessions.get(userId)
     
     if (!session) {
-      console.log(`[SessionStore] No session found for user ${userId}`)
-      console.log(`[SessionStore] Active sessions:`, this.getActiveSessions())
+      logger.info(`[SessionStore] No session found for user ${userId}`)
+      logger.info(`[SessionStore] Active sessions:`, { data: this.getActiveSessions() })
       return null
     }
     
     // Check if token is expired
     if (new Date() >= session.expiresAt) {
-      console.log(`[SessionStore] Token expired for user ${userId}, attempting refresh...`)
+      logger.info(`[SessionStore] Token expired for user ${userId}, attempting refresh...`)
       
       // In production, refresh the token here
       const refreshed = await this.refreshAccessToken(userId, session.refreshToken)
@@ -64,25 +127,30 @@ class SessionStore {
     return session.accessToken
   }
   
-  // Refresh access token
+  // Refresh access token usando novo sistema
   private async refreshAccessToken(userId: string, refreshToken: string): Promise<{ accessToken: string } | null> {
     try {
-      const response = await fetch("https://api.mercadolibre.com/oauth/token", {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/x-www-form-urlencoded"
+      // Usar fetchWithRateLimit para evitar erro 429
+      const response = await fetchWithRateLimit(
+        "https://api.mercadolibre.com/oauth/token",
+        {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: process.env['ML_CLIENT_ID']!,
+            client_secret: process.env['ML_CLIENT_SECRET']!,
+            refresh_token: refreshToken
+          })
         },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: process.env.AUTH_MERCADOLIBRE_ID!,
-          client_secret: process.env.AUTH_MERCADOLIBRE_SECRET!,
-          refresh_token: refreshToken
-        })
-      })
+        'oauth/token'
+      )
       
       if (!response.ok) {
-        console.error(`[SessionStore] Failed to refresh token for user ${userId}`)
+        logger.error(`[SessionStore] Failed to refresh token for user ${userId}`)
         return null
       }
       
@@ -97,11 +165,30 @@ class SessionStore {
           expiresIn: data.expires_in,
           nickname: session.nickname
         })
+        
+        // Atualiza no banco também (novo sistema)
+        const { encryptToken } = await import("./security/encryption")
+        const encryptedAccess = encryptToken(data.access_token)
+        const encryptedRefresh = encryptToken(data.refresh_token)
+        
+        await prisma.mLAccount.updateMany({
+          where: { mlUserId: userId },
+          data: {
+            accessToken: encryptedAccess.encrypted,
+            accessTokenIV: encryptedAccess.iv,
+            accessTokenTag: encryptedAccess.authTag,
+            refreshToken: encryptedRefresh.encrypted,
+            refreshTokenIV: encryptedRefresh.iv,
+            refreshTokenTag: encryptedRefresh.authTag,
+            tokenExpiresAt: new Date(Date.now() + data.expires_in * 1000),
+            lastSyncAt: new Date()
+          }
+        })
       }
       
       return { accessToken: data.access_token }
     } catch (error) {
-      console.error(`[SessionStore] Error refreshing token for user ${userId}:`, error)
+      logger.error(`[SessionStore] Error refreshing token for user ${userId}:`, { error })
       return null
     }
   }
@@ -109,7 +196,7 @@ class SessionStore {
   // Remove session
   removeSession(userId: string) {
     this.sessions.delete(userId)
-    console.log(`[SessionStore] Removed session for user ${userId}`)
+    logger.info(`[SessionStore] Removed session for user ${userId}`)
   }
   
   // Check if user has active session

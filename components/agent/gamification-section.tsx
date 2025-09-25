@@ -2,24 +2,16 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { logger } from '@/lib/logger'
 import {
-  Trophy,
   Zap,
   Target,
   Flame,
-  Award,
   Star,
-  TrendingUp,
-  Crown,
   Sparkles,
-  Shield,
   Diamond,
   Info,
-  Clock,
-  Heart,
   CheckCircle,
-  Timer,
-  ArrowUp,
   X
 } from "lucide-react"
 
@@ -93,9 +85,9 @@ const XP_ACTIONS = {
 }
 
 export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }: GamificationProps) {
-  const [currentXP, setCurrentXP] = useState(0)
+  const [_currentXP, _setCurrentXP] = useState(0)
   const [savedXP, setSavedXP] = useState(0)
-  const [currentStreak, setCurrentStreak] = useState(weeklyStats?.consecutiveDays || 0)
+  const [currentStreak, _setCurrentStreak] = useState(weeklyStats?.consecutiveDays || 0)
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null)
   const [showInfoModal, setShowInfoModal] = useState(false)
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([])
@@ -141,16 +133,17 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
   // Get current level from XP
   const getCurrentLevel = useCallback((xp: number): LevelInfo => {
     for (let i = LEVELS.length - 1; i >= 0; i--) {
-      if (xp >= LEVELS[i].minXP) {
-        return LEVELS[i]
+      const level = LEVELS[i]
+      if (level && xp >= level.minXP) {
+        return level
       }
     }
-    return LEVELS[0]
+    return LEVELS[0]!
   }, [])
 
   const totalXP = useMemo(() => calculateTotalXP(), [calculateTotalXP])
   const currentLevel = useMemo(() => getCurrentLevel(totalXP), [getCurrentLevel, totalXP])
-  const nextLevel = LEVELS[Math.min(currentLevel.level, LEVELS.length - 1)]
+  const nextLevel = LEVELS[Math.min(currentLevel.level, LEVELS.length - 1)]!
   
   const levelProgress = useMemo(() => {
     const currentLevelXP = totalXP - currentLevel.minXP
@@ -168,7 +161,12 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
           setUnlockedAchievements(data.achievements || [])
         }
       })
-      .catch(console.error)
+      .catch(error => {
+        // Client-side error handling
+        if (typeof window !== 'undefined') {
+          logger.error('Failed to update XP:', error)
+        }
+      })
   }, [])
 
   // Save XP when it changes
@@ -187,7 +185,12 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
         })
       })
       .then(() => setSavedXP(totalXP))
-      .catch(console.error)
+      .catch(error => {
+        // Client-side error handling
+        if (typeof window !== 'undefined') {
+          logger.error('Failed to update XP:', error)
+        }
+      })
     }, 2000)
     
     return () => clearTimeout(timer)
@@ -436,7 +439,7 @@ export function GamificationSection({ metrics, weeklyStats, allQuestions = [] }:
                 gridTemplateColumns: "repeat(2, 1fr)",
                 gap: "12px"
               }}>
-                {achievements.map((achievement, index) => {
+                {achievements.map((achievement) => {
                   const Icon = achievement.icon
                   return (
                     <motion.div

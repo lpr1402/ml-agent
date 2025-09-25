@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers"
 
 export interface MercadoLibreProfile {
@@ -61,7 +62,7 @@ export default function MercadoLibre<P extends MercadoLibreProfile>(
       url: "https://api.mercadolibre.com/oauth/token",
       async conform(response: Response) {
         const data = await response.json()
-        console.log("Token response:", data)
+        logger.info("Token response:", { error: { error: data } })
         
         if (response.ok && data.access_token) {
           return {
@@ -82,7 +83,7 @@ export default function MercadoLibre<P extends MercadoLibreProfile>(
     
     userinfo: {
       url: "https://api.mercadolibre.com/users/me",
-      async request({ tokens, provider }: any) {
+      async request({ tokens }: any) {
         const response = await fetch("https://api.mercadolibre.com/users/me", {
           headers: {
             Authorization: `Bearer ${tokens.access_token}`,

@@ -1,34 +1,39 @@
-import { NextRequest, NextResponse } from "next/server"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { tokenManager } from "@/lib/token-manager"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   context: { params: Promise<{ questionId: string }> }
 ) {
   try {
     const params = await context.params
     const questionId = params.questionId
     
+    // Get authenticated account
+    const auth = await getAuthenticatedAccount()
+    
+    if (!auth) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+    }
+    
     // Get question details
     const question = await prisma.question.findUnique({
-      where: { id: questionId },
-      include: { user: true }
+      where: { id: questionId }
     })
     
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
     
-    if (!question.aiResponse) {
+    if (!question.aiSuggestion) {
       return NextResponse.json({ error: "No AI response available" }, { status: 400 })
     }
     
-    // Get access token
-    const accessToken = await tokenManager.getAccessToken(question.mlUserId)
-    
-    if (!accessToken) {
-      return NextResponse.json({ error: "No access token available" }, { status: 401 })
+    // Verify this question belongs to the authenticated account
+    if (question.mlAccountId !== auth.mlAccount.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     
     // Send answer to Mercado Livre
@@ -37,62 +42,53 @@ export async function GET(
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${accessToken}`,
+          "Authorization": `Bearer ${auth.accessToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
           question_id: question.mlQuestionId,
-          text: question.aiResponse
+          text: question.aiSuggestion
         })
       }
     )
     
     if (!mlResponse.ok) {
       const errorText = await mlResponse.text()
-      console.error("ML API error:", errorText)
+      logger.error("ML API error:", { error: { error: errorText } })
       return NextResponse.json({ 
         error: "Failed to send to ML", 
         details: errorText 
       }, { status: 500 })
     }
     
-    const mlData = await mlResponse.json()
+    await mlResponse.json() // Validate response format
     
     // Update question status
     await prisma.question.update({
       where: { id: questionId },
       data: {
-        status: "COMPLETED",
-        finalResponse: question.aiResponse,
-        approvedAt: new Date(),
-        approvalType: "AUTO",
-        sentToMLAt: new Date(),
-        mlResponseCode: mlResponse.status
+        status: "ANSWERED",
+        answer: question.aiSuggestion,
+        answeredAt: new Date(),
+        answeredBy: "AI_AUTO"
       }
     })
     
-    // Update metrics
-    await prisma.userMetrics.update({
-      where: { mlUserId: question.mlUserId },
-      data: {
-        answeredQuestions: { increment: 1 },
-        pendingQuestions: { decrement: 1 },
-        autoApprovedCount: { increment: 1 }
-      }
-    })
+    // Note: Update metrics here if needed based on your schema
     
     // Send WhatsApp confirmation
     try {
       const { sendApprovalConfirmation } = await import("@/lib/services/whatsapp-professional")
       await sendApprovalConfirmation({
-        sequentialId: question.sequentialId,
+        sequentialId: parseInt(question.id.slice(-6), 16) || 0,
         questionText: question.text,
-        finalAnswer: question.aiResponse || "",
+        finalAnswer: question.aiSuggestion || "",
         productTitle: question.itemTitle || "Produto",
+        sellerName: auth.mlAccount.nickname || "Vendedor",
         approved: true
       })
     } catch (whatsappError) {
-      console.error("WhatsApp confirmation error:", whatsappError)
+      logger.error("WhatsApp confirmation error:", { error: { error: whatsappError } })
       // Continue even if WhatsApp fails
     }
     
@@ -201,7 +197,7 @@ export async function GET(
           
           <div class="question-box">
             <strong>Sua resposta:</strong>
-            <span>${question.aiResponse}</span>
+            <span>${question.aiSuggestion}</span>
           </div>
           
           <p style="color: #10b981; font-weight: 500;">
@@ -230,7 +226,7 @@ export async function GET(
     )
     
   } catch (error) {
-    console.error("Quick approve error:", error)
+    logger.error("Quick approve error:", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

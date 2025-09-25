@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  ml-agent:
+    container_name: ml-agent-app
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3007:3007"
+    environment:
+      - NODE_ENV=production
+      - PORT=3007
+      - DATABASE_URL=postgresql://mlagent:mlagent2025@host.docker.internal:5432/mlagent_db?schema=public
+      - REDIS_URL=redis://host.docker.internal:6379
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ml-agent.rule=Host(`gugaleo.axnexlabs.com.br`)"
+      - "traefik.http.routers.ml-agent.entrypoints=websecure"
+      - "traefik.http.routers.ml-agent.tls=true"
+      - "traefik.http.routers.ml-agent.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ml-agent.loadbalancer.server.port=3007"
+      - "traefik.docker.network=root_traefik"
+    networks:
+      - root_traefik
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  root_traefik:
+    external: true

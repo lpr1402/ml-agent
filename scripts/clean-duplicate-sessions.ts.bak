@@ -1,0 +1,78 @@
+import { prisma } from '../lib/prisma'
+import { logger } from '../lib/logger'
+
+async function cleanDuplicateSessions() {
+  try {
+    logger.info('[CleanSessions] Iniciando limpeza de sessões duplicadas...')
+
+    // Buscar todas as organizações com múltiplas sessões
+    const organizations = await prisma.organization.findMany({
+      include: {
+        sessions: {
+          orderBy: {
+            createdAt: 'desc'
+          }
+        },
+        mlAccounts: true
+      }
+    })
+
+    let totalDeleted = 0
+
+    for (const org of organizations) {
+      if (org.sessions.length > 1) {
+        logger.info(`[CleanSessions] Organização ${org.name} tem ${org.sessions.length} sessões`)
+
+        // Manter apenas a sessão mais recente
+        const sessionsToDelete = org.sessions.slice(1)
+
+        for (const session of sessionsToDelete) {
+          await prisma.session.delete({
+            where: { id: session.id }
+          })
+          totalDeleted++
+          logger.info(`[CleanSessions] Deletada sessão antiga: ${session.id}`)
+        }
+      }
+    }
+
+    // Limpar sessões expiradas de qualquer organização
+    const expiredSessions = await prisma.session.deleteMany({
+      where: {
+        expiresAt: {
+          lt: new Date()
+        }
+      }
+    })
+
+    totalDeleted += expiredSessions.count
+
+    logger.info(`[CleanSessions] Limpeza concluída!`)
+    logger.info(`[CleanSessions] Total de sessões removidas: ${totalDeleted}`)
+    logger.info(`[CleanSessions] Sessões expiradas removidas: ${expiredSessions.count}`)
+
+    // Verificar status final
+    const finalCount = await prisma.session.count()
+    const activeOrgs = await prisma.organization.count({
+      where: {
+        sessions: {
+          some: {
+            expiresAt: {
+              gt: new Date()
+            }
+          }
+        }
+      }
+    })
+
+    logger.info(`[CleanSessions] Sessões ativas restantes: ${finalCount}`)
+    logger.info(`[CleanSessions] Organizações com sessão ativa: ${activeOrgs}`)
+
+  } catch (error) {
+    logger.error('[CleanSessions] Erro ao limpar sessões:', error)
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+cleanDuplicateSessions()

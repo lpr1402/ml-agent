@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../../base"
 
@@ -37,7 +38,7 @@ export async function GET(
     
     return NextResponse.json({ data })
   } catch (error) {
-    console.error("Error fetching shipping data:", error)
+    logger.error("Error fetching shipping data:", { error })
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

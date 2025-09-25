@@ -1,5 +1,7 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
+import { ItemUpdateSchema, validateMLRequest, ValidationError } from "@/lib/validators/ml-validators"
 
 export async function PUT(
   request: NextRequest,
@@ -12,21 +14,54 @@ export async function PUT(
     }
 
     const { itemId } = await params
-    const body = await request.json()
+    
+    // Validar ID do item
+    if (!/^ML[A-Z]\d+$/.test(itemId)) {
+      return NextResponse.json(
+        { error: "Invalid item ID format" },
+        { status: 400 }
+      )
+    }
+    
+    // Parse e validar body com Zod
+    let validatedData
+    try {
+      const rawBody = await request.json()
+      validatedData = validateMLRequest(ItemUpdateSchema, rawBody)
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        logger.warn('[ItemUpdate] Validation failed', { 
+          itemId,
+          errors: error.errors 
+        })
+        return NextResponse.json(
+          { 
+            error: 'Validation failed',
+            details: error.errors 
+          },
+          { status: 400 }
+        )
+      }
+      
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      )
+    }
 
-    // Build the update payload
+    // Build the update payload com dados validados
     const updatePayload: any = {}
 
-    // Basic fields that can be updated
-    if (body.title !== undefined) updatePayload.title = body.title
-    if (body.price !== undefined) updatePayload.price = body.price
-    if (body.available_quantity !== undefined) updatePayload.available_quantity = body.available_quantity
-    if (body.condition !== undefined) updatePayload.condition = body.condition
-    if (body.video_id !== undefined) updatePayload.video_id = body.video_id
-    if (body.warranty !== undefined) updatePayload.warranty = body.warranty
+    // Basic fields that can be updated (agora validados)
+    if (validatedData.title !== undefined) updatePayload.title = validatedData.title
+    if (validatedData.price !== undefined) updatePayload.price = validatedData.price
+    if (validatedData.available_quantity !== undefined) updatePayload.available_quantity = validatedData.available_quantity
+    if (validatedData.condition !== undefined) updatePayload.condition = validatedData.condition
+    if (validatedData.video_id !== undefined) updatePayload.video_id = validatedData.video_id
+    if (validatedData.warranty !== undefined) updatePayload.warranty = validatedData.warranty
     
     // Description is updated separately
-    if (body.description !== undefined) {
+    if (validatedData.description !== undefined) {
       // Update description via separate endpoint
       await fetch(
         `https://api.mercadolibre.com/items/${itemId}/description`,
@@ -37,60 +72,60 @@ export async function PUT(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            plain_text: body.description
+            plain_text: validatedData.description.plain_text || validatedData.description.text
           }),
         }
       )
     }
 
     // Pictures
-    if (body.pictures !== undefined) {
-      updatePayload.pictures = body.pictures
+    if (validatedData.pictures !== undefined) {
+      updatePayload.pictures = validatedData.pictures
     }
 
     // Attributes
-    if (body.attributes !== undefined) {
-      updatePayload.attributes = body.attributes
+    if (validatedData.attributes !== undefined) {
+      updatePayload.attributes = validatedData.attributes
     }
 
     // Shipping
-    if (body.shipping !== undefined) {
-      updatePayload.shipping = body.shipping
+    if (validatedData.shipping !== undefined) {
+      updatePayload.shipping = validatedData.shipping
     }
 
     // Sale terms
-    if (body.sale_terms !== undefined) {
-      updatePayload.sale_terms = body.sale_terms
+    if (validatedData.sale_terms !== undefined) {
+      updatePayload.sale_terms = validatedData.sale_terms
     }
 
     // Variations
-    if (body.variations !== undefined) {
-      updatePayload.variations = body.variations
+    if (validatedData.variations !== undefined) {
+      updatePayload.variations = validatedData.variations
     }
 
     // Channels
-    if (body.channels !== undefined) {
-      updatePayload.channels = body.channels
+    if (validatedData.channels !== undefined) {
+      updatePayload.channels = validatedData.channels
     }
 
     // Listing type
-    if (body.listing_type_id !== undefined) {
-      updatePayload.listing_type_id = body.listing_type_id
+    if (validatedData.listing_type_id !== undefined) {
+      updatePayload.listing_type_id = validatedData.listing_type_id
     }
 
     // Buying mode
-    if (body.buying_mode !== undefined) {
-      updatePayload.buying_mode = body.buying_mode
+    if (validatedData.buying_mode !== undefined) {
+      updatePayload.buying_mode = validatedData.buying_mode
     }
 
     // Category (cannot be changed after creation in most cases)
-    if (body.category_id !== undefined) {
-      updatePayload.category_id = body.category_id
+    if (validatedData.category_id !== undefined) {
+      updatePayload.category_id = validatedData.category_id
     }
 
     // Accept Mercadopago
-    if (body.accepts_mercadopago !== undefined) {
-      updatePayload.accepts_mercadopago = body.accepts_mercadopago
+    if (validatedData.accepts_mercadopago !== undefined) {
+      updatePayload.accepts_mercadopago = validatedData.accepts_mercadopago
     }
 
     // Update the item
@@ -122,7 +157,7 @@ export async function PUT(
       message: "Item updated successfully"
     })
   } catch (error) {
-    console.error("Error updating item:", error)
+    logger.error("Error updating item:", { error })
     return NextResponse.json(
       { error: "Failed to update item" },
       { status: 500 }

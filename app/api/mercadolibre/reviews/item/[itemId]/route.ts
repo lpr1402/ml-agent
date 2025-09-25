@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -103,7 +104,7 @@ export async function GET(
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error fetching reviews:", error)
+    logger.error("Error fetching reviews:", { error })
     return NextResponse.json(
       { error: "Failed to fetch reviews" },
       { status: 500 }

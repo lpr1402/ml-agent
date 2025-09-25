@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   context: { params: Promise<{ questionId: string }> }
 ) {
   try {
@@ -13,10 +14,9 @@ export async function GET(
       where: { id: questionId },
       select: {
         id: true,
-        sequentialId: true,
         mlQuestionId: true,
         text: true,
-        aiResponse: true,
+        aiSuggestion: true,
         itemTitle: true,
         itemPrice: true,
         itemPermalink: true,
@@ -39,7 +39,7 @@ export async function GET(
     return NextResponse.json(question)
     
   } catch (error) {
-    console.error("Error fetching question:", error)
+    logger.error("Error fetching question:", { error })
     return NextResponse.json({ error: "Internal error" }, { status: 500 })
   }
 }

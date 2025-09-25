@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -51,7 +52,7 @@ export async function GET(
       attributes: data.attributes
     })
   } catch (error) {
-    console.error("Error fetching category:", error)
+    logger.error("Error fetching category:", { error })
     return NextResponse.json(
       { error: "Failed to fetch category" },
       { status: 500 }

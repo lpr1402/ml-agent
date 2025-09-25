@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import axios from "axios"
 import { auth } from "@/auth"
 
@@ -201,7 +202,7 @@ export async function getPaymentInfo(userId: string) {
     const { data } = await api.get(`/users/${userId}/mercadopago_account/balance`)
     return data
   } catch (error) {
-    console.error("Error fetching payment info:", error)
+    logger.error("Error fetching payment info:", { error })
     return {
       available_balance: 0,
       unavailable_balance: 0,

@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from "next/server"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import { oauthTokenExchange } from '@/lib/api/oauth-rate-limiter'
 
-const APP_ID = process.env.AUTH_MERCADOLIBRE_ID!
-const SECRET = process.env.AUTH_MERCADOLIBRE_SECRET!
+const APP_ID = process.env['ML_CLIENT_ID']!
+const SECRET = process.env['ML_CLIENT_SECRET']!
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: Request) {
   try {
-    const body = await request.json()
+    const body = await _request.json()
     const { refresh_token } = body
     
     if (!refresh_token) {
@@ -20,26 +22,30 @@ export async function POST(request: NextRequest) {
       refresh_token: refresh_token,
     })
     
-    const tokenResponse = await fetch("https://api.mercadolibre.com/oauth/token", {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: tokenParams,
-    })
+    // Usar oauthTokenExchange com rate limiting global para evitar erro 429
+    const tokenResponse = await oauthTokenExchange(
+      "https://api.mercadolibre.com/oauth/token",
+      {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenParams,
+      }
+    )
     
     const tokens = await tokenResponse.json()
     
     if (!tokenResponse.ok) {
-      console.error("Token refresh failed:", tokens)
+      logger.error("Token refresh failed:", { error: { error: tokens } })
       return NextResponse.json(
         { error: "Token refresh failed", details: tokens },
         { status: tokenResponse.status }
       )
     }
     
-    console.log("Token refreshed successfully")
+    logger.info("Token refreshed successfully")
     
     return NextResponse.json({
       access_token: tokens.access_token,
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
       token_type: tokens.token_type,
     })
   } catch (error) {
-    console.error("Refresh token error:", error)
+    logger.error("Refresh token error:", { error })
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

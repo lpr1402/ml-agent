@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -52,7 +53,7 @@ export async function PUT(
       message: `Item ${status === 'active' ? 'activated' : status === 'paused' ? 'paused' : 'closed'} successfully`
     })
   } catch (error) {
-    console.error("Error updating item status:", error)
+    logger.error("Error updating item status:", { error })
     return NextResponse.json(
       { error: "Failed to update item status" },
       { status: 500 }

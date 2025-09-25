@@ -1,0 +1,205 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20.x'
+  DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+  ENCRYPTION_KEY: 'test-encryption-key-32-chars-long'
+  ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
+  ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
+
+jobs:
+  # Job 1: Linting and Type Checking
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    name: Lint & Type Check
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint
+        run: npm run lint
+      
+      - name: Run TypeScript check
+        run: npm run typecheck
+
+  # Job 2: Unit Tests
+  test-unit:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    needs: lint-and-typecheck
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Setup database
+        run: |
+          npx prisma generate
+          npx prisma db push
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+      
+      - name: Run tests with coverage
+        run: npm run test:ci
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # Job 3: Build Verification
+  build:
+    runs-on: ubuntu-latest
+    name: Build Verification
+    needs: test-unit
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build application
+        run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: true
+      
+      - name: Check build output
+        run: |
+          if [ ! -d ".next" ]; then
+            echo "Build failed - .next directory not found"
+            exit 1
+          fi
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: .next
+          retention-days: 7
+
+  # Job 4: Security Scanning
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    needs: lint-and-typecheck
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      
+      - name: Run security scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Job 5: Performance Testing
+  performance:
+    runs-on: ubuntu-latest
+    name: Performance Check
+    needs: build
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check bundle size
+        run: |
+          npm run build
+          npm run analyze > bundle-analysis.txt
+          
+          # Check if bundle size is within limits
+          BUNDLE_SIZE=$(du -sb .next | cut -f1)
+          MAX_SIZE=52428800  # 50MB in bytes
+          
+          if [ $BUNDLE_SIZE -gt $MAX_SIZE ]; then
+            echo "Bundle size exceeded limit: $BUNDLE_SIZE > $MAX_SIZE"
+            exit 1
+          fi
+          
+          echo "Bundle size OK: $BUNDLE_SIZE bytes"
+
+  # Job 6: All tests passed
+  all-checks-passed:
+    runs-on: ubuntu-latest
+    name: All Checks Passed
+    needs: [lint-and-typecheck, test-unit, build, security, performance]
+    
+    steps:
+      - name: All checks completed successfully
+        run: echo "✅ All CI checks passed successfully!"

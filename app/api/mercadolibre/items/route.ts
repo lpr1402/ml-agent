@@ -1,83 +1,163 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "../base"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+// import { getAuthFromRequest } from "../base" // Using session auth instead
+import { getCurrentSession } from "@/lib/auth/ml-auth"
+import { prisma } from "@/lib/prisma"
+import { decryptToken } from "@/lib/security/encryption"
 
-// GET - List all user items
-export async function GET(request: NextRequest) {
+// GET - List all user items usando tokens criptografados
+export async function GET(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    // Usar sessão do sistema de autenticação novo
+    const session = await getCurrentSession()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    
+    // Buscar conta ML ativa
+    const mlAccount = await prisma.mLAccount.findFirst({
+      where: {
+        id: session.activeMLAccountId,
+        isActive: true
+      }
+    })
+    
+    if (!mlAccount) {
+      return NextResponse.json({ error: "No ML account found" }, { status: 401 })
+    }
+    
+    // Descriptografar token
+    const accessToken = decryptToken({
+      encrypted: mlAccount.accessToken,
+      iv: mlAccount.accessTokenIV!,
+      authTag: mlAccount.accessTokenTag!
+    })
 
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(_request.url)
     const status = searchParams.get("status")
     const offset = searchParams.get("offset") || "0"
     const limit = searchParams.get("limit") || "50"
-
-    // Get user info first
-    const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-      },
+    const search = searchParams.get("search") || ""
+    
+    logger.info('[Items API] Fetching items', { 
+      status, 
+      offset, 
+      limit 
     })
 
-    if (!userResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch user" }, { status: 401 })
-    }
+    // Usar mlUserId da conta diretamente (já temos isso na conta)
+    const userId = mlAccount.mlUserId
 
-    const user = await userResponse.json()
-    const userId = user.id
-
-    // Get user items - only add status if it's specified and not "all"
+    // Montar URL do endpoint oficial
     let itemsUrl = `https://api.mercadolibre.com/users/${userId}/items/search?offset=${offset}&limit=${limit}&orders=stop_time_desc`
+    
     if (status && status !== "all") {
       itemsUrl += `&status=${status}`
     }
     
+    if (search) {
+      itemsUrl += `&q=${encodeURIComponent(search)}`
+    }
+    
+    logger.info('[Items API] URL:', { error: { error: itemsUrl } })
+    
     const itemsResponse = await fetch(itemsUrl, {
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
+        'Accept': 'application/json'
       },
     })
 
     if (!itemsResponse.ok) {
-      throw new Error("Failed to fetch items")
+      const errorText = await itemsResponse.text()
+      logger.error('[Items API] Error:', { data: itemsResponse.status, error: errorText })
+      
+      if (itemsResponse.status === 401) {
+        return NextResponse.json({ error: "Token expired or invalid" }, { status: 401 })
+      }
+      
+      return NextResponse.json({ 
+        error: "Failed to fetch items",
+        details: errorText,
+        status: itemsResponse.status
+      }, { status: itemsResponse.status })
     }
 
     const itemsData = await itemsResponse.json()
+    logger.info('[Items API] Found items', { count: itemsData.results?.length || 0 })
     
-    // Get detailed info for each item
-    const itemPromises = itemsData.results?.map(async (itemId: string) => {
-      try {
-        const itemResponse = await fetch(
-          `https://api.mercadolibre.com/items/${itemId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${auth.accessToken}`,
-            },
+    // Buscar dados detalhados para cada item (em lotes para melhor performance)
+    const batchSize = 10 // Processar 10 items por vez
+    const results = itemsData.results || []
+    const items = []
+    
+    for (let i = 0; i < results.length; i += batchSize) {
+      const batch = results.slice(i, i + batchSize)
+      
+      const batchPromises = batch.map(async (itemId: string) => {
+        try {
+          const itemResponse = await fetch(
+            `https://api.mercadolibre.com/items/${itemId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+              },
+            }
+          )
+          
+          if (itemResponse.ok) {
+            const itemData = await itemResponse.json()
+            
+            // Buscar vis tas se possível
+            let visits = null
+            try {
+              const visitsResponse = await fetch(
+                `https://api.mercadolibre.com/visits/items?ids=${itemId}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Accept': 'application/json'
+                  },
+                }
+              )
+              if (visitsResponse.ok) {
+                const visitsData = await visitsResponse.json()
+                visits = visitsData[itemId] || null
+              }
+            } catch {
+              // Ignora erros de visitas
+            }
+            
+            return {
+              ...itemData,
+              visits
+            }
           }
-        )
-        
-        if (itemResponse.ok) {
-          return await itemResponse.json()
+          return null
+        } catch (error) {
+          logger.error(`[Items API] Error fetching item ${itemId}:`, { error })
+          return null
         }
-        return null
-      } catch (error) {
-        console.error(`Error fetching item ${itemId}:`, error)
-        return null
-      }
-    }) || []
+      })
+      
+      const batchResults = await Promise.all(batchPromises)
+      items.push(...batchResults.filter(item => item !== null))
+    }
 
-    const items = (await Promise.all(itemPromises)).filter(item => item !== null)
-
+    logger.info('[Items API] Returning enriched items', { count: items.length })
+    
     return NextResponse.json({
       items,
       paging: itemsData.paging,
       total: itemsData.paging?.total || 0,
+      query: itemsData.query || {},
+      sort: itemsData.sort || {},
+      filters: itemsData.filters || {},
     })
   } catch (error) {
-    console.error("Error fetching items:", error)
+    logger.error("Error fetching items:", { error })
     return NextResponse.json(
       { error: "Failed to fetch items" },
       { status: 500 }
@@ -86,15 +166,35 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Create new item
-export async function POST(request: NextRequest) {
+export async function POST(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    // Usar sessão do sistema de autenticação novo
+    const session = await getCurrentSession()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    
+    // Buscar conta ML ativa
+    const mlAccount = await prisma.mLAccount.findFirst({
+      where: {
+        id: session.activeMLAccountId,
+        isActive: true
+      }
+    })
+    
+    if (!mlAccount) {
+      return NextResponse.json({ error: "No ML account found" }, { status: 401 })
+    }
+    
+    // Descriptografar token
+    const accessToken = decryptToken({
+      encrypted: mlAccount.accessToken,
+      iv: mlAccount.accessTokenIV!,
+      authTag: mlAccount.accessTokenTag!
+    })
 
-    const body = await request.json()
+    const body = await _request.json()
 
     // Validate required fields
     if (!body.title || !body.category_id || !body.price || !body.available_quantity) {
@@ -126,11 +226,14 @@ export async function POST(request: NextRequest) {
       },
     }
 
+    logger.info('[Items API] Creating item:', { data: itemData.title })
+    
     const response = await fetch("https://api.mercadolibre.com/items", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify(itemData),
     })
@@ -138,7 +241,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json()
 
     if (!response.ok) {
-      console.error("ML API Error:", data)
+      logger.error("ML API Error:", { error: { error: data } })
       
       // Provide more helpful error messages
       let errorMessage = "Erro ao criar anúncio"
@@ -160,7 +263,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Error creating item:", error)
+    logger.error("Error creating item:", { error })
     return NextResponse.json(
       { error: "Failed to create item" },
       { status: 500 }
@@ -169,26 +272,49 @@ export async function POST(request: NextRequest) {
 }
 
 // PUT - Update item
-export async function PUT(request: NextRequest) {
+export async function PUT(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    // Usar sessão do sistema de autenticação novo
+    const session = await getCurrentSession()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    
+    // Buscar conta ML ativa
+    const mlAccount = await prisma.mLAccount.findFirst({
+      where: {
+        id: session.activeMLAccountId,
+        isActive: true
+      }
+    })
+    
+    if (!mlAccount) {
+      return NextResponse.json({ error: "No ML account found" }, { status: 401 })
+    }
+    
+    // Descriptografar token
+    const accessToken = decryptToken({
+      encrypted: mlAccount.accessToken,
+      iv: mlAccount.accessTokenIV!,
+      authTag: mlAccount.accessTokenTag!
+    })
 
-    const body = await request.json()
+    const body = await _request.json()
     const { itemId, ...updateData } = body
 
     if (!itemId) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 })
     }
 
+    logger.info('[Items API] Updating item:', { error: { error: itemId } })
+    
     const response = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify(updateData),
     })
@@ -204,7 +330,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Error updating item:", error)
+    logger.error("Error updating item:", { error })
     return NextResponse.json(
       { error: "Failed to update item" },
       { status: 500 }
@@ -213,15 +339,35 @@ export async function PUT(request: NextRequest) {
 }
 
 // PATCH - Update item status (pause/activate)
-export async function PATCH(request: NextRequest) {
+export async function PATCH(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    // Usar sessão do sistema de autenticação novo
+    const session = await getCurrentSession()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    
+    // Buscar conta ML ativa
+    const mlAccount = await prisma.mLAccount.findFirst({
+      where: {
+        id: session.activeMLAccountId,
+        isActive: true
+      }
+    })
+    
+    if (!mlAccount) {
+      return NextResponse.json({ error: "No ML account found" }, { status: 401 })
+    }
+    
+    // Descriptografar token
+    const accessToken = decryptToken({
+      encrypted: mlAccount.accessToken,
+      iv: mlAccount.accessTokenIV!,
+      authTag: mlAccount.accessTokenTag!
+    })
 
-    const body = await request.json()
+    const body = await _request.json()
     const { itemId, status } = body
 
     if (!itemId || !status) {
@@ -231,11 +377,14 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    logger.info('[Items API] Updating status for item:', { data: itemId, to: status })
+    
     const response = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify({ status }),
     })
@@ -251,7 +400,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Error updating item status:", error)
+    logger.error("Error updating item status:", { error })
     return NextResponse.json(
       { error: "Failed to update item status" },
       { status: 500 }

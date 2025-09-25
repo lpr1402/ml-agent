@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 
 // Mock session state
 const agentState = {
@@ -10,13 +11,13 @@ const agentState = {
 }
 
 export async function POST(
-  request: NextRequest,
+  _request: Request,
   context: { params: Promise<{ action: string }> }
 ) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -54,7 +55,7 @@ export async function POST(
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    console.error("Error controlling agent:", error)
+    logger.error("Error controlling agent:", { error })
     return NextResponse.json(
       { error: "Failed to control agent" },
       { status: 500 }

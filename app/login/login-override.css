@@ -1,4 +1,18 @@
-/* Login Page Specific Overrides */
+/* Login Page Specific Overrides - Production Ready */
+
+/* Reset html and body for full viewport */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Ensure Next.js root div takes full height */
+#__next {
+  height: 100%;
+  overflow: hidden;
+}
 
 /* Remove forced backgrounds from logo area */
 .logo-container,
@@ -62,9 +76,27 @@
   z-index: 0;
 }
 
+/* Responsive adjustments */
+@media (max-height: 700px) {
+  /* Reduce sizes for smaller viewports */
+  .logo-image {
+    max-height: 200px !important;
+  }
+}
+
 @media (min-width: 1024px) {
   .logo-glow {
     width: 600px;
     height: 600px;
   }
+}
+
+/* Prevent scrollbars */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }

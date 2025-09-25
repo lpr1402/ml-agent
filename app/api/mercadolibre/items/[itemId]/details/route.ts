@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { extractAuthHeader } from "@/lib/auth-server"
 
@@ -36,7 +37,7 @@ export async function GET(
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Error fetching item details:", error)
+    logger.error("Error fetching item details:", { error })
     return NextResponse.json(
       { error: "Failed to fetch item details" },
       { status: 500 }

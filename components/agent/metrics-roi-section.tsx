@@ -8,21 +8,16 @@ import {
   Clock,
   Zap,
   Target,
-  Award,
   ArrowUp,
-  ArrowDown,
-  Activity,
-  BarChart3,
-  PieChart,
-  Users,
-  Package,
-  MessageSquare,
   CheckCircle,
-  AlertCircle,
+  Sparkles,
+  Activity,
   Timer,
-  Sparkles
+  MessageSquare,
+  AlertCircle,
+  Award
 } from "lucide-react"
-import { Line, Bar, Doughnut } from "react-chartjs-2"
+import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -76,7 +71,7 @@ interface MetricsROIProps {
   allQuestions?: any[] // Add allQuestions for filtering
 }
 
-export function MetricsROISection({ metrics, timeData, questionsData, allQuestions = [] }: MetricsROIProps) {
+export function MetricsROISection({ metrics, questionsData, allQuestions = [] }: MetricsROIProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<"24h" | "7d" | "30d">("24h")
   const [filteredMetrics, setFilteredMetrics] = useState(metrics)
   const [animatedValues, setAnimatedValues] = useState({
@@ -94,7 +89,7 @@ export function MetricsROISection({ metrics, timeData, questionsData, allQuestio
     }
     
     const now = new Date()
-    let startDate = new Date()
+    const startDate = new Date()
     
     switch (selectedPeriod) {
       case "24h":
@@ -177,40 +172,10 @@ export function MetricsROISection({ metrics, timeData, questionsData, allQuestio
     return () => clearTimeout(timer)
   }, [roi, savedHoursMonthly, incrementalSales, efficiencyScore])
   
-  // Response time distribution with REAL data
-  const calculateTimeDistribution = () => {
-    const total = Math.max(metrics.answeredQuestions, 1)
-    const avgTime = metrics.avgResponseTime
-    
-    if (avgTime <= 30) {
-      return [70, 20, 7, 3] // Most are fast
-    } else if (avgTime <= 60) {
-      return [30, 45, 20, 5] // Balanced
-    } else if (avgTime <= 120) {
-      return [15, 25, 40, 20] // Slower
-    } else {
-      return [10, 15, 25, 50] // Very slow
-    }
-  }
-  
-  const responseTimeData = {
-    labels: ["< 30min", "30-60min", "1-2h", "> 2h"],
-    datasets: [{
-      data: calculateTimeDistribution(),
-      backgroundColor: [
-        "#FFE600",
-        "#FFC700",
-        "#FF9500",
-        "#FF6B6B"
-      ],
-      borderWidth: 0
-    }]
-  }
-  
   // Calculate activity data based on selected period
   const getActivityData = () => {
     const now = new Date()
-    let startDate = new Date()
+    const startDate = new Date()
     let labels: string[] = []
     let data: number[] = []
     
@@ -237,7 +202,9 @@ export function MetricsROISection({ metrics, timeData, questionsData, allQuestio
           const qDate = new Date(q.receivedAt)
           if (qDate >= startDate) {
             const hour = qDate.getHours()
-            data[hour]++
+            if (data[hour] !== undefined) {
+              data[hour]++
+            }
           }
         })
         break
@@ -696,10 +663,44 @@ export function MetricsROISection({ metrics, timeData, questionsData, allQuestio
               alignContent: "start"
             }}>
               {[
-                { 
-                  label: "Tempo Médio IA", 
-                  value: "<10s", 
-                  icon: Activity, 
+                {
+                  label: "Tempo Médio IA",
+                  value: (() => {
+                    // Calcular tempo real de processamento da IA
+                    const now = new Date()
+                    const startDate = new Date()
+
+                    switch (selectedPeriod) {
+                      case "24h": startDate.setHours(now.getHours() - 24); break
+                      case "7d": startDate.setDate(now.getDate() - 7); break
+                      case "30d": startDate.setDate(now.getDate() - 30); break
+                    }
+
+                    // Filtrar perguntas do período que tem dados de processamento
+                    const periodQuestions = allQuestions?.filter(q => {
+                      const receivedDate = new Date(q.receivedAt)
+                      return receivedDate >= startDate &&
+                             q.receivedAt &&
+                             (q.aiProcessedAt || q.processedAt)
+                    }) || []
+
+                    if (periodQuestions.length === 0) return "--"
+
+                    // Calcular tempo médio entre recebimento e processamento da IA
+                    const processingTimes = periodQuestions.map(q => {
+                      const receivedTime = new Date(q.receivedAt).getTime()
+                      const processedTime = new Date(q.aiProcessedAt || q.processedAt).getTime()
+                      return (processedTime - receivedTime) / 1000 // em segundos
+                    })
+
+                    const avgTime = processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length
+
+                    // Formatar o tempo
+                    if (avgTime < 60) return `${Math.round(avgTime)}s`
+                    if (avgTime < 3600) return `${Math.round(avgTime / 60)}min`
+                    return `${Math.round(avgTime / 3600)}h`
+                  })(),
+                  icon: Activity,
                   color: "#FFE600",
                   description: "Processamento da IA"
                 },
@@ -728,7 +729,7 @@ export function MetricsROISection({ metrics, timeData, questionsData, allQuestio
                   label: "Respostas < 1h", 
                   value: (() => {
                     const now = new Date()
-                    let startDate = new Date()
+                    const startDate = new Date()
                     
                     switch (selectedPeriod) {
                       case "24h": startDate.setHours(now.getHours() - 24); break

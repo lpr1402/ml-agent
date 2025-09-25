@@ -1,114 +1,52 @@
-import React from "react"
+'use client'
+
+import Image from 'next/image'
 
 interface PremiumLoaderProps {
-  text?: string
-  size?: "sm" | "md" | "lg"
-  fullScreen?: boolean
+  isPro?: boolean
 }
 
-export function PremiumLoader({ 
-  text = "Carregando", 
-  size = "md",
-  fullScreen = false 
-}: PremiumLoaderProps) {
-  const sizeMap = {
-    sm: 40,
-    md: 60,
-    lg: 80
-  }
-
-  const content = (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '60px 0'
-    }}>
-      {/* Logo sem fundo */}
-      <div style={{
-        width: `${sizeMap[size]}px`,
-        height: `${sizeMap[size]}px`,
-        position: 'relative',
-        marginBottom: '24px'
-      }}>
-        <img 
-          src="/mlagent-logo-3d.png" 
-          alt="ML Agent" 
+export function PremiumLoader({ isPro = false }: PremiumLoaderProps) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-950 to-black">
+      <div className="flex flex-col items-center gap-8">
+        {/* Logo - Same as header */}
+        <Image
+          src="/mlagent-logo-3d.svg"
+          alt="ML Agent"
+          width={96}
+          height={96}
+          className="h-24 w-auto object-contain"
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
+            filter: 'drop-shadow(0 0 25px rgba(255, 230, 0, 0.15))'
           }}
         />
-        {/* Loading Ring minimalista */}
-        <div style={{
-          position: 'absolute',
-          inset: '-8px',
-          borderRadius: '50%',
-          border: '1px solid rgba(255, 230, 0, 0.1)',
-          borderTopColor: '#FFE600'
-        }} className="animate-spin"></div>
+
+        {/* Title */}
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-3xl font-light text-white tracking-wide">
+            ML Agent
+          </h1>
+          {isPro && (
+            <span className="text-3xl font-bold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider pr-2">
+              PRO
+            </span>
+          )}
+        </div>
+
+        {/* Loading Indicator - Tab-like style */}
+        <div className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
+          {/* Simple loading dots */}
+          <div className="flex gap-1.5">
+            <div className="w-2 h-2 bg-gold/70 rounded-full animate-pulse" />
+            <div className="w-2 h-2 bg-gold/70 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+            <div className="w-2 h-2 bg-gold/70 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+          </div>
+          <span className="text-gray-400 font-medium">
+            Carregando
+          </span>
+        </div>
       </div>
-      
-      {/* Texto simples */}
-      {text && (
-        <p style={{
-          fontSize: '12px',
-          fontWeight: '300',
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: '#666666',
-          textAlign: 'center'
-        }}>
-          {text}
-        </p>
-      )}
     </div>
-  )
-
-  if (fullScreen) {
-    // Para carregamento de dados - não bloqueia a página toda, só a área de conteúdo
-    return (
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        minHeight: '400px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#0A0A0A'
-      }}>
-        {content}
-      </div>
-    )
-  }
-
-  return content
-}
-
-// Mini loader for inline use
-export function MiniLoader({ className = "" }: { className?: string }) {
-  return (
-    <svg 
-      className={`animate-spin h-4 w-4 text-[#FFE600] ${className}`}
-      xmlns="http://www.w3.org/2000/svg" 
-      fill="none" 
-      viewBox="0 0 24 24"
-    >
-      <circle 
-        className="opacity-25" 
-        cx="12" 
-        cy="12" 
-        r="10" 
-        stroke="currentColor" 
-        strokeWidth="4"
-      />
-      <path 
-        className="opacity-75" 
-        fill="currentColor" 
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      />
-    </svg>
   )
 }

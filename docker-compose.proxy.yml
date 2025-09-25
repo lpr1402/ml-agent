@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ml-agent-proxy:
+    image: nginx:alpine
+    container_name: ml-agent-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - root_traefik
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ml-agent.rule=Host(`gugaleo.axnexlabs.com.br`)"
+      - "traefik.http.routers.ml-agent.entrypoints=websecure"
+      - "traefik.http.routers.ml-agent.tls=true"
+      - "traefik.http.routers.ml-agent.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ml-agent.loadbalancer.server.port=80"
+      - "traefik.docker.network=root_traefik"
+
+networks:
+  root_traefik:
+    external: true

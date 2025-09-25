@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Primary Database
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: ml_agent_postgres_primary
+    hostname: postgres-primary
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: mlagent_db
+      POSTGRES_USER: mlagent
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_REPLICATION_MODE: master
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      # Performance tuning
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 128MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+      POSTGRES_RANDOM_PAGE_COST: 1.1
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 200
+      POSTGRES_WORK_MEM: 4MB
+      POSTGRES_MIN_WAL_SIZE: 1GB
+      POSTGRES_MAX_WAL_SIZE: 4GB
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./scripts/postgres/primary-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./scripts/postgres/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
+    networks:
+      - ml_agent_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlagent -d mlagent_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # PostgreSQL Replica Database
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: ml_agent_postgres_replica
+    hostname: postgres-replica
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: mlagent_db
+      POSTGRES_USER: mlagent
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_REPLICATION_MODE: slave
+      POSTGRES_MASTER_HOST: postgres-primary
+      POSTGRES_MASTER_PORT: 5432
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      # Same performance tuning as primary
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./scripts/postgres/postgresql-replica.conf:/etc/postgresql/postgresql.conf:ro
+    networks:
+      - ml_agent_network
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlagent -d mlagent_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # PgBouncer Connection Pooler for Primary
+  pgbouncer-primary:
+    image: edoburu/pgbouncer:latest
+    container_name: ml_agent_pgbouncer_primary
+    ports:
+      - "6432:6432"
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: mlagent_db
+      DATABASES_USER: mlagent
+      DATABASES_PASSWORD: ${DB_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 50
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 5
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+      STATS_USERS: mlagent
+    volumes:
+      - ./scripts/postgres/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    networks:
+      - ml_agent_network
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PgBouncer Connection Pooler for Replica (Read-only)
+  pgbouncer-replica:
+    image: edoburu/pgbouncer:latest
+    container_name: ml_agent_pgbouncer_replica
+    ports:
+      - "6433:6432"
+    environment:
+      DATABASES_HOST: postgres-replica
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: mlagent_db
+      DATABASES_USER: mlagent
+      DATABASES_PASSWORD: ${DB_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 30
+      MIN_POOL_SIZE: 5
+    networks:
+      - ml_agent_network
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis Primary
+  redis-primary:
+    image: redis:7-alpine
+    container_name: ml_agent_redis_primary
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_primary_data:/data
+      - ./scripts/redis/redis-primary.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - ml_agent_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Replica
+  redis-replica:
+    image: redis:7-alpine
+    container_name: ml_agent_redis_replica
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --replicaof redis-primary 6379 --masterauth ${REDIS_PASSWORD} --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_replica_data:/data
+    networks:
+      - ml_agent_network
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # HAProxy Load Balancer
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: ml_agent_haproxy
+    ports:
+      - "5434:5434" # PostgreSQL load balanced port
+      - "6381:6381" # Redis load balanced port
+      - "8404:8404" # HAProxy stats
+    volumes:
+      - ./scripts/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - ml_agent_network
+    depends_on:
+      - postgres-primary
+      - postgres-replica
+      - redis-primary
+      - redis-replica
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  ml_agent_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  redis_primary_data:
+  redis_replica_data:

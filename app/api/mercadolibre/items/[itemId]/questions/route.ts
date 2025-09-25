@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../../base"
 
@@ -75,7 +76,7 @@ export async function GET(
     })
     
   } catch (error) {
-    console.error("Error fetching questions:", error)
+    logger.error("Error fetching questions:", { error })
     return NextResponse.json(
       { 
         questions: [],

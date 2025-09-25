@@ -10,6 +10,8 @@
 # next.js
 /.next/
 /out/
+# webpack cache
+.next/cache/
 
 # production
 /build
@@ -26,6 +28,9 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.production
+.env.vault
+.env.webhook-example
 
 # vercel
 .vercel
@@ -44,3 +49,6 @@ prisma/migrations/
 # editor
 .vscode/
 .idea/
+
+# sensitive files
+cookies.txt

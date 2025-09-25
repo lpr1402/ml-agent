@@ -1,11 +1,12 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(history)
   } catch (error) {
-    console.error("Error fetching history:", error)
+    logger.error("Error fetching history:", { error })
     return NextResponse.json(
       { error: "Failed to fetch history" },
       { status: 500 }

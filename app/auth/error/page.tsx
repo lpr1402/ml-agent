@@ -1,82 +1,125 @@
+/**
+ * Página de erro de autenticação
+ * SEMPRE usa o domínio correto de constants.ts
+ */
+
 "use client"
 
-import { useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { AlertCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Suspense } from "react"
+import { useSearchParams } from 'next/navigation'
+import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Suspense } from 'react'
+import { APP_URLS } from '@/lib/constants'
+
+const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
+  LoginFailed: {
+    title: 'Falha ao iniciar login',
+    description: 'Não foi possível conectar com o Mercado Livre. Por favor, tente novamente.',
+  },
+  NoCode: {
+    title: 'Código de autorização ausente',
+    description: 'O processo de autenticação foi interrompido. Por favor, tente novamente.',
+  },
+  InvalidState: {
+    title: 'Sessão inválida',
+    description: 'Sua sessão expirou ou é inválida. Por favor, faça login novamente.',
+  },
+  TokenExchange: {
+    title: 'Erro na autenticação',
+    description: 'Não foi possível completar a autenticação com o Mercado Livre.',
+  },
+  UserInfo: {
+    title: 'Erro ao obter informações',
+    description: 'Não foi possível obter suas informações do Mercado Livre.',
+  },
+  Unknown: {
+    title: 'Erro desconhecido',
+    description: 'Ocorreu um erro inesperado. Por favor, tente novamente.',
+  },
+  access_denied: {
+    title: 'Acesso negado',
+    description: 'Você cancelou o processo de autorização ou não tem permissão para acessar.',
+  },
+  Configuration: {
+    title: 'Erro de configuração',
+    description: 'Há um problema com a configuração do servidor. Verifique as credenciais.',
+  },
+}
 
 function AuthErrorContent() {
   const searchParams = useSearchParams()
-  const error = searchParams.get("error")
-
-  const errorMessages: Record<string, string> = {
-    Configuration: "Há um problema com a configuração do servidor. Por favor, verifique as credenciais da aplicação.",
-    AccessDenied: "Acesso negado. Você não tem permissão para acessar este recurso.",
-    Verification: "O link de verificação expirou ou já foi usado.",
-    OAuthSignin: "Erro ao construir a URL de autorização.",
-    OAuthCallback: "Erro ao processar a resposta do Mercado Livre.",
-    OAuthCreateAccount: "Não foi possível criar a conta de usuário.",
-    EmailCreateAccount: "Não foi possível criar a conta de usuário.",
-    Callback: "Erro no callback do OAuth.",
-    OAuthAccountNotLinked: "Para confirmar sua identidade, faça login com a mesma conta usada originalmente.",
-    EmailSignin: "Falha ao enviar o email com o link de login.",
-    CredentialsSignin: "Login falhou. Verifique se os detalhes fornecidos estão corretos.",
-    SessionRequired: "Por favor, faça login para acessar esta página.",
-    Default: "Ocorreu um erro inesperado.",
+  
+  const error = searchParams.get('error') || 'Unknown'
+  const message = searchParams.get('message')
+  
+  const errorInfo = ERROR_MESSAGES[error] || ERROR_MESSAGES['Unknown']
+  
+  const handleRetry = () => {
+    // SEMPRE usa a URL correta do constants!
+    window.location.href = APP_URLS.API_AUTH_LOGIN
   }
-
-  const errorMessage = errorMessages[error || "Default"] || errorMessages.Default
-
+  
+  const handleGoBack = () => {
+    // SEMPRE usa a URL correta do constants!
+    window.location.href = APP_URLS.HOME
+  }
+  
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
-            <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+    <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#111111] to-[#0A0A0A] flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
+        <div className="bg-[#111111] border border-[#FFE600]/20 rounded-2xl p-8">
+          {/* Icon */}
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-red-500" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Erro de Autenticação</CardTitle>
-          <CardDescription>
-            {error && (
-              <span className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                {error}
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
-            {errorMessage}
+          
+          {/* Title */}
+          <h1 className="text-2xl font-light text-white text-center mb-2">
+            {errorInfo?.title}
+          </h1>
+          
+          {/* Description */}
+          <p className="text-[#999999] text-center mb-6">
+            {message || errorInfo?.description}
           </p>
           
-          {error === "Configuration" && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                <strong>Possíveis causas:</strong>
+          {/* Error Code */}
+          {error !== 'Unknown' && (
+            <div className="bg-[#0A0A0A] rounded-lg p-3 mb-6">
+              <p className="text-xs text-[#666666] text-center">
+                Código de erro: <span className="text-[#FFE600]">{error}</span>
               </p>
-              <ul className="mt-2 text-xs text-yellow-700 dark:text-yellow-300 space-y-1 list-disc pl-5">
-                <li>APP_ID ou SECRET incorretos</li>
-                <li>URL de callback não configurada corretamente no Mercado Livre</li>
-                <li>Variáveis de ambiente não carregadas</li>
-              </ul>
             </div>
           )}
-
-          <div className="flex flex-col space-y-2">
-            <Button asChild className="w-full">
-              <Link href="/login">
-                Tentar Novamente
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/">
-                Voltar ao Início
-              </Link>
-            </Button>
+          
+          {/* Actions */}
+          <div className="space-y-3">
+            <button
+              onClick={handleRetry}
+              className="w-full py-3 bg-gradient-to-r from-[#FFE600] to-[#FFC700] text-[#0A0A0A] font-semibold rounded-lg hover:shadow-lg hover:shadow-[#FFE600]/30 transition-all flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Tentar Novamente
+            </button>
+            
+            <button
+              onClick={handleGoBack}
+              className="w-full py-3 bg-transparent border border-[#FFE600]/20 text-[#FFE600] rounded-lg hover:bg-[#FFE600]/10 transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar ao Início
+            </button>
           </div>
-        </CardContent>
-      </Card>
+          
+          {/* Help */}
+          <div className="mt-8 pt-6 border-t border-[#FFE600]/10">
+            <p className="text-xs text-[#666666] text-center">
+              Problemas persistentes? Entre em contato com o suporte.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -84,7 +127,7 @@ function AuthErrorContent() {
 export default function AuthErrorPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-[#0A0A0A]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FFE600]"></div>
       </div>
     }>

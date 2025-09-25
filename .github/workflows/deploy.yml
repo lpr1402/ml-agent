@@ -1,0 +1,223 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+  DEPLOY_USER: 'deploy'
+  DEPLOY_HOST: 'gugaleo.axnexlabs.com.br'
+  DEPLOY_PATH: '/var/www/ml-agent'
+
+jobs:
+  # Job 1: Pre-deployment checks
+  pre-deploy:
+    runs-on: ubuntu-latest
+    name: Pre-deployment Validation
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run critical tests
+        run: npm run test:ci
+      
+      - name: Build application
+        run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: true
+      
+      - name: Database migration check (dry-run)
+        run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+        continue-on-error: true
+
+  # Job 2: Blue-Green Deployment
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: pre-deploy
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci --production
+      
+      - name: Build for production
+        run: npm run build
+        env:
+          NODE_ENV: production
+          SKIP_ENV_VALIDATION: true
+      
+      - name: Prepare deployment package
+        run: |
+          # Create deployment directory
+          mkdir -p deploy-package
+          
+          # Copy necessary files
+          cp -r .next deploy-package/
+          cp -r public deploy-package/
+          cp package*.json deploy-package/
+          cp ecosystem.config.js deploy-package/
+          cp -r prisma deploy-package/
+          
+          # Create deployment archive
+          tar -czf deploy-package.tar.gz deploy-package/
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      
+      - name: Deploy to server
+        run: |
+          # Copy deployment package
+          scp -o StrictHostKeyChecking=no deploy-package.tar.gz ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:/tmp/
+          
+          # Execute deployment script
+          ssh -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'ENDSSH'
+            set -e
+            
+            # Extract package
+            cd /tmp
+            tar -xzf deploy-package.tar.gz
+            
+            # Backup current deployment
+            if [ -d "${{ env.DEPLOY_PATH }}/current" ]; then
+              rm -rf ${{ env.DEPLOY_PATH }}/previous
+              mv ${{ env.DEPLOY_PATH }}/current ${{ env.DEPLOY_PATH }}/previous
+            fi
+            
+            # Deploy new version
+            mv deploy-package ${{ env.DEPLOY_PATH }}/current
+            cd ${{ env.DEPLOY_PATH }}/current
+            
+            # Install production dependencies
+            npm ci --production
+            
+            # Run database migrations
+            npx prisma migrate deploy
+            
+            # Reload PM2 with zero-downtime
+            pm2 reload ecosystem.config.js --update-env
+            
+            # Health check
+            sleep 5
+            curl -f http://localhost:3007/api/health || exit 1
+            
+            # Clean up
+            rm -f /tmp/deploy-package.tar.gz
+            
+            echo "✅ Deployment successful!"
+          ENDSSH
+
+  # Job 3: Post-deployment validation
+  validate:
+    runs-on: ubuntu-latest
+    name: Post-deployment Validation
+    needs: deploy
+    
+    steps:
+      - name: Health check
+        run: |
+          for i in {1..10}; do
+            if curl -f https://gugaleo.axnexlabs.com.br/api/health; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 10
+          done
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
+      
+      - name: Performance check
+        run: |
+          # Check response time
+          RESPONSE_TIME=$(curl -o /dev/null -s -w '%{time_total}' https://gugaleo.axnexlabs.com.br)
+          
+          # Convert to milliseconds
+          RESPONSE_MS=$(echo "$RESPONSE_TIME * 1000" | bc)
+          
+          # Check if under 1 second
+          if (( $(echo "$RESPONSE_MS < 1000" | bc -l) )); then
+            echo "✅ Response time OK: ${RESPONSE_MS}ms"
+          else
+            echo "⚠️ Response time slow: ${RESPONSE_MS}ms"
+          fi
+      
+      - name: Notify deployment status
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Deployment to production: ${{ job.status }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  # Job 4: Rollback on failure
+  rollback:
+    runs-on: ubuntu-latest
+    name: Rollback on Failure
+    needs: validate
+    if: failure()
+    
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      
+      - name: Execute rollback
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'ENDSSH'
+            set -e
+            
+            echo "⚠️ Starting rollback..."
+            
+            # Check if previous version exists
+            if [ ! -d "${{ env.DEPLOY_PATH }}/previous" ]; then
+              echo "❌ No previous version to rollback to"
+              exit 1
+            fi
+            
+            # Swap directories
+            rm -rf ${{ env.DEPLOY_PATH }}/failed
+            mv ${{ env.DEPLOY_PATH }}/current ${{ env.DEPLOY_PATH }}/failed
+            mv ${{ env.DEPLOY_PATH }}/previous ${{ env.DEPLOY_PATH }}/current
+            
+            # Reload PM2
+            cd ${{ env.DEPLOY_PATH }}/current
+            pm2 reload ecosystem.config.js --update-env
+            
+            echo "✅ Rollback completed"
+          ENDSSH
+      
+      - name: Notify rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'warning'
+          text: |
+            ⚠️ Production deployment rolled back
+            Commit: ${{ github.sha }}
+            Check logs for details
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

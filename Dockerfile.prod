@@ -1,0 +1,35 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy built application
+COPY .next ./.next
+COPY public ./public
+COPY next.config.js ./
+COPY middleware.ts ./
+COPY lib ./lib
+COPY app ./app
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Expose port
+EXPOSE 3007
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3007
+
+# Copy start script
+COPY start-prod.sh ./
+RUN chmod +x start-prod.sh
+
+# Start application
+CMD ["./start-prod.sh"]

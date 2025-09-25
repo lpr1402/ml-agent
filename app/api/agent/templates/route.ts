@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { subscriptionValidator } from '@/lib/subscription/plan-validator'
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 
 // Mock templates data
 const templates = [
@@ -50,17 +52,34 @@ const templates = [
   },
 ]
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
+    // Validate subscription limits
+    if (!auth) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+    }
+    
+    const validation = await subscriptionValidator.validateAction(
+      auth.organizationId,
+      'question'
+    )
+    
+    if (!validation.allowed) {
+      return NextResponse.json({
+        error: validation.reason,
+        upgradeRequired: validation.upgradeRequired
+      }, { status: 403 })
+    }
+    
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     return NextResponse.json(templates)
   } catch (error) {
-    console.error("Error fetching templates:", error)
+    logger.error("Error fetching templates:", { error })
     return NextResponse.json(
       { error: "Failed to fetch templates" },
       { status: 500 }
@@ -68,15 +87,32 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
+    // Validate subscription limits
+    if (!auth) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+    }
+    
+    const validation = await subscriptionValidator.validateAction(
+      auth.organizationId,
+      'question'
+    )
+    
+    if (!validation.allowed) {
+      return NextResponse.json({
+        error: validation.reason,
+        upgradeRequired: validation.upgradeRequired
+      }, { status: 403 })
+    }
+    
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
+    const body = await _request.json()
     
     // Mock save - in production, save to database
     const newTemplate = {
@@ -95,7 +131,7 @@ export async function POST(request: NextRequest) {
       template: newTemplate,
     })
   } catch (error) {
-    console.error("Error saving template:", error)
+    logger.error("Error saving template:", { error })
     return NextResponse.json(
       { error: "Failed to save template" },
       { status: 500 }

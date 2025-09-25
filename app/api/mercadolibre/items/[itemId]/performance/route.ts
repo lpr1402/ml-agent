@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../../base"
 
@@ -108,7 +109,7 @@ export async function GET(
       { status: performanceResponse.status }
     )
   } catch (error) {
-    console.error("Error fetching item performance:", error)
+    logger.error("Error fetching item performance:", { error })
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

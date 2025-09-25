@@ -1,0 +1,42 @@
+version: '3'
+
+services:
+  ml-agent:
+    build: .
+    container_name: ml-agent-app
+    restart: always
+    networks:
+      - default
+      - traefik_network
+    expose:
+      - "3007"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ml-agent.rule=Host(`gugaleo.axnexlabs.com.br`)
+      - traefik.http.routers.ml-agent.entrypoints=websecure
+      - traefik.http.routers.ml-agent.tls=true
+      - traefik.http.routers.ml-agent.tls.certresolver=letsencrypt
+      - traefik.http.services.ml-agent.loadbalancer.server.port=3007
+    environment:
+      - NODE_ENV=production
+      - PORT=3007
+      - DATABASE_URL=postgresql://mlagent:mlagent2025@host.docker.internal:5432/mlagent_db?schema=public
+      - REDIS_URL=redis://host.docker.internal:6379
+      - NEXTAUTH_URL=https://gugaleo.axnexlabs.com.br
+      - NEXTAUTH_SECRET=super-secret-key-for-production-ml-agent-2025
+      - ML_CLIENT_ID=8077330788571096
+      - ML_CLIENT_SECRET=mSDy6bOhFaF6pA5Ns6kX0pIelkR9oajL
+      - ML_REDIRECT_URI=https://gugaleo.axnexlabs.com.br/api/auth/callback/mercadolibre
+      - ENCRYPTION_KEY=very-secure-encryption-key-2025-ml-agent-prod
+      - JWT_SECRET=ultra-secure-jwt-secret-2025-production
+      - NEXT_PUBLIC_API_URL=https://gugaleo.axnexlabs.com.br
+    volumes:
+      - ./logs:/app/logs
+      - ./.next:/app/.next
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  traefik_network:
+    external:
+      name: root_default

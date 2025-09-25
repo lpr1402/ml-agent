@@ -1,22 +1,40 @@
+import { logger } from '@/lib/logger'
+
 export class APIClient {
-  private getToken(): string | null {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("ml_access_token")
+  // CRITICAL: Get session token for SSE authentication
+  getSessionToken(): string | null {
+    if (typeof document === 'undefined') return null
+
+    const cookies = document.cookie.split(';')
+    // Cookie padronizado para produção
+    const sessionCookie = cookies.find(c =>
+      c.trim().startsWith('ml-agent-session=')
+    )
+
+    if (sessionCookie) {
+      return sessionCookie.split('=')[1] || null
     }
+
     return null
   }
 
   private getHeaders(): HeadersInit {
-    const token = this.getToken()
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       "Accept": "application/json",
     }
     
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
+    // Add CSRF token for non-GET requests
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';')
+      const csrfCookie = cookies.find(c => c.trim().startsWith('ml-agent-csrf='))
+      if (csrfCookie) {
+        headers['x-csrf-token'] = csrfCookie.split('=')[1] || ''
+      }
     }
     
+    // Session authentication is handled via cookies automatically
+    // No need for Bearer tokens
     return headers
   }
 
@@ -24,34 +42,16 @@ export class APIClient {
     const response = await fetch(url, {
       method: "GET",
       headers: this.getHeaders(),
+      credentials: "include", // Important: include cookies
     })
     
     if (!response.ok) {
-      console.error(`API call failed: ${url} - Status: ${response.status}`)
+      logger.error(`API call failed: ${url} - Status: ${response.status}`)
       
       if (response.status === 401) {
-        // Only clear tokens and redirect if it's a real auth failure
-        // Not on initial load or temporary network issues
-        console.warn("401 Unauthorized - Token may be expired")
-        
-        // Give it a moment to ensure it's not a race condition
-        setTimeout(() => {
-          const currentToken = localStorage.getItem("ml_access_token")
-          if (!currentToken) {
-            // Already logged out, don't redirect again
-            return
-          }
-          
-          // Clear auth and redirect
-          localStorage.removeItem("ml_access_token")
-          localStorage.removeItem("ml_refresh_token")
-          localStorage.removeItem("ml_user_id")
-          localStorage.removeItem("ml_user_name")
-          localStorage.removeItem("ml_user_email")
-          localStorage.removeItem("ml_expires_at")
-          window.location.href = "/login"
-        }, 1000)
-        
+        // Session expired - redirect to login
+        logger.warn("401 Unauthorized - Session expired")
+        window.location.href = "/login"
         throw new Error("Unauthorized")
       }
       throw new Error(`API call failed: ${response.statusText}`)
@@ -61,95 +61,154 @@ export class APIClient {
   }
 
   async post(url: string, data?: any) {
-    const response = await fetch(url, {
+    const options: RequestInit = {
       method: "POST",
       headers: this.getHeaders(),
-      body: data ? JSON.stringify(data) : undefined,
-    })
-    
+      credentials: "include", // Important: include cookies
+    }
+
+    if (data) {
+      options.body = JSON.stringify(data)
+    }
+
+    const response = await fetch(url, options)
+
+    // Handle redirects (3xx) gracefully
+    if (response.status >= 300 && response.status < 400) {
+      // For logout specifically, consider redirect as success
+      if (url.includes('/auth/logout')) {
+        return { success: true, message: 'Logged out successfully' }
+      }
+      // For other endpoints, follow redirect
+      return { redirected: true, location: response.headers.get('location') }
+    }
+
     if (!response.ok) {
-      console.error(`API POST failed: ${url} - Status: ${response.status}`)
-      
       // Try to get error details from response
+      let errorBody: any = {}
       let errorDetails = response.statusText
+
       try {
-        const errorBody = await response.json()
+        errorBody = await response.json()
         if (errorBody.error) {
           errorDetails = errorBody.error
         }
-        console.error("Error details:", errorBody)
-      } catch (e) {
+      } catch (_e) {
         // Response might not be JSON
       }
-      
-      if (response.status === 401) {
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("ml_access_token")
-          localStorage.removeItem("ml_refresh_token")
-          localStorage.removeItem("ml_user_id")
-          localStorage.removeItem("ml_user_name")
-          localStorage.removeItem("ml_user_email")
-          localStorage.removeItem("ml_expires_at")
-          window.location.href = "/login"
-        }
-        throw new Error("Unauthorized")
+
+      // Only log as error if it's not an expected condition
+      if (response.status >= 500 || (response.status === 400 && !errorDetails.includes("answered"))) {
+        logger.error(`API POST failed: ${url} - Status: ${response.status}`, {
+          status: response.status,
+          error: errorDetails,
+          body: errorBody
+        })
       }
-      throw new Error(`API call failed: ${errorDetails}`)
+
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname
+          if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            sessionStorage.clear()
+            localStorage.removeItem('ml-agent-session')
+            window.location.href = "/login?session_expired=true"
+          }
+        }
+        throw new Error("Session expired. Please login again.")
+      }
+
+      // Create a more detailed error object
+      const error: any = new Error(errorDetails)
+      error.response = {
+        status: response.status,
+        data: errorBody
+      }
+      throw error
     }
-    
+
     return response.json()
   }
 
   async put(url: string, data?: any) {
-    const response = await fetch(url, {
+    const options: RequestInit = {
       method: "PUT",
       headers: this.getHeaders(),
-      body: data ? JSON.stringify(data) : undefined,
-    })
+      credentials: "include", // Important: include cookies
+    }
+    
+    if (data) {
+      options.body = JSON.stringify(data)
+    }
+    
+    const response = await fetch(url, options)
     
     if (!response.ok) {
+      logger.error(`API PUT failed: ${url} - Status: ${response.status}`)
+      
       if (response.status === 401) {
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("ml_access_token")
-          localStorage.removeItem("ml_refresh_token")
-          localStorage.removeItem("ml_user_id")
-          localStorage.removeItem("ml_user_name")
-          localStorage.removeItem("ml_user_email")
-          localStorage.removeItem("ml_expires_at")
-          window.location.href = "/login"
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname
+          if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            sessionStorage.clear()
+            localStorage.removeItem('ml-agent-session')
+            window.location.href = "/login?session_expired=true"
+          }
         }
-        throw new Error("Unauthorized")
+        throw new Error("Session expired. Please login again.")
       }
-      throw new Error(`API call failed: ${response.statusText}`)
+      
+      throw new Error(`API PUT failed: ${response.statusText}`)
     }
     
     return response.json()
   }
 
-  async patch(url: string, data?: any) {
+  async delete(url: string) {
     const response = await fetch(url, {
-      method: "PATCH",
+      method: "DELETE",
       headers: this.getHeaders(),
-      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include", // Important: include cookies
     })
     
     if (!response.ok) {
+      logger.error(`API DELETE failed: ${url} - Status: ${response.status}`)
+      
       if (response.status === 401) {
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("ml_access_token")
-          localStorage.removeItem("ml_refresh_token")
-          localStorage.removeItem("ml_user_id")
-          localStorage.removeItem("ml_user_name")
-          localStorage.removeItem("ml_user_email")
-          localStorage.removeItem("ml_expires_at")
-          window.location.href = "/login"
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname
+          if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            sessionStorage.clear()
+            localStorage.removeItem('ml-agent-session')
+            window.location.href = "/login?session_expired=true"
+          }
         }
-        throw new Error("Unauthorized")
+        throw new Error("Session expired. Please login again.")
       }
-      throw new Error(`API call failed: ${response.statusText}`)
+      
+      throw new Error(`API DELETE failed: ${response.statusText}`)
     }
     
     return response.json()
+  }
+
+  async clearAuth() {
+    // Logout via API to clear server session
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: this.getHeaders(),
+        credentials: "include"
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        logger.info("Logout successful", data)
+      }
+    } catch (error) {
+      logger.error("Logout error:", { error })
+    }
+    window.location.href = "/login"
   }
 }
 

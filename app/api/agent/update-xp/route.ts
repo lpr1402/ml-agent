@@ -1,21 +1,24 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 import { prisma } from "@/lib/prisma"
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
     
-    const body = await request.json()
+    const sellerId = auth.mlAccount.mlUserId
+    
+    const body = await _request.json()
     const { xp, achievements, level, streak } = body
     
     // First, get existing metrics to compare maxStreak
     const existingMetrics = await prisma.userMetrics.findUnique({
-      where: { mlUserId: auth.userId }
+      where: { mlUserId: sellerId }
     })
     
     const maxStreak = existingMetrics 
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
     
     // Update user metrics with XP and gamification data
     const updatedMetrics = await prisma.userMetrics.upsert({
-      where: { mlUserId: auth.userId },
+      where: { mlUserId: sellerId },
       update: {
         totalXP: xp || 0,
         currentLevel: level || 1,
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
         lastActiveAt: new Date()
       },
       create: {
-        mlUserId: auth.userId,
+        mlUserId: sellerId,
         totalXP: xp || 0,
         currentLevel: level || 1,
         currentStreak: streak || 0,
@@ -62,21 +65,23 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("Update XP error:", error)
+    logger.error("Update XP error:", { error })
     return NextResponse.json({ error: "Failed to update XP" }, { status: 500 })
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: Request) {
   try {
-    const auth = await getAuthFromRequest(request)
+    const auth = await getAuthenticatedAccount()
     
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
     
+    const sellerId = auth.mlAccount.mlUserId
+    
     const metrics = await prisma.userMetrics.findUnique({
-      where: { mlUserId: auth.userId }
+      where: { mlUserId: sellerId }
     })
     
     if (!metrics) {
@@ -98,7 +103,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("Get XP error:", error)
+    logger.error("Get XP error:", { error })
     return NextResponse.json({ error: "Failed to get XP" }, { status: 500 })
   }
 }

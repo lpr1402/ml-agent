@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../../../base"
 
@@ -33,7 +34,7 @@ export async function GET(
     )
 
     if (!response.ok) {
-      console.error(`Failed to fetch time window visits: ${response.status}`)
+      logger.error(`Failed to fetch time window visits: ${response.status}`)
       return NextResponse.json(
         { error: "Failed to fetch time window visits data" },
         { status: response.status }
@@ -55,7 +56,7 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error("Error fetching item time window visits:", error)
+    logger.error("Error fetching item time window visits:", { error })
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

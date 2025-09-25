@@ -1,0 +1,25 @@
+http:
+  routers:
+    ml-agent:
+      rule: "Host(`gugaleo.axnexlabs.com.br`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: ml-agent-service
+      middlewares:
+        - ml-agent-headers
+
+  services:
+    ml-agent-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3007"
+
+  middlewares:
+    ml-agent-headers:
+      headers:
+        customFrameOptionsValue: "SAMEORIGIN"
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"

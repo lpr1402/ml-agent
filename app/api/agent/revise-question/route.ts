@@ -1,16 +1,19 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendRevisionNotification } from "@/lib/services/whatsapp-professional"
-import { getAuthFromRequest } from "@/app/api/mercadolibre/base"
+import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
+import { decryptToken } from "@/lib/security/encryption"
 
-const N8N_REVISION_WEBHOOK = "https://dashboard.axnexlabs.com.br/webhook/revisao"
+const N8N_REVISION_WEBHOOK = process.env['N8N_WEBHOOK_EDIT_URL'] || "https://dashboard.axnexlabs.com.br/webhook/editar"
 
 export async function POST(request: NextRequest) {
   try {
-    // Get user authentication from request headers
-    const auth = await getAuthFromRequest(request)
-    
-    if (!auth) {
+    // Verificar sessão
+    const { getCurrentSession } = await import('@/lib/auth/ml-auth')
+    const session = await getCurrentSession()
+
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
     
@@ -20,20 +23,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
     
-    // Get question details
-    const question = await prisma.question.findUnique({
-      where: { id: questionId }
+    // Buscar pergunta com informações completas da conta ML
+    const question = await prisma.question.findFirst({
+      where: {
+        id: questionId,
+        mlAccount: {
+          organizationId: session.organizationId // Isolamento multi-tenant
+        }
+      },
+      include: {
+        mlAccount: {
+          select: {
+            id: true,
+            mlUserId: true,
+            nickname: true,
+            organizationId: true
+          }
+        }
+      }
     })
     
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
+
+    if (!question.mlAccount) {
+      return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
+    }
     
     let revisedResponse = editedResponse
     
     // If edited response provided, use it directly
-    if (editedResponse && editedResponse !== question.aiResponse) {
-      console.log("📝 Using manually edited response")
+    if (editedResponse && editedResponse !== question.aiSuggestion) {
+      logger.info("📝 Using manually edited response")
       revisedResponse = editedResponse
     } else if (feedback) {
       // Update status to REVISING
@@ -41,64 +63,145 @@ export async function POST(request: NextRequest) {
         where: { id: questionId },
         data: { status: "REVISING" }
       })
-      
-      // Prepare complete payload for N8N revision agent (same format as processamento)
-      const revisionPayload = {
-        // Basic question info
-        questionid: question.mlQuestionId,
-        question_text: question.text,
-        seller_id: question.mlUserId,
-        item_id: question.itemId,
-        
-        // Product details
-        product_info: {
-          title: question.itemTitle,
-          price: question.itemPrice,
-          permalink: question.itemPermalink,
-          item_id: question.itemId
-        },
-        
-        // Original AI response and revision request
-        original_response: question.aiResponse,
-        revision_feedback: feedback,
-        
-        // Context for better revision
-        signature: `\n\nAtenciosamente,\nEquipe de Vendas`,
-        response_instructions: `REVISE a resposta anterior com base no feedback do vendedor. Mantenha o tom profissional e objetivo. Máximo 500 caracteres. Responda em português brasileiro.`,
-        
-        // Memory key for context
-        memory_key: `${question.itemId}_${question.mlUserId}`,
-        
-        // Metadata
-        metadata: {
-          question_id: question.mlQuestionId,
-          item_id: question.itemId,
-          seller_id: question.mlUserId,
-          revision_requested_at: new Date().toISOString(),
-          sequential_id: question.sequentialId
+
+      // Emitir evento WebSocket de revisão
+      try {
+        const { emitQuestionRevising } = require('@/lib/websocket/emit-events.js')
+        emitQuestionRevising(
+          question.mlQuestionId,
+          feedback,
+          question.mlAccount.organizationId
+        )
+      } catch (wsError) {
+        logger.warn('[Revision] Failed to emit revising event', { error: wsError })
+      }
+
+      // Buscar dados completos do produto da API ML
+      const { getValidMLToken } = await import('@/lib/ml-api/token-manager')
+      const accessToken = await getValidMLToken(question.mlAccount.id)
+
+      let itemData = null
+      let descriptionData = null
+
+      if (accessToken) {
+        // Buscar dados do produto
+        try {
+          const itemResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          })
+          if (itemResponse.ok) {
+            itemData = await itemResponse.json()
+          }
+
+          // Buscar descrição
+          const descResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}/description`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          })
+          if (descResponse.ok) {
+            descriptionData = await descResponse.json()
+          }
+        } catch (err) {
+          logger.warn('[Revision] Could not fetch item data:', { error: err })
         }
       }
-      
-      console.log("📝 Sending revision request to N8N:", revisionPayload)
-      
-      // Send to N8N revision webhook
-      const n8nResponse = await fetch(N8N_REVISION_WEBHOOK, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
+
+      // Fallback para dados armazenados
+      if (!itemData) {
+        itemData = {
+          id: question.itemId,
+          title: question.itemTitle || 'Produto',
+          price: question.itemPrice || 0,
+          permalink: question.itemPermalink || ''
+        }
+      }
+
+      // Buscar histórico de perguntas do comprador
+      const buyerQuestions = await fetchBuyerQuestionsHistory(
+        question.customerId || '',
+        question.mlAccount.organizationId,
+        question.mlQuestionId,
+        prisma,
+        decryptToken
+      )
+
+      // Construir payload unificado com feedback de revisão
+      const revisionPayload = await buildN8NPayload(
+        {
+          mlQuestionId: question.mlQuestionId,
+          text: question.text,
+          item_id: question.itemId,
+          customerId: question.customerId // Adicionar customerId para histórico
         },
-        body: JSON.stringify(revisionPayload)
-      })
+        itemData,
+        descriptionData,
+        buyerQuestions,
+        {
+          originalResponse: question.aiSuggestion || '',
+          revisionFeedback: feedback
+        }
+      )
       
-      if (!n8nResponse.ok) {
-        console.error("N8N revision failed:", await n8nResponse.text())
-        
+      logger.info("📝 Sending revision request to N8N:", { error: { error: revisionPayload } })
+      
+      // Send to N8N revision webhook with 2 minute timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes timeout
+
+      let n8nResponse: Response
+      try {
+        n8nResponse = await fetch(N8N_REVISION_WEBHOOK, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(revisionPayload),
+          signal: controller.signal
+        })
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        logger.error("[Revision] N8N request failed:", {
+          error: fetchError.name === 'AbortError' ? 'Request timeout after 2 minutes' : fetchError.message
+        })
+
+        // Update question status to FAILED with clear error
         await prisma.question.update({
           where: { id: questionId },
-          data: { status: "AWAITING_APPROVAL" } // Revert status
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            failureReason: fetchError.name === 'AbortError'
+              ? "IA demorou mais de 2 minutos para responder. Tente novamente."
+              : "Erro ao conectar com o serviço de IA. Tente novamente."
+          }
         })
-        
-        return NextResponse.json({ error: "Revision failed" }, { status: 500 })
+
+        return NextResponse.json({
+          error: fetchError.name === 'AbortError'
+            ? "Timeout: A IA não respondeu em 2 minutos"
+            : "Erro de conexão com serviço de IA"
+        }, { status: 500 })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+      
+      if (!n8nResponse.ok) {
+        const errorText = await n8nResponse.text()
+        logger.error("N8N revision failed", { response: errorText })
+
+        // Update to FAILED status with clear error message
+        await prisma.question.update({
+          where: { id: questionId },
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            failureReason: `Erro na IA: ${errorText.substring(0, 200)}` // Limit error message size
+          }
+        })
+
+        return NextResponse.json({
+          error: "A IA retornou um erro. Tente novamente.",
+          details: errorText
+        }, { status: 500 })
       }
       
       // N8N will respond with revised answer
@@ -119,29 +222,33 @@ export async function POST(request: NextRequest) {
     await prisma.question.update({
       where: { id: questionId },
       data: {
-        aiResponse: revisedResponse,
-        status: "AWAITING_APPROVAL"
+        aiSuggestion: revisedResponse,
+        status: "PENDING"
       }
     })
     
     // Send WhatsApp notification about revision
     await sendRevisionNotification({
-      sequentialId: question.sequentialId,
+      sequentialId: parseInt(question.id.slice(-6), 16) || 0,
       questionId,
       productTitle: question.itemTitle || "Produto",
-      originalResponse: question.aiResponse || "",
+      originalResponse: question.aiSuggestion || "",
       revisedResponse,
-      approvalUrl: `https://arabic-breeding-greatly-citizens.trycloudflare.com/agente/aprovar/${questionId}`
+      approvalUrl: `https://gugaleo.axnexlabs.com.br/agente/aprovar/${questionId}`
     })
     
-    // Update metrics
-    await prisma.userMetrics.update({
-      where: { mlUserId: question.mlUserId },
-      data: {
-        revisedCount: { increment: 1 },
-        lastActiveAt: new Date()
-      }
-    })
+    // Update metrics if userMetrics table exists
+    try {
+      await prisma.userMetrics.update({
+        where: { mlUserId: question.mlAccount.mlUserId },
+        data: {
+          revisedCount: { increment: 1 },
+          lastActiveAt: new Date()
+        }
+      })
+    } catch (metricsError) {
+      logger.warn('Could not update metrics:', { error: { error: metricsError } })
+    }
     
     return NextResponse.json({
       success: true,
@@ -150,7 +257,7 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error("Revision error:", error)
+    logger.error("Revision error:", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -173,7 +280,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ revisions })
     
   } catch (error) {
-    console.error("Get revisions error:", error)
+    logger.error("Get revisions error:", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

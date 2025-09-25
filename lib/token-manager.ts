@@ -1,193 +1,328 @@
 /**
- * Token Manager for 24/7 Operation
- * Handles token persistence, refresh, and automatic renewal
+ * Token Manager para Sistema Multi-Tenant
+ * Gerencia tokens do MLAccount com refresh automático
+ * Compatível com webhooks e operação 24/7
  */
 
+import { logger } from '@/lib/logger'
 import { prisma } from "./prisma"
+import { decryptToken, encryptToken } from "./security/encryption"
+import { cache } from '@/lib/cache/cache-strategy'
+import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
 
-interface TokenData {
-  accessToken: string
-  refreshToken: string
-  expiresIn: number // seconds
-  userId: string
-}
+export class TokenManager {
+  // Usa Redis para sincronizar refresh entre workers PM2
+  // private refreshing: Map<string, Promise<string | null>> = new Map()
 
-class TokenManager {
-  private refreshing: Map<string, Promise<string | null>> = new Map()
-  
   constructor() {
-    console.log('[TokenManager] Initialized')
+    logger.info('[TokenManager] Initialized - Multi-tenant MLAccount System with Redis Sync')
   }
 
   /**
-   * Store or update user tokens in database
+   * Obtém access token válido para um usuário ML
+   * Busca primeiro no MLAccount (novo sistema multi-tenant)
    */
-  async storeTokens(data: TokenData): Promise<void> {
-    const expiresAt = new Date(Date.now() + (data.expiresIn * 1000))
-    
-    await prisma.userToken.upsert({
-      where: { mlUserId: data.userId },
-      update: {
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        expiresAt,
-        updatedAt: new Date()
-      },
-      create: {
-        mlUserId: data.userId,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        expiresAt
-      }
-    })
-    
-    console.log(`[TokenManager] Stored tokens for user ${data.userId}, expires at ${expiresAt}`)
-  }
-
-  /**
-   * Get valid access token for user, refreshing if necessary
-   */
-  async getAccessToken(userId: string): Promise<string | null> {
+  async getAccessToken(mlUserId: string): Promise<string | null> {
     try {
-      // Check if already refreshing for this user
-      if (this.refreshing.has(userId)) {
-        return await this.refreshing.get(userId)!
+      // Verifica se já está fazendo refresh usando Redis ao invés de Map local
+      const refreshLockKey = `ml:refreshing:${mlUserId}`
+      const isRefreshing = await cache.get(refreshLockKey)
+      if (isRefreshing) {
+        // Aguarda refresh terminar (máximo 10 segundos)
+        let attempts = 0
+        while (attempts < 20) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          const stillRefreshing = await cache.get(refreshLockKey)
+          if (!stillRefreshing) break
+          attempts++
+        }
       }
 
-      // Get token from database
-      const tokenData = await prisma.userToken.findUnique({
-        where: { mlUserId: userId }
+      // CACHE: Tenta buscar token do cache primeiro
+      const cacheKey = `ml:token:${mlUserId}`
+      const cachedToken = await cache.get(cacheKey) as string
+      if (cachedToken) {
+        logger.debug(`[TokenManager] Token found in cache for ${mlUserId}`)
+        return cachedToken as string
+      }
+
+      // Busca conta ML no novo sistema
+      const mlAccount = await prisma.mLAccount.findFirst({
+        where: { 
+          mlUserId: mlUserId,
+          isActive: true 
+        },
+        select: {
+          id: true,
+          nickname: true,
+          accessToken: true,
+          accessTokenIV: true,
+          accessTokenTag: true,
+          refreshToken: true,
+          refreshTokenIV: true,
+          refreshTokenTag: true,
+          tokenExpiresAt: true
+        }
       })
 
-      if (!tokenData) {
-        console.log(`[TokenManager] No token found for user ${userId}`)
+      if (!mlAccount) {
+        logger.info(`[TokenManager] No ML account found for user ${mlUserId}`)
         return null
       }
 
-      // Check if token is expired or about to expire (5 min buffer)
-      const now = new Date()
-      const expirationBuffer = new Date(tokenData.expiresAt.getTime() - 5 * 60 * 1000)
-      
-      if (now < expirationBuffer) {
-        // Token is still valid
-        return tokenData.accessToken
+      // Verifica se tem dados de criptografia
+      if (!mlAccount.accessToken || !mlAccount.accessTokenIV || !mlAccount.accessTokenTag) {
+        logger.error(`[TokenManager] Missing encryption data for ${mlAccount.nickname}`)
+        return null
       }
 
-      // Token needs refresh
-      console.log(`[TokenManager] Token expired for user ${userId}, refreshing...`)
-      
-      // Create refresh promise to avoid multiple simultaneous refreshes
-      const refreshPromise = this.refreshAccessToken(userId, tokenData.refreshToken)
-      this.refreshing.set(userId, refreshPromise)
-      
+      // Descriptografa o token
+      let accessToken: string
       try {
-        const newToken = await refreshPromise
+        accessToken = decryptToken({
+          encrypted: mlAccount.accessToken,
+          iv: mlAccount.accessTokenIV,
+          authTag: mlAccount.accessTokenTag
+        })
+      } catch (_error) {
+        logger.error(`[TokenManager] Failed to decrypt token for ${mlAccount.nickname}:`, { _error })
+        return null
+      }
+
+      // Verifica se precisa refresh (5 min antes de expirar)
+      const now = new Date()
+      const expirationBuffer = new Date(mlAccount.tokenExpiresAt.getTime() - 5 * 60 * 1000)
+      
+      if (now < expirationBuffer) {
+        // Token ainda válido - adiciona ao cache
+        const ttl = Math.floor((mlAccount.tokenExpiresAt.getTime() - now.getTime()) / 1000)
+        await cache.mlToken(mlUserId, accessToken, ttl)
+        return accessToken
+      }
+
+      // Token precisa refresh
+      logger.info(`[TokenManager] Token expired for ${mlAccount.nickname}, refreshing...`)
+      
+      if (!mlAccount.refreshToken || !mlAccount.refreshTokenIV || !mlAccount.refreshTokenTag) {
+        logger.error(`[TokenManager] Missing refresh token data for ${mlAccount.nickname}`)
+        return null
+      }
+
+      // Marca como refreshing no Redis para evitar múltiplos refreshes simultâneos
+      const refreshLockKey2 = `ml:refreshing:${mlUserId}`
+      await cache.set(refreshLockKey2, 'true', 30) // TTL de 30 segundos para evitar lock permanente
+
+      try {
+        const newToken = await this.refreshAccessToken(mlAccount)
         return newToken
       } finally {
-        this.refreshing.delete(userId)
+        // Remove flag de refreshing do Redis
+        await cache.invalidate(refreshLockKey2)
       }
       
-    } catch (error) {
-      console.error(`[TokenManager] Error getting token for user ${userId}:`, error)
+    } catch (_error) {
+      logger.error(`[TokenManager] Error getting token for user ${mlUserId}:`, { _error })
       return null
     }
   }
 
   /**
-   * Refresh access token using refresh token
+   * Faz refresh do access token usando refresh token
    */
-  private async refreshAccessToken(userId: string, refreshToken: string): Promise<string | null> {
+  private async refreshAccessToken(account: any): Promise<string | null> {
     try {
-      const response = await fetch("https://api.mercadolibre.com/oauth/token", {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: process.env.AUTH_MERCADOLIBRE_ID!,
-          client_secret: process.env.AUTH_MERCADOLIBRE_SECRET!,
-          refresh_token: refreshToken
-        })
+      // Descriptografa refresh token
+      const refreshToken = decryptToken({
+        encrypted: account.refreshToken,
+        iv: account.refreshTokenIV,
+        authTag: account.refreshTokenTag
       })
+
+      // Usar fetchWithRateLimit para evitar erro 429
+      const response = await fetchWithRateLimit(
+        "https://api.mercadolibre.com/oauth/token",
+        {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: process.env['ML_CLIENT_ID']!,
+            client_secret: process.env['ML_CLIENT_SECRET']!,
+            refresh_token: refreshToken
+          })
+        },
+        'oauth/token'
+      )
 
       if (!response.ok) {
         const error = await response.text()
-        console.error(`[TokenManager] Failed to refresh token for user ${userId}:`, error)
+        logger.error(`[TokenManager] Failed to refresh token for ${account.nickname}:`, { error })
         
-        // If refresh fails, remove invalid tokens
-        await prisma.userToken.delete({
-          where: { mlUserId: userId }
-        }).catch(() => {})
+        // Marca conta como inativa se refresh falhar
+        await prisma.mLAccount.update({
+          where: { id: account.id },
+          data: {
+            isActive: false,
+            connectionError: `Refresh failed: ${error}`
+          }
+        })
         
         return null
       }
 
       const data = await response.json()
       
-      // Store new tokens
-      await this.storeTokens({
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in,
-        userId
+      // Criptografa novos tokens
+      const encryptedAccess = encryptToken(data.access_token)
+      const encryptedRefresh = encryptToken(data.refresh_token)
+      
+      // Atualiza tokens no banco
+      await prisma.mLAccount.update({
+        where: { id: account.id },
+        data: {
+          accessToken: encryptedAccess.encrypted,
+          accessTokenIV: encryptedAccess.iv,
+          accessTokenTag: encryptedAccess.authTag,
+          refreshToken: encryptedRefresh.encrypted,
+          refreshTokenIV: encryptedRefresh.iv,
+          refreshTokenTag: encryptedRefresh.authTag,
+          tokenExpiresAt: new Date(Date.now() + data.expires_in * 1000),
+          lastSyncAt: new Date(),
+          connectionError: null
+        }
       })
       
-      console.log(`[TokenManager] Successfully refreshed token for user ${userId}`)
+      logger.info(`[TokenManager] Successfully refreshed token for ${account.nickname}`)
+      
+      // CACHE: Adiciona novo token ao cache
+      await cache.mlToken(account.mlUserId, data.access_token, data.expires_in)
+      
       return data.access_token
       
-    } catch (error) {
-      console.error(`[TokenManager] Error refreshing token for user ${userId}:`, error)
+    } catch (_error) {
+      logger.error(`[TokenManager] Error refreshing token:`, { _error })
       return null
     }
   }
 
   /**
-   * Remove user tokens (for logout)
+   * Armazena ou atualiza tokens para um usuário
+   * Usado quando recebe novos tokens do OAuth
    */
-  async removeTokens(userId: string): Promise<void> {
-    await prisma.userToken.delete({
-      where: { mlUserId: userId }
-    }).catch(() => {})
-    
-    console.log(`[TokenManager] Removed tokens for user ${userId}`)
+  async storeTokens(data: {
+    mlUserId: string
+    accessToken: string
+    refreshToken: string
+    expiresIn: number
+  }): Promise<void> {
+    try {
+      // Busca conta ML existente
+      const mlAccount = await prisma.mLAccount.findFirst({
+        where: { mlUserId: data.mlUserId }
+      })
+
+      if (!mlAccount) {
+        logger.error(`[TokenManager] No ML account found to store tokens for user ${data.mlUserId}`)
+        return
+      }
+
+      // Criptografa tokens
+      const encryptedAccess = encryptToken(data.accessToken)
+      const encryptedRefresh = encryptToken(data.refreshToken)
+
+      // Atualiza tokens
+      await prisma.mLAccount.update({
+        where: { id: mlAccount.id },
+        data: {
+          accessToken: encryptedAccess.encrypted,
+          accessTokenIV: encryptedAccess.iv,
+          accessTokenTag: encryptedAccess.authTag,
+          refreshToken: encryptedRefresh.encrypted,
+          refreshTokenIV: encryptedRefresh.iv,
+          refreshTokenTag: encryptedRefresh.authTag,
+          tokenExpiresAt: new Date(Date.now() + data.expiresIn * 1000),
+          lastSyncAt: new Date(),
+          isActive: true,
+          connectionError: null
+        }
+      })
+
+      logger.info(`[TokenManager] Stored tokens for ${mlAccount.nickname}`)
+    } catch (_error) {
+      logger.error(`[TokenManager] Error storing tokens:`, { _error })
+    }
   }
 
   /**
-   * Check if user has valid tokens
+   * Remove tokens de um usuário (para logout)
    */
-  async hasValidToken(userId: string): Promise<boolean> {
-    const token = await this.getAccessToken(userId)
+  async removeTokens(mlUserId: string): Promise<void> {
+    try {
+      await prisma.mLAccount.updateMany({
+        where: { mlUserId },
+        data: {
+          accessToken: "",
+          accessTokenIV: "",
+          accessTokenTag: "",
+          refreshToken: "",
+          refreshTokenIV: "",
+          refreshTokenTag: "",
+          isActive: false,
+          connectionError: "User logged out"
+        }
+      })
+      
+      logger.info(`[TokenManager] Removed tokens for user ${mlUserId}`)
+    } catch (_error) {
+      logger.error(`[TokenManager] Error removing tokens:`, { _error })
+    }
+  }
+
+  /**
+   * Verifica se usuário tem token válido
+   */
+  async hasValidToken(mlUserId: string): Promise<boolean> {
+    const token = await this.getAccessToken(mlUserId)
     return token !== null
   }
 
   /**
-   * Get all users with tokens (for monitoring)
+   * Obtém todos os usuários com tokens ativos
    */
   async getAllTokenUsers(): Promise<string[]> {
-    const users = await prisma.userToken.findMany({
+    const accounts = await prisma.mLAccount.findMany({
+      where: { isActive: true },
       select: { mlUserId: true }
     })
-    return users.map(u => u.mlUserId)
+    return accounts.map(a => a.mlUserId)
   }
 
   /**
-   * Cleanup expired tokens (run periodically)
+   * Limpa tokens expirados (executar periodicamente)
    */
   async cleanupExpiredTokens(): Promise<void> {
     const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
     
-    const result = await prisma.userToken.deleteMany({
+    const result = await prisma.mLAccount.updateMany({
       where: {
-        updatedAt: {
-          lt: sixMonthsAgo
-        }
+        lastSyncAt: { lt: sixMonthsAgo },
+        isActive: false
+      },
+      data: {
+        accessToken: "",
+        accessTokenIV: "",
+        accessTokenTag: "",
+        refreshToken: "",
+        refreshTokenIV: "",
+        refreshTokenTag: ""
       }
     })
     
     if (result.count > 0) {
-      console.log(`[TokenManager] Cleaned up ${result.count} expired token(s)`)
+      logger.info(`[TokenManager] Cleaned up ${result.count} expired token(s)`)
     }
   }
 }
@@ -195,24 +330,29 @@ class TokenManager {
 // Singleton instance
 export const tokenManager = new TokenManager()
 
-// Helper function for auth callback
+// Helper function para compatibilidade
 export async function storeUserTokens(data: {
   userId: string
   accessToken: string
   refreshToken: string
   expiresIn: number
 }) {
-  await tokenManager.storeTokens(data)
+  await tokenManager.storeTokens({
+    mlUserId: data.userId,
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    expiresIn: data.expiresIn
+  })
 }
 
-// Start cleanup job (runs every 24 hours)
+// Job de limpeza periódica
 if (typeof global !== 'undefined') {
   const g = global as any
   if (!g.tokenCleanupJob) {
     g.tokenCleanupJob = setInterval(() => {
       tokenManager.cleanupExpiredTokens()
-    }, 24 * 60 * 60 * 1000) // 24 hours
+    }, 24 * 60 * 60 * 1000) // 24 horas
     
-    console.log('[TokenManager] Cleanup job scheduled')
+    logger.info('[TokenManager] Cleanup job scheduled')
   }
 }

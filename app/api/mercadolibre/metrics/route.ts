@@ -1,158 +1,153 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getAuthFromRequest } from "../base"
+import { logger } from '@/lib/logger'
+import { NextResponse } from "next/server"
+import { getAuthenticatedAccount } from "@/lib/api/session-auth"
+import { mlApiQueue } from "@/lib/api/sequential-queue"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const auth = await getAuthFromRequest(request)
+    // Get authenticated account
+    const auth = await getAuthenticatedAccount()
     
-    if (!auth?.accessToken) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
+    if (!auth) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
-
-    // Get user info first to get the user ID
-    const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-      },
+    
+    // Get user info using sequential queue
+    const userData = await mlApiQueue.add(async () => {
+      const response = await fetch("https://api.mercadolibre.com/users/me", {
+        headers: {
+          Authorization: `Bearer ${auth.accessToken}`,
+          Accept: "application/json"
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user: ${response.status}`)
+      }
+      
+      return response.json()
     })
-
-    if (!userResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch user" }, { status: 401 })
-    }
-
-    const user = await userResponse.json()
-    const userId = user.id
-
-    // Get recent orders from last 30 days for accurate metrics
+    
+    const userId = userData.id
+    
+    // Get recent orders from last 30 days
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
     
-    const ordersResponse = await fetch(
-      `https://api.mercadolibre.com/orders/search?seller=${userId}&order.status=paid&order.date_created.from=${thirtyDaysAgo.toISOString()}&limit=50&sort=date_desc`,
-      {
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-        },
-      }
-    )
-
-    let orders = { results: [], paging: { total: 0 } }
-    if (ordersResponse.ok) {
-      orders = await ordersResponse.json()
-    }
-
-    // Calculate metrics from orders
-    const totalRevenue = orders.results?.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) || 0
-    const totalSales = orders.paging?.total || 0
-    const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0
-
-    // Get all items with details
-    const allItemsResponse = await fetch(
-      `https://api.mercadolibre.com/users/${userId}/items/search`,
-      {
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-        },
-      }
-    )
-
-    let itemsList = []
-    let activeItems = 0
-    let totalItems = 0
-    let soldQuantity = 0
-    
-    if (allItemsResponse.ok) {
-      const itemsData = await allItemsResponse.json()
-      const itemIds = itemsData.results || []
-      totalItems = itemsData.paging?.total || 0
-      
-      // Get details for each item (limit to first 20 for performance)
-      if (itemIds.length > 0) {
-        const itemDetailsPromises = itemIds.slice(0, 20).map(async (itemId: string) => {
-          try {
-            const response = await fetch(
-              `https://api.mercadolibre.com/items/${itemId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${auth.accessToken}`,
-                },
-              }
-            )
-            if (response.ok) {
-              return await response.json()
-            }
-            return null
-          } catch (error) {
-            return null
-          }
-        })
-        
-        const items = await Promise.all(itemDetailsPromises)
-        itemsList = items.filter(item => item !== null)
-        
-        activeItems = itemsList.filter((item: any) => item.status === 'active').length
-        soldQuantity = itemsList.reduce((sum: number, item: any) => sum + (item.sold_quantity || 0), 0)
-      }
-    }
-
-    // Get visits for user's items in the last 30 days
-    let totalVisits = 0
-    try {
-      const today = new Date()
-      
-      // Try multiple endpoints to get visits data
-      // 1. Try user visits endpoint with time window
-      const visitsResponse = await fetch(
-        `https://api.mercadolibre.com/users/${userId}/items_visits/time_window?last=30&unit=day`,
+    const ordersData = await mlApiQueue.add(async () => {
+      const response = await fetch(
+        `https://api.mercadolibre.com/orders/search?seller=${userId}&order.status=paid&order.date_created.from=${thirtyDaysAgo.toISOString()}&limit=50&sort=date_desc&api_version=4`,
         {
           headers: {
             Authorization: `Bearer ${auth.accessToken}`,
-          },
+            Accept: "application/json"
+          }
         }
       )
       
-      if (visitsResponse.ok) {
-        const visitsData = await visitsResponse.json()
-        totalVisits = visitsData.total_visits || visitsData.total || 0
-      } 
+      if (!response.ok) {
+        logger.info(`Orders fetch failed: ${response.status}`)
+        return { results: [], paging: { total: 0 } }
+      }
       
-      // 2. If first attempt fails, try individual items
-      if (totalVisits === 0 && itemsList.length > 0) {
-        // Get visits for active items
-        const activeItemsList = itemsList.filter((item: any) => item.status === 'active')
-        if (activeItemsList.length > 0) {
-          const itemIds = activeItemsList.slice(0, 10).map((item: any) => item.id).join(',')
-          const itemVisitsResponse = await fetch(
-            `https://api.mercadolibre.com/items/visits?ids=${itemIds}`,
-            {
-              headers: {
-                Authorization: `Bearer ${auth.accessToken}`,
-              },
-            }
-          )
-          
-          if (itemVisitsResponse.ok) {
-            const itemVisitsData = await itemVisitsResponse.json()
-            if (Array.isArray(itemVisitsData)) {
-              totalVisits = itemVisitsData.reduce((sum: number, item: any) => sum + (item.total_visits || 0), 0)
-            } else if (typeof itemVisitsData === 'object') {
-              totalVisits = itemVisitsData.total_visits || 0
-            }
+      return response.json()
+    })
+    
+    // Get items
+    const itemsData = await mlApiQueue.add(async () => {
+      const response = await fetch(
+        `https://api.mercadolibre.com/users/${userId}/items/search?status=active&api_version=4`,
+        {
+          headers: {
+            Authorization: `Bearer ${auth.accessToken}`,
+            Accept: "application/json"
           }
         }
+      )
+      
+      if (!response.ok) {
+        logger.info(`Items fetch failed: ${response.status}`)
+        return { results: [], paging: { total: 0 } }
       }
       
-      // 3. If still no visits, estimate from items data
-      if (totalVisits === 0 && itemsList.length > 0) {
-        // Sum visits from item details if available
-        totalVisits = itemsList.reduce((sum: number, item: any) => {
-          // Some items have visits_count or views field
-          return sum + (item.visits || item.visits_count || item.views || 0)
-        }, 0)
+      return response.json()
+    })
+    
+    // Calculate metrics
+    const orders = ordersData.results || []
+    const totalRevenue = orders.reduce((sum: number, order: any) => 
+      sum + (order.total_amount || 0), 0
+    )
+    const totalSales = ordersData.paging?.total || 0
+    const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0
+    
+    // Get details for some items (limit to 5 for performance)
+    const itemsList = []
+    let activeItems = 0
+    let soldQuantity = 0
+    const totalItems = itemsData.paging?.total || 0
+    
+    if (itemsData.results && itemsData.results.length > 0) {
+      const itemIds = itemsData.results.slice(0, 5)
+      
+      // Fetch item details sequentially
+      for (const itemId of itemIds) {
+        try {
+          const item = await mlApiQueue.add(async () => {
+            const response = await fetch(
+              `https://api.mercadolibre.com/items/${itemId}?api_version=4`,
+              {
+                headers: {
+                  Authorization: `Bearer ${auth.accessToken}`,
+                  Accept: "application/json"
+                }
+              }
+            )
+            
+            if (!response.ok) {
+              return null
+            }
+            
+            return response.json()
+          })
+          
+          if (item) {
+            itemsList.push(item)
+            if (item.status === 'active') activeItems++
+            soldQuantity += item.sold_quantity || 0
+          }
+        } catch (_error) {
+          logger.info(`Error fetching item ${itemId}:`, { error: _error })
+        }
       }
-    } catch (error) {
-      console.error("Error fetching visits:", error)
-      // Continue without visits data - will show 0
+    }
+    
+    // Try to get visits data
+    let totalVisits = 0
+    try {
+      const visitsData = await mlApiQueue.add(async () => {
+        const response = await fetch(
+          `https://api.mercadolibre.com/users/${userId}/items_visits/time_window?last=30&unit=day&api_version=4`,
+          {
+            headers: {
+              Authorization: `Bearer ${auth.accessToken}`,
+              Accept: "application/json"
+            }
+          }
+        )
+        
+        if (!response.ok) {
+          return null
+        }
+        
+        return response.json()
+      })
+      
+      if (visitsData) {
+        totalVisits = visitsData.total_visits || visitsData.total || 0
+      }
+    } catch (_error) {
+      logger.info("Could not fetch visits data")
     }
     
     // Build response
@@ -163,11 +158,13 @@ export async function GET(request: NextRequest) {
       },
       sales: {
         total: totalSales,
-        pending: orders.results?.filter((o: any) => o.status === "payment_in_process").length || 0,
+        pending: orders.filter((o: any) => o.status === "payment_in_process").length,
       },
       visits: {
         total: totalVisits,
-        conversionRate: totalSales > 0 && totalVisits > 0 ? (totalSales / totalVisits) * 100 : 0,
+        conversionRate: totalSales > 0 && totalVisits > 0 
+          ? (totalSales / totalVisits) * 100 
+          : 0,
       },
       items: {
         active: activeItems,
@@ -175,13 +172,19 @@ export async function GET(request: NextRequest) {
         sold_quantity: soldQuantity,
       },
       itemsList: itemsList,
-      reputation: user.seller_reputation || {},
-      recentOrders: orders.results?.slice(0, 10) || [],
+      reputation: userData.seller_reputation || {},
+      recentOrders: orders.slice(0, 10),
+      user: {
+        id: userData.id,
+        nickname: userData.nickname,
+        site_id: userData.site_id
+      }
     }
-
+    
     return NextResponse.json(metrics)
-  } catch (error) {
-    console.error("Error fetching metrics:", error)
+    
+  } catch (_error) {
+    logger.error("[Metrics] Error:", { error: _error })
     return NextResponse.json(
       { error: "Failed to fetch metrics" },
       { status: 500 }

@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthFromRequest } from "../../../base"
 
@@ -38,7 +39,7 @@ export async function GET(
         })
       }
     } catch (error) {
-      console.error("Error fetching highlights:", error)
+      logger.error("Error fetching highlights:", { error })
     }
 
     // If no highlights or error, return empty structure
@@ -52,7 +53,7 @@ export async function GET(
     })
     
   } catch (error) {
-    console.error("Error fetching highlights:", error)
+    logger.error("Error fetching highlights:", { error })
     return NextResponse.json(
       { 
         position: null,

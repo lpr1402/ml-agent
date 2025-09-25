@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { useEffect, useRef } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
@@ -19,7 +20,7 @@ export function useTokenRefresh() {
       
       // Refresh if token expires in less than 10 minutes
       if (expiry - now < 10 * 60 * 1000) {
-        console.log("Token expiring soon, refreshing...")
+        logger.info("Token expiring soon, refreshing...")
         
         try {
           const response = await fetch("/api/auth/refresh", {
@@ -43,17 +44,17 @@ export function useTokenRefresh() {
             const newExpiresAt = Date.now() + (data.expires_in * 1000)
             localStorage.setItem("ml_expires_at", newExpiresAt.toString())
             
-            console.log("Token refreshed successfully")
+            logger.info("Token refreshed successfully")
             
             // Reload the page to update auth context
             window.location.reload()
           } else {
-            console.error("Failed to refresh token")
+            logger.error("Failed to refresh token")
             logout()
             router.push("/login")
           }
         } catch (error) {
-          console.error("Error refreshing token:", error)
+          logger.error("Error refreshing token:", { error })
           logout()
           router.push("/login")
         }

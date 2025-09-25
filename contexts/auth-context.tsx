@@ -1,16 +1,26 @@
 "use client"
 
+import { logger } from '@/lib/logger'
 import { createContext, useContext, useEffect, useState, ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
 
 interface User {
   id: string
-  email: string
-  name: string
+  nickname: string
+  email?: string
+  siteId: string
+}
+
+interface Organization {
+  id: string
+  subscriptionStatus: string
+  trialEndsAt?: string
+  subscriptionEndsAt?: string
 }
 
 interface AuthContextType {
   user: User | null
+  organization: Organization | null
   accessToken: string | null
   refreshToken: string | null
   isLoading: boolean
@@ -22,6 +32,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [organization, setOrganization] = useState<Organization | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -29,75 +40,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
 
   useEffect(() => {
-    // Simple auth check - just verify tokens exist
-    const checkAuth = () => {
+    // Check session via API
+    const checkAuth = async () => {
       // Skip check on auth pages
       if (pathname?.startsWith("/auth") || pathname === "/login") {
         setIsLoading(false)
         return
       }
       
-      const token = localStorage.getItem("ml_access_token")
-      const refresh = localStorage.getItem("ml_refresh_token")
-      const userId = localStorage.getItem("ml_user_id")
-      const userName = localStorage.getItem("ml_user_name")
-      const userEmail = localStorage.getItem("ml_user_email")
-      const expiresAt = localStorage.getItem("ml_expires_at")
-      
-      // Check if we have required data
-      if (!token || !userId) {
+      try {
+        // Check session via our API
+        const response = await fetch("/api/auth/session", {
+          credentials: "include"
+        })
+        
+        if (!response.ok) {
+          // Session invalid
+          setIsLoading(false)
+          // Only redirect if trying to access protected route
+          if (pathname?.startsWith("/dashboard")) {
+            logger.info("Session invalid, redirecting to login")
+            router.push("/login")
+          }
+          return
+        }
+        
+        const sessionData = await response.json()
+        
+        // Set auth state from session
+        setUser(sessionData.user)
+        setOrganization(sessionData.organization)
+        
+        // Para compatibilidade, vamos manter um token fake
+        // O token real está criptografado no banco
+        setAccessToken("session-active")
+        setRefreshToken("session-active")
+        
         setIsLoading(false)
-        // Only redirect if trying to access protected route
+        
+        logger.info("Auth check complete - user authenticated as:", { data: sessionData.user.nickname })
+      } catch (error) {
+        logger.error("Auth check failed:", { error })
+        setIsLoading(false)
         if (pathname?.startsWith("/dashboard")) {
-          console.log("No auth tokens found, redirecting to login")
           router.push("/login")
         }
-        return
       }
-      
-      // Don't check expiration on client side - let the API handle it
-      // This prevents premature logouts
-      
-      // Set auth state
-      setUser({
-        id: userId,
-        name: userName || "User",
-        email: userEmail || ""
-      })
-      setAccessToken(token)
-      setRefreshToken(refresh || null)
-      setIsLoading(false)
-      
-      console.log("Auth check complete - user authenticated as:", userName)
     }
 
     checkAuth()
   }, [pathname, router])
 
-  const logout = () => {
-    // Clear all auth data
-    localStorage.removeItem("ml_access_token")
-    localStorage.removeItem("ml_refresh_token")
-    localStorage.removeItem("ml_user_id")
-    localStorage.removeItem("ml_user_name")
-    localStorage.removeItem("ml_user_email")
-    localStorage.removeItem("ml_expires_at")
+  const logout = async () => {
+    try {
+      // Call logout API
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include"
+      })
+    } catch (error) {
+      logger.error("Logout error:", { error })
+    }
     
+    // Clear state
     setUser(null)
+    setOrganization(null)
     setAccessToken(null)
     setRefreshToken(null)
     
-    router.push("/login")
+    // SEMPRE usar domínio fixo!
+    window.location.href = "https://gugaleo.axnexlabs.com.br/login"
   }
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        organization,
         accessToken,
         refreshToken,
         isLoading,
-        isAuthenticated: !!accessToken && !!user,
+        isAuthenticated: !!user,
         logout,
       }}
     >
