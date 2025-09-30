@@ -141,8 +141,9 @@ class ZapsterWhatsAppService {
    */
   async sendQuestionNotification(data: QuestionNotification): Promise<boolean> {
     try {
-      // Usar o link de aprovação já gerado
-      const uniqueLink = data.approvalUrl
+      // Link direto para /agente (abre no PWA instalado no iOS)
+      const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
+      const directLink = `${baseUrl}/agente`
 
       // Usar o ID sequencial já salvo no banco (NUNCA gerar novo)
       const sequentialId = String(data.sequentialId || '00/0000')
@@ -156,11 +157,10 @@ _${data.questionText}_
 *Produto:* ${data.productTitle}
 ${data.productPrice ? `*Preço:* R$ ${data.productPrice.toFixed(2).replace('.', ',')}` : ''}
 
-*Link de Aprovação:*
-${uniqueLink}
+*📱 Abrir ML Agent:*
+${directLink}
 
-*PIN de Segurança:* 911
-_Acesso válido por 24 horas_`
+_💡 Clique no link para abrir direto no app e responder todas as perguntas pendentes_`
 
       // Se tiver imagem do produto, enviar com a imagem
       if (data.productImage) {

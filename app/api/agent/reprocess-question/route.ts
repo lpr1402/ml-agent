@@ -69,8 +69,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
     }
 
-    // Permite reprocessar apenas perguntas com erro
+    // Permite reprocessar apenas perguntas SEM resposta da IA que falharam
     const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR"]
+
+    // Se já tem resposta da IA, não deve reprocessar (usar revisão em vez disso)
+    if (question.aiSuggestion) {
+      return NextResponse.json({
+        error: "Question already has AI response. Use revision instead.",
+        currentStatus: question.status,
+        hasAISuggestion: true
+      }, { status: 400 })
+    }
+
     if (!allowedStatuses.includes(question.status)) {
       return NextResponse.json({
         error: "Only failed questions can be reprocessed",

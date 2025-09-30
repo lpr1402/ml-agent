@@ -7,6 +7,13 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/hooks/use-toast'
 
+// Estender tipo do Navigator para incluir standalone (iOS PWA)
+declare global {
+  interface Navigator {
+    standalone?: boolean
+  }
+}
+
 export default function LoginClient() {
   const router = useRouter()
   const [mode, setMode] = useState<'login' | 'register'>('login')
@@ -89,7 +96,7 @@ export default function LoginClient() {
       const response = await fetch('/api/auth/login-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim().toLowerCase(), pin: finalPin })
+        body: JSON.stringify({ username: username.trim().toUpperCase(), pin: finalPin })
       })
 
       const data = await response.json()
@@ -145,7 +152,7 @@ export default function LoginClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: registerUsername.trim().toLowerCase(),
+          username: registerUsername.trim().toUpperCase(),
           pin: regPin
         })
       })
@@ -174,9 +181,9 @@ export default function LoginClient() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-black via-gray-950 to-black relative overflow-hidden">
+    <div className="min-h-screen h-screen bg-black relative flex flex-col overflow-hidden" style={{ backgroundColor: '#000000', height: '100vh', minHeight: '100vh' }}>
       {/* Subtle background effects */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 bg-black" style={{ backgroundColor: '#000000' }}>
         <div className="absolute top-1/4 -left-20 w-64 sm:w-96 h-64 sm:h-96 bg-gold/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -right-20 w-64 sm:w-96 h-64 sm:h-96 bg-amber-500/5 rounded-full blur-3xl" />
       </div>
@@ -185,29 +192,34 @@ export default function LoginClient() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
-        className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8"
+        className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 flex-1 flex flex-col"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 16px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+          minHeight: '100dvh'
+        }}
       >
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12 items-center min-h-[90vh]">
+        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 sm:gap-8 lg:gap-12 items-center lg:items-center flex-1 py-2 sm:py-4">
           {/* Left side - Branding */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2, duration: 0.6 }}
-            className="flex flex-col items-center lg:items-start space-y-2 sm:space-y-4 lg:space-y-8"
+            className="flex flex-col items-center lg:items-start space-y-1 sm:space-y-4 lg:space-y-4 mt-4 lg:mt-0 lg:pl-12 lg:relative lg:justify-center"
           >
-            {/* Logo - Maior destaque no mobile */}
+            {/* Logo - Maior destaque no mobile e desktop */}
             <motion.div
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.3, duration: 0.5 }}
-              className="relative mb-4 sm:mb-0"
+              className="relative mb-1 sm:mb-0 lg:mb-2"
             >
               <Image
                 src="/mlagent-logo-3d.svg"
                 alt="ML Agent"
-                width={256}
-                height={256}
-                className="h-40 sm:h-32 lg:h-48 w-auto object-contain mx-auto lg:mx-0"
+                width={320}
+                height={320}
+                className="h-40 xs:h-44 sm:h-32 lg:h-64 xl:h-72 w-auto object-contain mx-auto lg:mx-0"
                 style={{
                   filter: 'drop-shadow(0 0 40px rgba(255, 230, 0, 0.25))'
                 }}
@@ -215,16 +227,16 @@ export default function LoginClient() {
             </motion.div>
 
             {/* Title & Tagline */}
-            <div className="space-y-3 sm:space-y-4 text-center lg:text-left">
+            <div className="space-y-1 sm:space-y-2 text-center lg:text-left">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.5 }}
               >
-                <h1 className="text-4xl sm:text-4xl lg:text-5xl font-light text-white tracking-wide">
+                <h1 className="text-3xl xs:text-4xl sm:text-4xl lg:text-5xl xl:text-6xl font-light text-white tracking-wide">
                   ML Agent
                 </h1>
-                <p className="text-sm sm:text-lg text-gray-400 mt-1 sm:mt-2">
+                <p className="text-sm xs:text-base sm:text-lg lg:text-xl text-gray-400 mt-1 sm:mt-1">
                   Plataforma Inteligente para Vendedores
                 </p>
               </motion.div>
@@ -234,12 +246,12 @@ export default function LoginClient() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
-                className="space-y-2 sm:space-y-3 pt-3 sm:pt-4 hidden sm:block"
+                className="space-y-2 pt-4 hidden lg:block"
               >
                 {[
                   { icon: Sparkles, text: "IA Avançada para Respostas" },
-                  { icon: Shield, text: "Segurança com PIN de 3 dígitos" },
-                  { icon: Users, text: "Até 10 contas ML no plano PRO" }
+                  { icon: Shield, text: "Criptografia AES-256-GCM" },
+                  { icon: Users, text: "Gerenciamento de múltiplas contas" }
                 ].map((feature, index) => (
                   <motion.div
                     key={index}
@@ -255,6 +267,7 @@ export default function LoginClient() {
                   </motion.div>
                 ))}
               </motion.div>
+
             </div>
           </motion.div>
 
@@ -263,9 +276,8 @@ export default function LoginClient() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3, duration: 0.6 }}
-            className="flex items-center justify-center lg:justify-end w-full"
-          >
-            <div className="w-full max-w-md">
+            className="flex items-center justify-center lg:justify-end w-full mt-4 xs:mt-4 sm:mt-0">
+            <div className="w-full max-w-md px-2 sm:px-0">
               <motion.div
                 initial={{ scale: 0.95 }}
                 animate={{ scale: 1 }}
@@ -273,9 +285,9 @@ export default function LoginClient() {
                 className="relative"
               >
                 {/* Card Container */}
-                <div className="bg-gradient-to-br from-gray-900/80 to-black/80 backdrop-blur-lg rounded-xl sm:rounded-3xl border border-white/[0.03] p-5 sm:p-8 shadow-xl">
+                <div className="bg-zinc-900/95 backdrop-blur-lg rounded-2xl sm:rounded-3xl border border-white/[0.05] p-4 xs:p-5 sm:p-8 shadow-xl">
                   {/* Mode Toggle */}
-                  <div className="flex rounded-xl bg-black/50 p-1 mb-6">
+                  <div className="flex rounded-xl bg-black/70 p-1 mb-4 sm:mb-6">
                     <button
                       onClick={() => {
                         setMode('login')
@@ -315,20 +327,22 @@ export default function LoginClient() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-5"
+                        className="space-y-3 xs:space-y-4 sm:space-y-5"
                       >
                         {/* Username Field */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-400 mb-2">
+                          <label htmlFor="login-username" className="block text-sm sm:text-sm font-medium text-gray-400 mb-2 sm:mb-2">
                             Nome de Usuário
                           </label>
                           <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 sm:w-5 h-4 sm:h-5 text-gray-500" />
                             <input
+                              id="login-username"
+                              name="username"
                               type="text"
                               value={username}
-                              onChange={(e) => setUsername(e.target.value)}
-                              className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:border-gold/50 focus:outline-none transition-colors"
+                              onChange={(e) => setUsername(e.target.value.toUpperCase())}
+                              className="w-full pl-10 sm:pl-10 pr-4 sm:pr-4 py-3 sm:py-3 bg-black/50 border border-white/10 rounded-lg sm:rounded-xl text-base sm:text-base text-white placeholder-gray-500 focus:border-gold/50 focus:outline-none transition-colors"
                               placeholder="Digite seu usuário"
                               autoComplete="username"
                             />
@@ -337,13 +351,15 @@ export default function LoginClient() {
 
                         {/* PIN Field */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-400 mb-2">
+                          <label htmlFor="login-pin-0" className="block text-sm sm:text-sm font-medium text-gray-400 mb-2 sm:mb-2">
                             PIN de Segurança
                           </label>
-                          <div className="flex items-center justify-center gap-3">
+                          <div className="flex items-center justify-center gap-3 sm:gap-4">
                             {pin.map((digit, index) => (
                               <input
                                 key={index}
+                                id={`login-pin-${index}`}
+                                name={`pin-${index}`}
                                 ref={pinRefs[index]}
                                 type="text"
                                 inputMode="numeric"
@@ -351,8 +367,10 @@ export default function LoginClient() {
                                 value={digit}
                                 onChange={(e) => handlePinChange(index, e.target.value, 'login')}
                                 onKeyDown={(e) => handlePinKeyDown(index, e, pinRefs, pin)}
-                                className="w-14 h-14 text-center text-2xl font-bold bg-black/50 border-2 border-white/10 rounded-xl text-gold focus:border-gold/50 focus:outline-none transition-all"
-                                placeholder="•"
+                                className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl sm:text-3xl font-bold bg-black/50 border-2 border-white/10 rounded-xl sm:rounded-2xl text-gold focus:border-gold/50 focus:outline-none transition-all"
+                                placeholder="●"
+                                autoComplete="off"
+                                aria-label={`PIN dígito ${index + 1}`}
                               />
                             ))}
                           </div>
@@ -363,9 +381,9 @@ export default function LoginClient() {
                           <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
+                            className="p-2 sm:p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
                           >
-                            <p className="text-sm text-red-400 text-center">{error}</p>
+                            <p className="text-xs sm:text-sm text-red-400 text-center">{error}</p>
                           </motion.div>
                         )}
 
@@ -376,7 +394,7 @@ export default function LoginClient() {
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           className={`
-                            w-full group relative h-11 sm:h-12 px-3 sm:px-6 rounded-xl font-bold text-sm sm:text-base
+                            w-full group relative h-11 sm:h-12 px-3 sm:px-6 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base
                             transition-all duration-500 overflow-hidden
                             ${isLoading || !username || pin.join('').length !== 3
                               ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
@@ -411,34 +429,39 @@ export default function LoginClient() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-5"
+                        className="space-y-3 xs:space-y-4 sm:space-y-5"
                       >
                         {/* Username Field */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-400 mb-2">
+                          <label htmlFor="register-username" className="block text-xs sm:text-sm font-medium text-gray-400 mb-1.5 sm:mb-2">
                             Escolha seu Nome de Usuário
                           </label>
                           <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 sm:w-5 h-4 sm:h-5 text-gray-500" />
                             <input
+                              id="register-username"
+                              name="register-username"
                               type="text"
                               value={registerUsername}
-                              onChange={(e) => setRegisterUsername(e.target.value)}
-                              className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:border-gold/50 focus:outline-none transition-colors"
+                              onChange={(e) => setRegisterUsername(e.target.value.toUpperCase())}
+                              className="w-full pl-10 sm:pl-10 pr-4 sm:pr-4 py-3 sm:py-3 bg-black/50 border border-white/10 rounded-lg sm:rounded-xl text-base sm:text-base text-white placeholder-gray-500 focus:border-gold/50 focus:outline-none transition-colors"
                               placeholder="Escolha um nome único"
+                              autoComplete="username"
                             />
                           </div>
                         </div>
 
                         {/* Create PIN */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-400 mb-2">
+                          <label htmlFor="register-pin-0" className="block text-xs sm:text-sm font-medium text-gray-400 mb-1.5 sm:mb-2">
                             Crie seu PIN de 3 dígitos
                           </label>
-                          <div className="flex items-center justify-center gap-3">
+                          <div className="flex items-center justify-center gap-3 sm:gap-4">
                             {registerPin.map((digit, index) => (
                               <input
                                 key={index}
+                                id={`register-pin-${index}`}
+                                name={`register-pin-${index}`}
                                 ref={registerPinRefs[index]}
                                 type="text"
                                 inputMode="numeric"
@@ -446,8 +469,10 @@ export default function LoginClient() {
                                 value={digit}
                                 onChange={(e) => handlePinChange(index, e.target.value, 'register')}
                                 onKeyDown={(e) => handlePinKeyDown(index, e, registerPinRefs, registerPin)}
-                                className="w-14 h-14 text-center text-2xl font-bold bg-black/50 border-2 border-white/10 rounded-xl text-gold focus:border-gold/50 focus:outline-none transition-all"
-                                placeholder="•"
+                                className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl sm:text-3xl font-bold bg-black/50 border-2 border-white/10 rounded-xl sm:rounded-2xl text-gold focus:border-gold/50 focus:outline-none transition-all"
+                                placeholder="●"
+                                autoComplete="off"
+                                aria-label={`Criar PIN dígito ${index + 1}`}
                               />
                             ))}
                           </div>
@@ -455,13 +480,15 @@ export default function LoginClient() {
 
                         {/* Confirm PIN */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-400 mb-2">
+                          <label htmlFor="confirm-pin-0" className="block text-xs sm:text-sm font-medium text-gray-400 mb-1.5 sm:mb-2">
                             Confirme seu PIN
                           </label>
-                          <div className="flex items-center justify-center gap-3">
+                          <div className="flex items-center justify-center gap-3 sm:gap-4">
                             {confirmPin.map((digit, index) => (
                               <input
                                 key={index}
+                                id={`confirm-pin-${index}`}
+                                name={`confirm-pin-${index}`}
                                 ref={confirmPinRefs[index]}
                                 type="text"
                                 inputMode="numeric"
@@ -469,8 +496,10 @@ export default function LoginClient() {
                                 value={digit}
                                 onChange={(e) => handlePinChange(index, e.target.value, 'confirm')}
                                 onKeyDown={(e) => handlePinKeyDown(index, e, confirmPinRefs, confirmPin)}
-                                className="w-14 h-14 text-center text-2xl font-bold bg-black/50 border-2 border-white/10 rounded-xl text-gold focus:border-gold/50 focus:outline-none transition-all"
-                                placeholder="•"
+                                className="w-14 h-14 sm:w-16 sm:h-16 text-center text-2xl sm:text-3xl font-bold bg-black/50 border-2 border-white/10 rounded-xl sm:rounded-2xl text-gold focus:border-gold/50 focus:outline-none transition-all"
+                                placeholder="●"
+                                autoComplete="off"
+                                aria-label={`Confirmar PIN dígito ${index + 1}`}
                               />
                             ))}
                           </div>
@@ -481,14 +510,14 @@ export default function LoginClient() {
                           <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
+                            className="p-2 sm:p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
                           >
-                            <p className="text-sm text-red-400 text-center">{error}</p>
+                            <p className="text-xs sm:text-sm text-red-400 text-center">{error}</p>
                           </motion.div>
                         )}
 
                         {/* Action Buttons */}
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {!showConnectML ? (
                             /* Register Button */
                             <motion.button
@@ -497,7 +526,7 @@ export default function LoginClient() {
                               whileHover={{ scale: 1.02 }}
                               whileTap={{ scale: 0.98 }}
                               className={`
-                                w-full group relative h-11 sm:h-12 px-3 sm:px-6 rounded-xl font-bold text-sm sm:text-base
+                                w-full group relative h-11 sm:h-12 px-3 sm:px-6 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base
                                 transition-all duration-500 overflow-hidden
                                 ${isLoading || !registerUsername || registerPin.join('').length !== 3 || confirmPin.join('').length !== 3
                                   ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
@@ -525,19 +554,19 @@ export default function LoginClient() {
                               initial={{ opacity: 0, scale: 0.9 }}
                               animate={{ opacity: 1, scale: 1 }}
                               transition={{ duration: 0.3 }}
-                              className="space-y-4"
+                              className="space-y-3"
                             >
-                              <div className="text-center space-y-2">
+                              <div className="text-center space-y-1.5">
                                 <motion.div
                                   initial={{ scale: 0 }}
                                   animate={{ scale: 1 }}
                                   transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
                                   className="flex items-center justify-center"
                                 >
-                                  <CheckCircle className="w-12 h-12 text-green-500" />
+                                  <CheckCircle className="w-10 h-10 text-green-500" />
                                 </motion.div>
-                                <h3 className="text-lg font-bold text-white">Organização Criada!</h3>
-                                <p className="text-sm text-gray-400">
+                                <h3 className="text-base font-bold text-white">Organização Criada!</h3>
+                                <p className="text-xs text-gray-400">
                                   Agora conecte sua conta do Mercado Livre para ativar o ML Agent
                                 </p>
                               </div>
@@ -545,12 +574,29 @@ export default function LoginClient() {
                                 onClick={connectML}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
-                                className="w-full group relative h-11 sm:h-12 px-3 sm:px-6 rounded-xl font-bold text-sm sm:text-base
-                                  bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-500 text-black shadow-2xl shadow-yellow-500/30 hover:shadow-yellow-500/40
-                                  transition-all duration-500 overflow-hidden flex items-center justify-center gap-2"
+                                className="w-full group relative h-11 px-3 sm:px-6 rounded-2xl font-bold text-xs sm:text-base
+                                  transition-all duration-700 overflow-hidden flex items-center justify-center gap-3
+                                  bg-gradient-to-r from-gold via-yellow-400 to-gold text-black
+                                  shadow-2xl shadow-gold/50 hover:shadow-gold/60
+                                  border border-gold/30 hover:border-gold/50"
                               >
-                                <ShoppingBag className="w-4 h-4" />
-                                <span>Conectar Mercado Livre</span>
+                                {/* Premium glow effect */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-gold/20 via-transparent to-gold/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                                {/* Animated shine effect */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
+
+                                {/* Content */}
+                                <div className="relative flex items-center gap-3">
+                                  <div className="relative">
+                                    <ShoppingBag className="w-5 h-5" />
+                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                  </div>
+                                  <span className="font-extrabold text-base tracking-wide">
+                                    Conectar com Mercado Livre
+                                  </span>
+                                  <span className="text-lg">→</span>
+                                </div>
                               </motion.button>
                             </motion.div>
                           )}
@@ -564,11 +610,11 @@ export default function LoginClient() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.6, duration: 0.5 }}
-                    className="mt-4 sm:mt-6 flex items-center justify-center gap-1.5 sm:gap-2"
+                    className="mt-4 sm:mt-6 flex items-center justify-center gap-2 sm:gap-2"
                   >
-                    <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold/50" />
-                    <span className="text-[10px] sm:text-xs text-gray-500">
-                      Proteção com PIN de 3 dígitos
+                    <Shield className="w-4 h-4 sm:w-4 sm:h-4 text-gold/50" />
+                    <span className="text-xs sm:text-xs text-gray-500">
+                      Criptografia AES-256-GCM
                     </span>
                   </motion.div>
                 </div>
@@ -581,14 +627,15 @@ export default function LoginClient() {
           </motion.div>
         </div>
 
-        {/* Footer */}
+        {/* Footer - Visible on all devices */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8, duration: 0.5 }}
-          className="mt-6 sm:mt-12 lg:mt-16 text-center"
+          className="mt-auto pt-2 text-center pb-safe flex-shrink-0"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <p className="text-[10px] sm:text-xs text-gray-600">
+          <p className="text-[10px] sm:text-xs text-gray-600/50">
             © 2025 ML Agent • Versão 2.0.0
           </p>
         </motion.div>

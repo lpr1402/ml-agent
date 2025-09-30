@@ -1,18 +1,18 @@
 import { logger } from '@/lib/logger'
 import { sessionStore } from "./session-store"
-import { mlRateLimiter } from './ml-api/rate-limiter'
+import { executeMLRequest } from './ml-api/retry-handler'
 
 // Helper function to get seller's access token from session store
-// This is used by the webhook handler to fetch ML data  
+// This is used by the webhook handler to fetch ML data
 export async function getSellerAccessToken(sellerId: string): Promise<string | null> {
   try {
     // Get token from session store (production-ready)
     const token = await sessionStore.getAccessToken(sellerId)
-    
+
     if (!token) {
       logger.warn(`No access token found for seller ${sellerId} in session store`)
     }
-    
+
     return token
   } catch (error) {
     logger.error("Error getting seller access token:", { error })
@@ -20,11 +20,8 @@ export async function getSellerAccessToken(sellerId: string): Promise<string | n
   }
 }
 
-// Helper to make ML API calls with rate limiting and retry logic
+// Helper to make ML API calls with retry logic (NO internal rate limiting)
 export async function fetchFromML(endpoint: string, accessToken?: string | null, accountId?: string) {
-  // Se não tiver accountId, usar 'global' como fallback
-  const rateLimitAccountId = accountId || 'global'
-
   const operation = async () => {
     const headers: any = {
       "Accept": "application/json",
@@ -38,21 +35,28 @@ export async function fetchFromML(endpoint: string, accessToken?: string | null,
     const response = await fetch(`https://api.mercadolibre.com${endpoint}`, { headers })
 
     if (!response.ok) {
-      // Se for 429, lançar erro para o rate limiter tratar
+      // Criar erro com todas informações necessárias
+      const error: any = new Error(`ML API Error: ${response.statusText}`)
+      error.status = response.status
+      error.statusCode = response.status
+      error.headers = Object.fromEntries(response.headers.entries())
+
+      // Se for 429, o retry handler vai cuidar
       if (response.status === 429) {
-        const error: any = new Error('Rate limit exceeded')
-        error.status = 429
+        error.message = 'Too Many Requests'
         throw error
       }
 
-      // Se for 401, lançar erro para não tentar novamente
+      // Se for 401, lançar direto
       if (response.status === 401) {
-        const error: any = new Error('Unauthorized')
-        error.status = 401
+        error.message = 'Unauthorized'
         throw error
       }
 
-      logger.error(`ML API error for ${endpoint}:`, { status: response.status })
+      logger.error(`ML API error for ${endpoint}:`, {
+        status: response.status,
+        accountId
+      })
 
       // If 403, try without auth (public endpoints)
       if (response.status === 403 && accessToken) {
@@ -69,16 +73,16 @@ export async function fetchFromML(endpoint: string, accessToken?: string | null,
         }
       }
 
-      return null
+      throw error
     }
 
     return response.json()
   }
 
-  // Usar rate limiter para executar com retry logic
-  return mlRateLimiter.executeWithRetry(
-    rateLimitAccountId,
+  // Usar retry handler SEM rate limiting interno
+  return executeMLRequest(
     operation,
-    `ML API call: ${endpoint}`
+    `ML API: ${endpoint}`,
+    accountId
   )
 }

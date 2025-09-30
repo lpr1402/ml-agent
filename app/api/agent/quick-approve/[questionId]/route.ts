@@ -78,8 +78,8 @@ export async function GET(
     
     // Send WhatsApp confirmation
     try {
-      const { sendApprovalConfirmation } = await import("@/lib/services/whatsapp-professional")
-      await sendApprovalConfirmation({
+      const { zapsterService } = await import("@/lib/services/zapster-whatsapp")
+      await zapsterService.sendApprovalConfirmation({
         sequentialId: parseInt(question.id.slice(-6), 16) || 0,
         questionText: question.text,
         finalAnswer: question.aiSuggestion || "",

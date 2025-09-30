@@ -160,11 +160,11 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-gold/10 via-transparent to-gold/10",
           ringColor: "ring-gold/40",
           badgeTextColor: "text-black",
-          height: 380,
-          badgeSize: "w-16 h-16",
-          fontSize: "text-xl",
-          avatarSize: "w-20 h-20",
-          nameSize: "text-lg",
+          height: 280,
+          badgeSize: "w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16",
+          fontSize: "text-base sm:text-lg lg:text-xl",
+          avatarSize: "w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20",
+          nameSize: "text-xs sm:text-base lg:text-lg",
           position: "1º"
         }
       case 2:  // 2nd place - SILVER (harmonized with gold)
@@ -176,11 +176,11 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-gray-400/10 via-transparent to-gray-400/10",
           ringColor: "ring-gray-400/30",
           badgeTextColor: "text-gray-800",
-          height: 320,
-          badgeSize: "w-14 h-14",
-          fontSize: "text-lg",
-          avatarSize: "w-16 h-16",
-          nameSize: "text-base",
+          height: 240,
+          badgeSize: "w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14",
+          fontSize: "text-sm sm:text-base lg:text-lg",
+          avatarSize: "w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16",
+          nameSize: "text-xs sm:text-sm lg:text-base",
           position: "2º"
         }
       case 3:  // 3rd place - BRONZE (harmonized with gold)
@@ -192,11 +192,11 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-amber-700/10 via-transparent to-amber-700/10",
           ringColor: "ring-amber-700/30",
           badgeTextColor: "text-amber-900",
-          height: 260,
-          badgeSize: "w-12 h-12",
-          fontSize: "text-base",
-          avatarSize: "w-14 h-14",
-          nameSize: "text-sm",
+          height: 200,
+          badgeSize: "w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12",
+          fontSize: "text-xs sm:text-sm lg:text-base",
+          avatarSize: "w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14",
+          nameSize: "text-[10px] sm:text-xs lg:text-sm",
           position: "3º"
         }
       default:  // 4th-10th place - minimal styling
@@ -220,32 +220,32 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
 
   return (
     <div className="w-full">
-      {/* Container matching MetricsROIModern style */}
-      <div className="relative rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
+      {/* Container matching MetricsROIModern style - Mobile Optimized */}
+      <div className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
         {/* Background Glow */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
 
-        <div className="relative z-10 p-6 lg:p-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                <Trophy className="w-6 h-6 text-black" />
+        <div className="relative z-10 p-4 sm:p-6 lg:p-8">
+          {/* Header - Mobile Optimized */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6 lg:mb-8">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
+                <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gold">
+                <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold">
                   Ranking da Organização
                 </h3>
-                <p className="text-sm text-gray-400">
+                <p className="text-xs sm:text-sm text-gray-400 hidden sm:block">
                   Performance em tempo real das contas
                 </p>
               </div>
             </div>
 
-            {/* Controls */}
-            <div className="flex gap-3 items-center">
-              {/* Period selector */}
-              <div className="flex gap-1 bg-black/50 p-1 rounded-xl">
+            {/* Controls - Mobile Optimized */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+              {/* Period selector - Mobile Optimized */}
+              <div className="flex gap-1 bg-black/50 p-1 rounded-lg sm:rounded-xl flex-1 sm:flex-none">
                 {[
                   { value: "today" as const, label: "Hoje", icon: Calendar },
                   { value: "7days" as const, label: "7 Dias", icon: Calendar },
@@ -256,21 +256,22 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                     <button
                       key={option.value}
                       onClick={() => setPeriod(option.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center gap-1.5 ${
+                      className={`flex-1 sm:flex-none px-2 sm:px-3 py-1.5 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-semibold transition-all duration-300 flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 ${
                         period === option.value
                           ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{option.label}</span>
+                      <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <span className="hidden sm:inline">{option.label}</span>
+                      <span className="sm:hidden">{option.value === "today" ? "Hoje" : option.value === "7days" ? "7D" : "30D"}</span>
                     </button>
                   )
                 })}
               </div>
 
-              {/* Sort selector */}
-              <div className="flex gap-1 bg-black/50 p-1 rounded-xl">
+              {/* Sort selector - Mobile Optimized */}
+              <div className="flex gap-1 bg-black/50 p-1 rounded-lg sm:rounded-xl flex-1 sm:flex-none">
                 {[
                   { value: "revenue" as const, label: "Faturamento", icon: DollarSign },
                   { value: "questions" as const, label: "Perguntas", icon: MessageSquare }
@@ -280,14 +281,15 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                     <button
                       key={option.value}
                       onClick={() => setSortBy(option.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center gap-1.5 ${
+                      className={`flex-1 sm:flex-none px-2 sm:px-3 py-1.5 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-1.5 ${
                         sortBy === option.value
                           ? 'bg-white/10 text-white'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       <span className="hidden sm:inline">{option.label}</span>
+                      <span className="sm:hidden">{option.value === "revenue" ? "R$" : "Q"}</span>
                     </button>
                   )
                 })}
@@ -310,23 +312,21 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
             </div>
           ) : (
             <>
-              {/* Podium Section - Premium Layout */}
-              <div className="grid grid-cols-3 gap-4 mb-6 items-end">
+              {/* Podium Section - Premium Layout Mobile Optimized */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2 lg:gap-4 mb-4 sm:mb-6 sm:items-end">
                 {podiumSlots.map((slot) => {
                   const { account, position, visualIndex } = slot
                   const style = getPodiumStyle(position)
                   const isFirst = position === 1
                   const isSecond = position === 2
 
-                  // Use style height directly to ensure consistency
-                  const containerStyle: React.CSSProperties = {
-                    height: `${style.height}px`,
-                    minHeight: `${style.height}px`,
-                    maxHeight: `${style.height}px`,
-                    position: 'relative',
-                    display: 'block',
-                    width: '100%'
-                  }
+                  // Different heights for desktop based on position
+                  // Mobile: all same height
+                  const heightClass = position === 1
+                    ? "h-[180px] sm:h-[280px]"
+                    : position === 2
+                    ? "h-[180px] sm:h-[240px]"
+                    : "h-[180px] sm:h-[200px]"
 
                   return (
                     <motion.div
@@ -334,7 +334,7 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: visualIndex * 0.1 }}
-                      style={containerStyle as any}
+                      className={`relative block w-full ${heightClass}`}
                     >
                       {account ? (
                         // Premium Card - Modal Inspired Style
@@ -355,8 +355,8 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                             </div>
                           </div>
 
-                          {/* Content */}
-                          <div className="relative z-10 h-full flex flex-col p-4">
+                          {/* Content - Mobile Optimized */}
+                          <div className="relative z-10 h-full flex flex-col p-2 sm:p-3 lg:p-4">
                             {/* Account Header - Ultra Clean with more top spacing */}
                             <div className="text-center mb-3 mt-8">
                               {/* Avatar - Clean Minimal Style */}
@@ -389,50 +389,51 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                               </h4>
                             </div>
 
-                            {/* Primary Metric - Modal Style */}
-                            <div className="flex-1 flex flex-col justify-center mb-4 px-2">
-                              <div className="p-3 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5">
+                            {/* Primary Metric - Modal Style Mobile Optimized */}
+                            <div className="flex-1 flex flex-col justify-center mb-2 sm:mb-3 lg:mb-4 px-1 sm:px-2">
+                              <div className="p-2 sm:p-3 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5">
                                 <p className={`${
-                                  isFirst ? 'text-3xl' : isSecond ? 'text-2xl' : 'text-xl'
+                                  isFirst ? 'text-lg sm:text-2xl lg:text-3xl' : isSecond ? 'text-base sm:text-xl lg:text-2xl' : 'text-sm sm:text-lg lg:text-xl'
                                 } font-bold ${style.textColor}`}>
                                   {sortBy === "revenue"
                                     ? formatCurrency(account.totalRevenue)
                                     : account.totalQuestions.toLocaleString()
                                   }
                                 </p>
-                                <p className={`text-[10px] text-gray-400 opacity-80 uppercase tracking-widest mt-1 font-medium`}>
+                                <p className={`text-[8px] sm:text-[9px] lg:text-[10px] text-gray-400 opacity-80 uppercase tracking-widest mt-1 font-medium`}>
                                   {sortBy === "revenue" ? "Faturamento" : "Perguntas"}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Metrics Row - Modal Style Cards */}
-                            <div className="grid grid-cols-3 gap-2 px-2">
-                              <div className="text-center p-2 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                            {/* Metrics Row - Modal Style Cards Mobile Optimized */}
+                            <div className="grid grid-cols-3 gap-1 sm:gap-2 px-1 sm:px-2">
+                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-base' : 'text-sm'
+                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
                                 } font-semibold ${style.textColor}`}>
                                   {account.answeredQuestions || 0}
                                 </p>
-                                <p className="text-[9px] text-gray-400 uppercase tracking-wider font-medium">Respostas</p>
+                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium">Respostas</p>
                               </div>
-                              <div className="text-center p-2 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-base' : 'text-sm'
+                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
                                 } font-semibold ${style.textColor}`}>
                                   {formatTime(account.avgResponseTime)}
                                 </p>
-                                <p className="text-[9px] text-gray-400 uppercase tracking-wider font-medium">Tempo de Resposta</p>
+                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium hidden sm:block">Tempo</p>
+                                <p className="text-[7px] text-gray-400 uppercase tracking-wider font-medium sm:hidden">Tempo</p>
                               </div>
-                              <div className="text-center p-2 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-base' : 'text-sm'
+                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
                                 } font-semibold ${
                                   (account.realProfit || 0) > 0 ? 'text-green-400' : 'text-gray-400'
                                 }`}>
                                   {formatCurrency(account.realProfit || 0)}
                                 </p>
-                                <p className="text-[9px] text-gray-400 uppercase tracking-wider font-medium">Lucro</p>
+                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium">Lucro</p>
                               </div>
                             </div>
 
@@ -483,68 +484,68 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.03 }}
                           whileHover={{ scale: 1.005 }}
-                          className="relative rounded-xl bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 hover:border-gold/10 p-3 overflow-hidden group transition-all duration-300">
+                          className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 hover:border-gold/10 p-2 sm:p-3 overflow-hidden group transition-all duration-300">
                           {/* Subtle glow on hover */}
                           <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none" />
 
                           <div className="relative flex items-center justify-between">
-                            {/* Left side - Compact */}
-                            <div className="flex items-center gap-3">
+                            {/* Left side - Compact Mobile Optimized */}
+                            <div className="flex items-center gap-2 sm:gap-3">
                               {/* Position */}
-                              <div className="text-center min-w-[32px]">
-                                <span className="text-sm font-black text-gray-600">
+                              <div className="text-center min-w-[24px] sm:min-w-[32px]">
+                                <span className="text-xs sm:text-sm font-black text-gray-600">
                                   {position}º
                                 </span>
                               </div>
 
-                              {/* Avatar + Name */}
-                              <div className="flex items-center gap-2">
+                              {/* Avatar + Name - Mobile Optimized */}
+                              <div className="flex items-center gap-1.5 sm:gap-2">
                                 {account.thumbnail ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={account.thumbnail}
                                     alt={account.nickname}
-                                    className="w-8 h-8 rounded-full border border-white/10 object-cover"
+                                    className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-white/10 object-cover"
                                   />
                                 ) : (
-                                  <div className="w-8 h-8 rounded-full bg-gray-800 border border-white/10 flex items-center justify-center">
-                                    <User className="w-4 h-4 text-gray-600" />
+                                  <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-800 border border-white/10 flex items-center justify-center">
+                                    <User className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" />
                                   </div>
                                 )}
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-300 truncate max-w-[120px]">
+                                  <p className="text-xs sm:text-sm font-semibold text-gray-300 truncate max-w-[80px] sm:max-w-[120px]">
                                     {account.nickname}
                                   </p>
-                                  <p className="text-[10px] text-gray-500">
+                                  <p className="text-[9px] sm:text-[10px] text-gray-500">
                                     {account.totalQuestions} perguntas
                                   </p>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right side - Key Metrics */}
-                            <div className="flex items-center gap-3">
-                              {/* Main metric */}
+                            {/* Right side - Key Metrics Mobile Optimized */}
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              {/* Main metric - Mobile Optimized */}
                               <div className="text-right">
-                                <p className="text-sm font-bold text-gold">
+                                <p className="text-xs sm:text-sm font-bold text-gold">
                                   {sortBy === "revenue"
                                     ? formatCurrency(account.totalRevenue)
                                     : `${account.totalQuestions}`
                                   }
                                 </p>
-                                <p className="text-[9px] text-gray-500">
+                                <p className="text-[8px] sm:text-[9px] text-gray-500 hidden sm:block">
                                   {sortBy === "revenue" ? "receita" : "total"}
                                 </p>
                               </div>
 
-                              {/* Profit */}
-                              <div className="text-right min-w-[60px]">
-                                <p className={`text-xs font-semibold ${
+                              {/* Profit - Mobile Optimized */}
+                              <div className="text-right min-w-[50px] sm:min-w-[60px] hidden sm:block">
+                                <p className={`text-[10px] sm:text-xs font-semibold ${
                                   (account.realProfit || 0) > 0 ? 'text-green-400' : 'text-gray-500'
                                 }`}>
                                   {formatCurrency(account.realProfit || 0)}
                                 </p>
-                                <p className="text-[9px] text-gray-500">lucro</p>
+                                <p className="text-[8px] sm:text-[9px] text-gray-500">lucro</p>
                               </div>
                             </div>
                           </div>
@@ -561,13 +562,13 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.3 }}
-                  className="mt-6 flex justify-center"
+                  className="mt-4 sm:mt-6 flex justify-center"
                 >
                   <button
                     onClick={onAddAccount}
-                    className="group flex items-center gap-2 px-4 py-2 rounded-xl bg-black/50 border border-white/5 hover:border-gold/20 transition-all">
-                    <Plus className="w-4 h-4 text-gray-500 group-hover:text-gold transition-colors" />
-                    <span className="text-xs text-gray-500 group-hover:text-gold transition-colors">
+                    className="group flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-black/50 border border-white/5 hover:border-gold/20 transition-all">
+                    <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 group-hover:text-gold transition-colors" />
+                    <span className="text-[10px] sm:text-xs text-gray-500 group-hover:text-gold transition-colors">
                       Adicionar Conta ({10 - accounts.length} vagas)
                     </span>
                   </button>

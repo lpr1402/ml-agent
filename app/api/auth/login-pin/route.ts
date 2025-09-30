@@ -17,9 +17,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar organização pelo username
+    // Buscar organização pelo username (sempre em UPPERCASE)
     const organization = await prisma.organization.findUnique({
-      where: { username: username.toLowerCase() },
+      where: { username: username.toUpperCase() },
       include: { mlAccounts: true }
     })
 

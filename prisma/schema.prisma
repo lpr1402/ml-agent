@@ -40,13 +40,14 @@ model Organization {
   updatedAt          DateTime           @updatedAt
   
   // Relations
-  mlAccounts     MLAccount[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  payments       Payment[]
-  webhookEvents  WebhookEvent[]
-  approvalTokens ApprovalToken[]
-  
+  mlAccounts       MLAccount[]
+  sessions         Session[]
+  auditLogs        AuditLog[]
+  payments         Payment[]
+  webhookEvents    WebhookEvent[]
+  approvalTokens   ApprovalToken[]
+  pushSubscriptions PushSubscription[]
+
   @@index([primaryMLUserId])
   @@index([subscriptionStatus])
 }
@@ -454,6 +455,51 @@ model ApprovalToken {
   @@index([organizationId])
   @@index([expiresAt])
   @@index([used])
+}
+
+// ========== PUSH SUBSCRIPTIONS (PWA NOTIFICATIONS) ==========
+// Armazena inscrições de push notifications para PWA
+// Permite notificações 24/7 mesmo com app fechado
+
+model PushSubscription {
+  id              String       @id @default(cuid())
+
+  // Subscription data do navegador
+  endpoint        String       @unique // URL único do push service
+  p256dh          String       // Public key para criptografia
+  auth            String       // Auth secret
+
+  // Associação com organização (multi-tenant)
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Device/Browser info
+  deviceName      String?      // Nome customizado do dispositivo
+  deviceType      String?      // ios, android, desktop
+  browser         String?      // safari, chrome, firefox
+  browserVersion  String?
+  os              String?      // iOS 16.4+, Android, Windows, macOS
+
+  // Controle de notificações
+  isActive        Boolean      @default(true)
+  lastUsedAt      DateTime?    // Última vez que enviamos push
+  failureCount    Int          @default(0) // Contador de falhas
+
+  // Preferências do usuário
+  enableQuestions Boolean      @default(true)  // Notificar novas perguntas
+  enableUrgent    Boolean      @default(true)  // Notificar urgentes
+  enableBatch     Boolean      @default(true)  // Agrupar múltiplas perguntas
+  quietHoursStart Int?         // Hora de início do silêncio (0-23)
+  quietHoursEnd   Int?         // Hora de fim do silêncio (0-23)
+  timezone        String       @default("America/Sao_Paulo")
+
+  // Metadata
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([isActive])
+  @@index([endpoint])
 }
 
 // ========== ENUMS ==========

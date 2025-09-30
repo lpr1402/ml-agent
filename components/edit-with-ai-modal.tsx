@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { toast } from '@/hooks/use-toast'
+// import { toast } from '@/hooks/use-toast' // Removido - apenas notificações do dispositivo
 import { apiClient } from '@/lib/api-client'
 import { 
   Sparkles,
@@ -42,11 +42,8 @@ export function EditWithAIModal({
   
   const handleSubmit = async () => {
     if (!editInstruction.trim()) {
-      toast({
-        title: "Instrução necessária",
-        description: "Por favor, descreva como deseja editar a resposta",
-        variant: "destructive"
-      })
+      // Removido toast - apenas notificações do dispositivo
+      console.error('[AI Edit] No instruction provided')
       return
     }
     
@@ -60,11 +57,8 @@ export function EditWithAIModal({
       })
       
       if (response.success) {
-        toast({
-          title: "Solicitação enviada!",
-          description: "A IA está processando sua solicitação de edição. Você receberá uma notificação em breve.",
-          variant: "default"
-        })
+        // Removido toast - apenas notificações do dispositivo
+        console.log('[AI Edit] Request sent successfully')
         
         onSuccess()
         onClose()
@@ -74,11 +68,8 @@ export function EditWithAIModal({
       }
     } catch (error) {
       logger.error('Failed to request AI edit:', { error })
-      toast({
-        title: "Erro ao solicitar edição",
-        description: "Não foi possível processar sua solicitação. Tente novamente.",
-        variant: "destructive"
-      })
+      // Removido toast - apenas notificações do dispositivo
+      console.error('[AI Edit] Failed to request edit')
     } finally {
       setIsLoading(false)
     }

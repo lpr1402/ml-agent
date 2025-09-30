@@ -3,8 +3,31 @@ import type { NextRequest } from "next/server"
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+  const searchParams = request.nextUrl.searchParams
+
+  // 🎯 PROTEÇÃO iOS PWA: Limpar query params problemáticos ANTES de qualquer processamento
+  // Problema: iOS salva URL suja quando PWA é adicionada durante OAuth callback
+  // Solução: Detectar e redirecionar para URL limpa SEMPRE que tiver params desnecessários
+
+  const hasQueryParams = searchParams.toString().length > 0
+  const isAuthCallback = pathname.includes('/api/auth/callback')
+  const isAPIRoute = pathname.startsWith('/api/')
+
+  // Se tem query params E NÃO é um callback OAuth ativo, limpar!
+  if (hasQueryParams && !isAuthCallback && !isAPIRoute) {
+    // Verificar se são params do OAuth que já foram processados
+    const hasOAuthParams = searchParams.has('code') || searchParams.has('state')
+
+    if (hasOAuthParams) {
+      console.log('[iOS PWA Protection] Detected stale OAuth params, cleaning URL:', pathname)
+      // Redirecionar para URL limpa sem params
+      const cleanUrl = new URL(pathname, request.url)
+      return NextResponse.redirect(cleanUrl, 307) // 307 = Temporary Redirect mantém POST/GET
+    }
+  }
+
   const response = NextResponse.next()
-  
+
   // Security headers básicos
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("X-Content-Type-Options", "nosniff")
@@ -12,13 +35,19 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
+  // HSTS - Strict Transport Security (Recomendado pelo agente de segurança)
+  if (process.env['NODE_ENV'] === 'production') {
+    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+  }
+
   // Content Security Policy com suporte para Google Fonts, SSE e WebSocket
+  // Removido 'unsafe-eval' que não é necessário e causa avisos de segurança
   response.headers.set(
     "Content-Security-Policy",
     "default-src 'self' https://api.mercadolibre.com https://mla-s1-p.mlstatic.com https://*.mlstatic.com; " +
     "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "script-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: blob: https://*.mlstatic.com https://mla-s1-p.mlstatic.com; " +
     "connect-src 'self' https://api.mercadolibre.com https://gugaleo.axnexlabs.com.br wss://gugaleo.axnexlabs.com.br:3008 ws://gugaleo.axnexlabs.com.br:3008 ws://localhost:* wss://localhost:* http://localhost:* https://localhost:*"
   )
@@ -144,24 +173,55 @@ export async function middleware(request: NextRequest) {
     '/api/health',
     '/api/agent/monitor-stuck-questions',
     '/api/agent/reprocess-question',  // Endpoint autônomo - usa dados da pergunta
+    '/api/redirect',  // IMPORTANTE: Redirecionamento universal PWA
     '/answer',  // Página de resposta com link único
     '/api/answer',  // APIs de resposta com link único
     '/approve',  // Página de aprovação
     '/api/secure/approve-with-token',  // Aprovação com token único
-    '/_next',
-    '/favicon.ico',
-    '/mlagent-logo-3d.svg',
-    '/ml-agent-icon.png',
-    '/logo.png',
+    '/_next',  // IMPORTANTE: Recursos do Next.js
+    '/favicon',
+    '/mlagent',
+    '/ml-agent',
+    '/logo',
+    '/icone',
     '/.well-known',
     '/robots.txt',
-    '/sitemap.xml'
+    '/sitemap.xml',
+    '/manifest.json',
+    '/sw.js',
+    '/workbox',  // Workbox files
+    '/icons',  // PWA icons
+    '/splash',  // PWA splash screens
+    '/notification',  // Notification sounds
+    '/apple-touch',  // Apple icons
+    '/api/push',  // Push notification endpoints
+    '/*.png',
+    '/*.jpg',
+    '/*.jpeg',
+    '/*.svg',
+    '/*.ico',
+    '/*.mp3',
+    '/*.js',  // IMPORTANTE: Não bloquear JavaScript
+    '/*.css'  // IMPORTANTE: Não bloquear CSS
   ]
   
-  const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
+  // Verificar se é um caminho público ou recurso estático
+  const isPublicPath = publicPaths.some(path => {
+    // Se o path tem wildcard, fazer match com regex
+    if (path.includes('*')) {
+      const regex = new RegExp(path.replace('*', '.*'));
+      return regex.test(pathname);
+    }
+    // Senão, verificar se começa com o path
+    return pathname.startsWith(path);
+  })
+
+  // IMPORTANTE: Sempre permitir recursos estáticos
+  const isStaticResource = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|mp3|mp4|webm)$/i.test(pathname)
   
   // Verificar autenticação para rotas protegidas
-  if (!isPublicPath) {
+  // NÃO bloquear recursos estáticos
+  if (!isPublicPath && !isStaticResource) {
     // SSE com token não precisa de cookie
     if (pathname.startsWith('/api/agent/events') && request.nextUrl.searchParams.has('token')) {
       console.log('[Middleware] SSE endpoint with token, skipping cookie auth')
@@ -169,12 +229,36 @@ export async function middleware(request: NextRequest) {
     } else {
       // Cookie padronizado para produção
       const sessionToken = request.cookies.get('ml-agent-session')?.value
+      const orgId = request.cookies.get('ml-agent-org')?.value
 
       // Se não tem sessão, redirecionar para login
       if (!sessionToken && pathname !== '/') {
-        const loginUrl = new URL('/login', request.url)
-        loginUrl.searchParams.set('redirect', pathname)
-        return NextResponse.redirect(loginUrl)
+        // 🎯 iOS PWA FIX: Usar URL relativa que mantém standalone mode
+        // Construir URL a partir do request mas manter scheme/host/port exatamente iguais
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        url.search = '' // Limpar TODOS os query params
+        return NextResponse.redirect(url)
+      }
+
+      // Se tem sessão, estender a validade do cookie (sessão persistente)
+      if (sessionToken && orgId) {
+        // Renovar cookies para manter sessão por mais 30 dias
+        response.cookies.set('ml-agent-session', sessionToken, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 dias
+          path: '/'
+        })
+
+        response.cookies.set('ml-agent-org', orgId, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 dias
+          path: '/'
+        })
       }
     }
   }
@@ -184,10 +268,16 @@ export async function middleware(request: NextRequest) {
     // Cookie padronizado para produção
     const sessionToken = request.cookies.get('ml-agent-session')?.value
 
+    // 🎯 iOS PWA FIX: Usar clone() do URL para manter exatamente o mesmo contexto
+    const url = request.nextUrl.clone()
+    url.search = '' // Limpar query params
+
     if (sessionToken) {
-      return NextResponse.redirect(new URL("/agente", request.url))
+      url.pathname = "/agente"
+      return NextResponse.redirect(url)
     } else {
-      return NextResponse.redirect(new URL("/login", request.url))
+      url.pathname = "/login"
+      return NextResponse.redirect(url)
     }
   }
   

@@ -59,7 +59,7 @@ class BrowserNotificationService {
 
       // Tocar som de notificação
       try {
-        const audio = new Audio('/notification.mp3')
+        const audio = new Audio('/notification-new.mp3')
         audio.volume = 0.7
         audio.play().catch(() => {
           // Falha silenciosa se não conseguir tocar o som
@@ -68,28 +68,35 @@ class BrowserNotificationService {
         // Ignora erro de áudio
       }
 
-      // Notificação simplificada: apenas logo ML Agent, nome da conta e pergunta
-      const notification = new Notification(`ML Agent - ${data.sellerName}`, {
-        body: data.questionText,
-        icon: '/mlagent-logo-3d.svg', // Logo ML Agent SVG
+      // Truncar pergunta se for muito longa (máximo 120 caracteres)
+      const truncatedQuestion = data.questionText.length > 120
+        ? data.questionText.substring(0, 120) + '...'
+        : data.questionText
+
+      // Truncar título do produto se for muito longo (máximo 40 caracteres)
+      const truncatedProduct = data.productTitle.length > 40
+        ? data.productTitle.substring(0, 40) + '...'
+        : data.productTitle
+
+      // Notificação profissional: contexto completo para o vendedor
+      const notification = new Notification(`🔔 Nova Pergunta - ${data.sellerName}`, {
+        body: `Um cliente enviou uma pergunta sobre "${truncatedProduct}":\n\n${truncatedQuestion}`,
+        icon: '/mlagent-logo-3d.svg', // Logo ML Agent 3D SVG (renderiza maior)
         badge: '/mlagent-logo-3d.svg',
         tag: `question-${data.sequentialId}`,
         requireInteraction: false, // Não manter aberta
         silent: false
       })
 
-      // Abrir link único ao clicar na notificação
+      // Ao clicar, focar na aba do ML Agent
       notification.onclick = () => {
         notification.close()
-        if (data.approvalUrl) {
-          window.open(data.approvalUrl, '_blank')
-        }
-        // Focar a janela se já estiver aberta
+        // Focar a janela do ML Agent se já estiver aberta
         window.focus()
       }
 
-      // Auto-fechar após 10 segundos
-      setTimeout(() => notification.close(), 10000)
+      // Auto-fechar após 15 segundos
+      setTimeout(() => notification.close(), 15000)
       
       logger.info('[BrowserNotification] Question notification sent', { 
         questionId: data.sequentialId 

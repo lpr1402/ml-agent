@@ -97,8 +97,7 @@ class EmergencyBuffer {
               crypto.randomBytes(16).toString('hex'),
               item.data,
               item.data.organizationId || 'unknown',
-              item.data.mlAccountId,
-              3 // Baixa prioridade
+              item.data.mlAccountId
             ).catch(err => {
               logger.error('[EmergencyBuffer] Failed to queue webhook', { err })
             })
@@ -256,8 +255,7 @@ export class WebhookProcessorProtected {
               this.generateDedupKey(payload),
               payload,
               mlAccount.organizationId,
-              mlAccount.id,
-              payload.topic === 'questions' ? 1 : 2
+              mlAccount.id
             )
           }
         )

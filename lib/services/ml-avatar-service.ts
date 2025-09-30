@@ -1,81 +1,105 @@
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
+import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
+import { MLCache } from '@/lib/cache/ml-cache'
 
 /**
  * Serviço para gerenciar avatares do Mercado Livre
+ * Busca SEMPRE via API oficial do ML - sem tentativas de adivinhar URLs
  */
 export class MLAvatarService {
   /**
-   * Padrões de URL de avatar do ML por site
+   * Busca avatar direto da API oficial do ML
+   * @param userId ID do usuário no ML
+   * @param accessToken Token de acesso válido
+   * @returns URL do avatar ou null
    */
-  private static getAvatarPatterns(userId: string, siteId: string): string[] {
-    const patterns = [
-      // Padrão universal que funciona para a maioria dos usuários
-      `https://mla-s2-p.mlstatic.com/${userId}-R-original.jpg`,
-      `https://http2.mlstatic.com/storage/users-avatar-shrine/v1/user_${userId}.jpg`,
-      `https://http2.mlstatic.com/D_${userId}_100X100.jpg`,
-    ]
-
-    // Adicionar padrões específicos por país
-    if (siteId === 'MLB') {
-      patterns.push(
-        `https://mlb-s2-p.mlstatic.com/${userId}-R-original.jpg`,
-        `https://perfil.mercadolivre.com.br/api/user_picture/${userId}`
-      )
-    } else if (siteId === 'MLA') {
-      patterns.push(
-        `https://mla-s2-p.mlstatic.com/${userId}-R-original.jpg`,
-        `https://perfil.mercadolibre.com.ar/api/user_picture/${userId}`
-      )
-    } else if (siteId === 'MLM') {
-      patterns.push(
-        `https://mlm-s2-p.mlstatic.com/${userId}-R-original.jpg`,
-        `https://perfil.mercadolibre.com.mx/api/user_picture/${userId}`
-      )
-    }
-
-    return patterns
-  }
-
-  /**
-   * Verifica se uma URL de avatar existe e é válida
-   */
-  private static async checkAvatarUrl(url: string): Promise<boolean> {
+  public static async fetchAvatarFromAPI(userId: string, accessToken: string): Promise<string | null> {
     try {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        headers: {
-          'User-Agent': 'Mozilla/5.0'
-        },
-        signal: AbortSignal.timeout(3000) // Timeout de 3 segundos
-      })
-
-      return response.ok || response.status === 200
-    } catch {
-      return false
-    }
-  }
-
-  /**
-   * Encontra uma URL de avatar válida para um usuário
-   */
-  public static async findAvatarUrl(userId: string, siteId: string): Promise<string | null> {
-    const patterns = this.getAvatarPatterns(userId, siteId)
-
-    for (const url of patterns) {
-      const isValid = await this.checkAvatarUrl(url)
-      if (isValid) {
-        logger.info(`[MLAvatarService] Found valid avatar URL for user ${userId}`, { url })
-        return url
+      // Verificar cache primeiro (evita chamadas duplicadas)
+      const cacheKey = `avatar_${userId}`
+      const cached = await MLCache.get<string>('USER', cacheKey)
+      if (cached) {
+        logger.info(`[MLAvatarService] Using cached avatar for user ${userId}`)
+        return cached
       }
-    }
 
-    logger.warn(`[MLAvatarService] No avatar found for user ${userId}`)
-    return null
+      // Buscar dados do usuário via API oficial
+      logger.info(`[MLAvatarService] Fetching user data from ML API for ${userId}`)
+
+      const response = await fetchWithRateLimit(
+        `https://api.mercadolibre.com/users/${userId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+            'User-Agent': 'ML-Agent/1.0'
+          }
+        },
+        'users'
+      )
+
+      if (!response.ok) {
+        logger.warn(`[MLAvatarService] Failed to fetch user data: ${response.status}`)
+        return null
+      }
+
+      const userData = await response.json()
+
+      // Extrair URL do avatar seguindo ordem de prioridade da API do ML
+      let avatarUrl = null
+
+      // 1. Thumbnail object (formato correto da API): { picture_id: "...", picture_url: "..." }
+      if (userData.thumbnail && typeof userData.thumbnail === 'object' && userData.thumbnail.picture_url) {
+        avatarUrl = userData.thumbnail.picture_url
+      }
+      // 2. Thumbnail string (formato legacy)
+      else if (userData.thumbnail && typeof userData.thumbnail === 'string') {
+        avatarUrl = userData.thumbnail
+      }
+      // 3. Logo (usuários empresariais)
+      else if (userData.logo && typeof userData.logo === 'string') {
+        avatarUrl = userData.logo
+      }
+      // 4. Picture object (outros formatos)
+      else if (userData.picture) {
+        if (typeof userData.picture === 'string') {
+          avatarUrl = userData.picture
+        } else if (userData.picture.url) {
+          avatarUrl = userData.picture.url
+        } else if (userData.picture.picture_url) {
+          avatarUrl = userData.picture.picture_url
+        }
+      }
+
+      if (avatarUrl) {
+        // Garantir URL completa (protocol-relative URLs)
+        if (avatarUrl.startsWith('//')) {
+          avatarUrl = `https:${avatarUrl}`
+        }
+        // Se não começa com http, adicionar domínio do ML
+        else if (!avatarUrl.startsWith('http')) {
+          avatarUrl = `https://http2.mlstatic.com${avatarUrl}`
+        }
+
+        // Cachear por 24 horas
+        await MLCache.set('USER', cacheKey, avatarUrl)
+
+        logger.info(`[MLAvatarService] Avatar found and cached for user ${userId}`, { avatarUrl })
+        return avatarUrl
+      }
+
+      logger.warn(`[MLAvatarService] No avatar found in API response for user ${userId}`)
+      return null
+
+    } catch (error) {
+      logger.error(`[MLAvatarService] Error fetching avatar from API`, { userId, error })
+      return null
+    }
   }
 
   /**
-   * Atualiza o avatar de uma conta ML
+   * Atualiza o avatar de uma conta ML usando a API oficial
    */
   public static async updateAccountAvatar(accountId: string): Promise<boolean> {
     try {
@@ -84,45 +108,49 @@ export class MLAvatarService {
         select: {
           id: true,
           mlUserId: true,
-          siteId: true,
           nickname: true,
-          thumbnail: true
+          thumbnail: true,
+          accessToken: true,
+          accessTokenIV: true,
+          accessTokenTag: true,
+          tokenExpiresAt: true
         }
       })
 
-      if (!account) {
-        logger.error('[MLAvatarService] Account not found', { accountId })
+      if (!account || account.tokenExpiresAt <= new Date()) {
+        logger.error('[MLAvatarService] Account not found or token expired', { accountId })
         return false
       }
 
-      // Se já tem thumbnail válido, verificar se ainda funciona
-      if (account.thumbnail) {
-        const isValid = await this.checkAvatarUrl(account.thumbnail)
-        if (isValid) {
-          logger.info(`[MLAvatarService] Existing avatar is valid for ${account.nickname}`)
-          return true
-        }
-      }
+      // Descriptografar token
+      const { decryptToken } = require('@/lib/security/encryption')
+      const accessToken = decryptToken({
+        encrypted: account.accessToken,
+        iv: account.accessTokenIV,
+        authTag: account.accessTokenTag
+      })
 
-      // Buscar novo avatar
-      const avatarUrl = await this.findAvatarUrl(account.mlUserId, account.siteId || 'MLB')
+      // Buscar avatar via API oficial
+      const avatarUrl = await this.fetchAvatarFromAPI(account.mlUserId, accessToken)
 
       if (avatarUrl) {
-        await prisma.mLAccount.update({
-          where: { id: accountId },
-          data: { thumbnail: avatarUrl }
-        })
+        // Só atualizar se mudou
+        if (account.thumbnail !== avatarUrl) {
+          await prisma.mLAccount.update({
+            where: { id: accountId },
+            data: {
+              thumbnail: avatarUrl,
+              updatedAt: new Date()
+            }
+          })
 
-        logger.info(`[MLAvatarService] Updated avatar for ${account.nickname}`, { avatarUrl })
+          logger.info(`[MLAvatarService] Avatar updated for ${account.nickname}`, { avatarUrl })
+        } else {
+          logger.info(`[MLAvatarService] Avatar unchanged for ${account.nickname}`)
+        }
         return true
       } else {
-        // Limpar thumbnail inválido
-        await prisma.mLAccount.update({
-          where: { id: accountId },
-          data: { thumbnail: null }
-        })
-
-        logger.warn(`[MLAvatarService] No avatar found for ${account.nickname}, cleared thumbnail`)
+        logger.warn(`[MLAvatarService] No avatar found for ${account.nickname}`)
         return false
       }
     } catch (error) {
@@ -133,6 +161,7 @@ export class MLAvatarService {
 
   /**
    * Atualiza avatares de todas as contas de uma organização
+   * Usa batching para evitar múltiplas chamadas à API
    */
   public static async updateOrganizationAvatars(organizationId: string): Promise<void> {
     try {
@@ -143,19 +172,31 @@ export class MLAvatarService {
         },
         select: {
           id: true,
-          nickname: true
+          nickname: true,
+          mlUserId: true
         }
       })
 
       logger.info(`[MLAvatarService] Updating avatars for ${accounts.length} accounts`)
 
-      // Atualizar avatares em paralelo mas com limite para evitar rate limiting
-      const results = await Promise.allSettled(
-        accounts.map(account => this.updateAccountAvatar(account.id))
-      )
+      // Processar sequencialmente para evitar rate limiting
+      // Mas usar cache para evitar chamadas duplicadas
+      let successful = 0
+      let failed = 0
 
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value).length
-      const failed = results.filter(r => r.status === 'rejected' || !r.value).length
+      for (const account of accounts) {
+        try {
+          const result = await this.updateAccountAvatar(account.id)
+          if (result) successful++
+          else failed++
+
+          // Pequeno delay para respeitar rate limits
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } catch (error) {
+          logger.error(`[MLAvatarService] Failed to update avatar for ${account.nickname}`, { error })
+          failed++
+        }
+      }
 
       logger.info(`[MLAvatarService] Avatar update complete`, {
         successful,

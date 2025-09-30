@@ -42,7 +42,7 @@ describe('CSRF Protection', () => {
     })
 
     it('should skip verification for webhook endpoints', async () => {
-      const request = new NextRequest('https://example.com/api/webhooks/ml', {
+      const request = new NextRequest('https://example.com/api/webhooks/mercadolibre', {
         method: 'POST',
       })
 

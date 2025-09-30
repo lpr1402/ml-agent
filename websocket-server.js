@@ -195,6 +195,22 @@ async function startWebSocketServer() {
         })
       })
 
+      // Handle joining specific rooms (for unique approval pages)
+      socket.on('join', (room) => {
+        if (room && typeof room === 'string') {
+          socket.join(room)
+          logger.info(`Socket ${socket.id} joined room: ${room}`)
+        }
+      })
+
+      // Handle leaving specific rooms
+      socket.on('leave', (room) => {
+        if (room && typeof room === 'string') {
+          socket.leave(room)
+          logger.info(`Socket ${socket.id} left room: ${room}`)
+        }
+      })
+
       // Handle question actions
       socket.on('question:approve', async (data) => {
         logger.info('Question approval via WebSocket', data)
@@ -275,19 +291,59 @@ async function startWebSocketServer() {
             }
             break
 
+          case 'question:revising':
+            // Emit revising status to organization and question room
+            if (data.organizationId) {
+              const eventData = {
+                mlQuestionId: data.questionId,
+                feedback: data.userFeedback,
+                timestamp: Date.now()
+              }
+
+              // Emit to organization room
+              io.to(`org:${data.organizationId}`).emit('question:revising', eventData)
+
+              // Also emit to question-specific room
+              if (data.questionId) {
+                const questionRoom = `question:${data.questionId}`
+                io.to(questionRoom).emit('question:revising', eventData)
+              }
+
+              logger.info('Emitted question:revising', {
+                org: data.organizationId,
+                questionId: data.questionId
+              })
+            }
+            break
+
           case 'question:updated':
             // Emit update to organization
             if (data.organizationId) {
-              io.to(`org:${data.organizationId}`).emit('question:updated', {
+              const eventData = {
                 type: 'question:updated',
+                mlQuestionId: data.mlQuestionId || data.questionId,
                 questionId: data.questionId,
                 status: data.status,
+                aiSuggestion: data.aiSuggestion,
+                revisedAnswer: data.revisedAnswer,
                 data: data.data || {},
                 timestamp: Date.now()
-              })
+              }
+
+              // Emit to organization room
+              io.to(`org:${data.organizationId}`).emit('question:updated', eventData)
+
+              // Also emit to question-specific room (for unique approval pages)
+              if (data.mlQuestionId || data.questionId) {
+                const questionRoom = `question:${data.mlQuestionId || data.questionId}`
+                io.to(questionRoom).emit('question:updated', eventData)
+                logger.info('Emitted to question room', { room: questionRoom })
+              }
+
               logger.info('Emitted question:updated', {
                 org: data.organizationId,
-                status: data.status
+                status: data.status,
+                mlQuestionId: data.mlQuestionId
               })
             }
             break

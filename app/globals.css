@@ -2,6 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ================== Global Styles ================== */
+html {
+  background-color: #000000;
+  color: white;
+}
+
+body {
+  background-color: #000000;
+  color: white;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+/* Ensure black background on iOS */
+@supports (padding-top: env(safe-area-inset-top)) {
+  html, body {
+    background-color: #000000;
+  }
+}
+
+/* Prevent overscroll bounce on iOS without breaking scroll */
+@media screen and (max-width: 768px) {
+  body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ================== iOS PWA Safe Area Support ================== */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .ios-safe-area-top {
+    padding-top: env(safe-area-inset-top, 20px);
+    background-color: #000000;
+  }
+
+  /* For standalone PWA mode on iOS */
+  @media (display-mode: standalone) {
+    .pwa-header {
+      padding-top: env(safe-area-inset-top, 20px);
+      background-color: #000000;
+    }
+  }
+}
+
+/* iOS PWA Fullscreen Mode */
+.ios-pwa-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ios-pwa-body {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
+
+/* Garantir fullscreen no iOS PWA - Fixed 2025 */
+@media (display-mode: standalone) {
+  html {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    height: 100%;
+    width: 100%;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+    position: relative;
+  }
+
+  #__next {
+    min-height: 100%;
+    overflow: visible;
+  }
+}
+
+/* Garantir scroll funcional em todas as páginas iOS PWA */
+@media (display-mode: standalone) {
+  /* Páginas internas devem ter scroll */
+  main, [role="main"], .page-container,
+  #__next > div,  /* Next.js root div */
+  body > div > div:first-child {  /* Qualquer div principal */
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+
+  /* Garantir que containers com min-h-screen sejam scrollable */
+  .min-h-screen, .min-h-\[100dvh\] {
+    height: auto !important;
+    min-height: 100vh !important;
+  }
+}
+
+/* iOS Status Bar - Black Background */
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    --status-bar-style: black;
+  }
+}
+
 /* ================== CSS VARIABLES ================== */
 :root {
   /* Core Colors */

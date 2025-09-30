@@ -76,7 +76,7 @@ describe('E2E: Webhook and API Integration', () => {
       }
       
       // Send webhook
-      const response = await fetch(`${API_URL}/api/webhooks/ml`, {
+      const response = await fetch(`${API_URL}/api/webhooks/mercadolibre`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ describe('E2E: Webhook and API Integration', () => {
       expect(response.status).toBe(200)
       
       // Try to send duplicate
-      const duplicateResponse = await fetch(`${API_URL}/api/webhooks/ml`, {
+      const duplicateResponse = await fetch(`${API_URL}/api/webhooks/mercadolibre`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -133,8 +133,7 @@ describe('E2E: Webhook and API Integration', () => {
         result.webhookId!,
         webhookPayload,
         testOrg.id,
-        testAccount.id,
-        0
+        testAccount.id
       )
       
       expect(job.id).toBeDefined()

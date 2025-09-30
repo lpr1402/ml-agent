@@ -171,7 +171,7 @@ export function AddAccountModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-5xl max-h-[80vh] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 text-white shadow-2xl overflow-hidden">
+      <DialogContent className="w-[95vw] sm:w-[90vw] sm:max-w-3xl md:max-w-4xl lg:max-w-5xl max-h-[90vh] sm:max-h-[85vh] md:max-h-[80vh] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 text-white shadow-2xl overflow-hidden">
         {/* Premium Background Pattern */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
 
@@ -179,32 +179,32 @@ export function AddAccountModal({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-gold/15 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-gold/10 rounded-full blur-3xl" />
 
-        <div className="relative z-10 flex flex-col h-full max-h-[80vh]">
-          <DialogHeader className="relative pb-3 border-b border-white/5 flex-shrink-0">
+        <div className="relative z-10 flex flex-col h-full max-h-[85vh] sm:max-h-[80vh]">
+          <DialogHeader className="relative pb-2 sm:pb-3 border-b border-white/5 flex-shrink-0 px-4 sm:px-6">
             {/* Compact Premium Header */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 {/* Premium Icon Container - No Animation */}
                 <div className="relative">
                   <div className="absolute inset-0 bg-gold/20 blur-xl" />
-                  <div className="relative w-10 h-10 rounded-lg bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-xl">
-                    <ShoppingBag className="h-5 w-5 text-black" />
+                  <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-xl">
+                    <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5 text-black" />
                   </div>
                 </div>
 
                 <div>
-                  <DialogTitle className="text-lg font-bold text-white">
+                  <DialogTitle className="text-base sm:text-lg font-bold text-white">
                     Conectar Nova Conta
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-gray-400">
+                  <DialogDescription className="text-[10px] sm:text-xs text-gray-400">
                     Integração Mercado Livre
                   </DialogDescription>
                 </div>
               </div>
 
               {/* Account Counter Badge */}
-              <div className="px-3 py-1 rounded-full bg-black/50 border border-white/10">
-                <span className="text-xs font-semibold text-gold">
+              <div className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-black/50 border border-white/10">
+                <span className="text-[10px] sm:text-xs font-semibold text-gold">
                   {currentAccountCount}/{maxAccounts}
                 </span>
               </div>
@@ -215,13 +215,13 @@ export function AddAccountModal({
           </DialogHeader>
 
           <div className="relative flex-1 overflow-y-auto">
-            {/* Estado inicial - Horizontal Premium Layout */}
+            {/* Estado inicial - Responsive Premium Layout */}
             {status === 'idle' && (
-              <div className="grid grid-cols-3 gap-6 p-6">
-                {/* Left Column - Connection Flow */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Link2 className="h-3.5 w-3.5 text-gold" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6 p-4 sm:p-5 lg:p-6">
+                {/* Connection Flow - First on mobile */}
+                <div className="space-y-2 sm:space-y-3 order-2 md:order-1">
+                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
+                    <Link2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
                     Processo de Conexão
                   </h3>
 
@@ -233,39 +233,39 @@ export function AddAccountModal({
                     ].map((step, index) => (
                       <div
                         key={index}
-                        className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/20 transition-all duration-300"
+                        className="flex items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/20 transition-all duration-300"
                       >
                         <div className="relative">
                           <div className="absolute inset-0 bg-gold/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="relative w-8 h-8 rounded-md bg-gradient-to-br from-gold/10 to-gold/5 flex items-center justify-center">
-                            <step.icon className="h-4 w-4 text-gold" />
+                          <div className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-gradient-to-br from-gold/10 to-gold/5 flex items-center justify-center">
+                            <step.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" />
                           </div>
-                          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black border border-gold/30 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-gold">{index + 1}</span>
+                          <div className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-black border border-gold/30 flex items-center justify-center">
+                            <span className="text-[8px] sm:text-[10px] font-bold text-gold">{index + 1}</span>
                           </div>
                         </div>
                         <div className="flex-1">
-                          <p className="text-xs font-semibold text-white">{step.title}</p>
-                          <p className="text-[10px] text-gray-400">{step.desc}</p>
+                          <p className="text-[11px] sm:text-xs font-semibold text-white">{step.title}</p>
+                          <p className="text-[9px] sm:text-[10px] text-gray-400">{step.desc}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Center Column - Account Slots */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Crown className="h-3.5 w-3.5 text-gold" />
+                {/* Account Slots - First on mobile, center on desktop */}
+                <div className="space-y-2 sm:space-y-3 order-1 md:order-2">
+                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
+                    <Crown className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
                     Slots Disponíveis
                   </h3>
 
-                  <div className="relative p-3 rounded-lg bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5">
-                    <div className="grid grid-cols-5 gap-1.5 mb-3">
+                  <div className="relative p-2.5 sm:p-3 rounded-lg bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5">
+                    <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-2 sm:mb-3">
                       {Array.from({ length: maxAccounts }).map((_, index) => (
                         <div
                           key={index}
-                          className={`h-10 rounded-md flex items-center justify-center transition-all duration-300 ${
+                          className={`h-8 sm:h-9 md:h-10 rounded-md flex items-center justify-center transition-all duration-300 ${
                             index < currentAccountCount
                               ? 'bg-gradient-to-br from-gold/20 to-gold/10 border border-gold/30'
                               : index === currentAccountCount
@@ -274,11 +274,11 @@ export function AddAccountModal({
                           }`}
                         >
                           {index < currentAccountCount ? (
-                            <CheckCircle2 className="h-4 w-4 text-gold" />
+                            <CheckCircle2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-gold" />
                           ) : index === currentAccountCount ? (
-                            <Plus className="h-4 w-4 text-gold" />
+                            <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-gold" />
                           ) : (
-                            <div className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gray-600" />
                           )}
                         </div>
                       ))}
@@ -292,45 +292,45 @@ export function AddAccountModal({
                       />
                     </div>
 
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">
+                    <div className="mt-1.5 sm:mt-2 flex items-center justify-between">
+                      <span className="text-[9px] sm:text-[10px] text-gray-400">
                         {currentAccountCount} de {maxAccounts} contas
                       </span>
-                      <span className="text-[10px] font-semibold text-gold">
+                      <span className="text-[9px] sm:text-[10px] font-semibold text-gold">
                         {maxAccounts - currentAccountCount} disponíveis
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Column - Benefits */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5 text-gold" />
+                {/* Benefits - Full width on mobile, third column on desktop */}
+                <div className="space-y-2 sm:space-y-3 order-3 md:col-span-2 lg:col-span-1">
+                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
+                    <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
                     Benefícios
                   </h3>
 
-                  <div className="p-3 rounded-lg bg-gradient-to-br from-gold/10 via-gold/5 to-transparent border border-gold/20">
-                    <ul className="space-y-2">
-                      <li className="flex items-start gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gold mt-1" />
+                  <div className="p-2.5 sm:p-3 rounded-lg bg-gradient-to-br from-gold/10 via-gold/5 to-transparent border border-gold/20">
+                    <ul className="space-y-1.5 sm:space-y-2">
+                      <li className="flex items-start gap-1.5 sm:gap-2">
+                        <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gold mt-0.5 sm:mt-1 flex-shrink-0" />
                         <div>
-                          <p className="text-xs font-medium text-white">IA Avançada</p>
-                          <p className="text-[10px] text-gray-400">Respostas automáticas inteligentes</p>
+                          <p className="text-[11px] sm:text-xs font-medium text-white">IA Avançada</p>
+                          <p className="text-[9px] sm:text-[10px] text-gray-400">Respostas automáticas inteligentes</p>
                         </div>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gold mt-1" />
+                      <li className="flex items-start gap-1.5 sm:gap-2">
+                        <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gold mt-0.5 sm:mt-1 flex-shrink-0" />
                         <div>
-                          <p className="text-xs font-medium text-white">+40% Vendas</p>
-                          <p className="text-[10px] text-gray-400">Aumento comprovado de conversão</p>
+                          <p className="text-[11px] sm:text-xs font-medium text-white">+40% Vendas</p>
+                          <p className="text-[9px] sm:text-[10px] text-gray-400">Aumento comprovado de conversão</p>
                         </div>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gold mt-1" />
+                      <li className="flex items-start gap-1.5 sm:gap-2">
+                        <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gold mt-0.5 sm:mt-1 flex-shrink-0" />
                         <div>
-                          <p className="text-xs font-medium text-white">Dashboard Pro</p>
-                          <p className="text-[10px] text-gray-400">Métricas em tempo real</p>
+                          <p className="text-[11px] sm:text-xs font-medium text-white">Dashboard Pro</p>
+                          <p className="text-[9px] sm:text-[10px] text-gray-400">Métricas em tempo real</p>
                         </div>
                       </li>
                     </ul>
@@ -341,15 +341,15 @@ export function AddAccountModal({
 
             {/* Estado de carregamento - Compact Premium Animation */}
             {status === 'loading' && (
-              <div className="flex items-center justify-center py-16">
+              <div className="flex items-center justify-center py-12 sm:py-16">
                 <div className="flex flex-col items-center space-y-3">
                   <div className="relative">
                     <div className="absolute inset-0 bg-gold/30 blur-xl" />
-                    <Loader2 className="relative h-10 w-10 animate-spin text-gold" />
+                    <Loader2 className="relative h-8 w-8 sm:h-10 sm:w-10 animate-spin text-gold" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-semibold text-white">Preparando Conexão</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Configurando ambiente seguro...</p>
+                    <p className="text-xs sm:text-sm font-semibold text-white">Preparando Conexão</p>
+                    <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">Configurando ambiente seguro...</p>
                   </div>
                 </div>
               </div>
@@ -357,18 +357,18 @@ export function AddAccountModal({
 
             {/* Estado de autenticação - Compact Premium Waiting */}
             {status === 'authenticating' && (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex items-center gap-8">
+              <div className="flex items-center justify-center py-12 sm:py-16">
+                <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 lg:gap-8 text-center sm:text-left">
                   <div className="relative">
                     <div className="absolute inset-0 rounded-full border-2 border-gold/20 animate-ping" />
                     <div className="absolute inset-0 rounded-full border-2 border-gold/30 animate-ping animation-delay-200" />
-                    <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-gold/20 to-gold/10 flex items-center justify-center">
-                      <Lock className="h-7 w-7 text-gold" />
+                    <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-gold/20 to-gold/10 flex items-center justify-center">
+                      <Lock className="h-6 w-6 sm:h-7 sm:w-7 text-gold" />
                     </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-white">Aguardando Autorização</p>
-                    <p className="text-xs text-gray-400 mt-1">Complete o login no Mercado Livre</p>
+                  <div>
+                    <p className="text-xs sm:text-sm font-semibold text-white">Aguardando Autorização</p>
+                    <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1">Complete o login no Mercado Livre</p>
                     <div className="flex items-center gap-1 mt-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" />
                       <div className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce animation-delay-200" />
@@ -381,20 +381,20 @@ export function AddAccountModal({
 
             {/* Estado de sucesso - Compact Premium Celebration */}
             {status === 'success' && (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex items-center gap-6">
+              <div className="flex items-center justify-center py-12 sm:py-16">
+                <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-center sm:text-left">
                   <div className="relative">
                     <div className="absolute inset-0 bg-emerald-500/30 blur-xl" />
-                    <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center animate-bounce">
-                      <CheckCircle className="h-8 w-8 text-white" />
+                    <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center animate-bounce">
+                      <CheckCircle className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                     </div>
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-white">Conta Conectada!</p>
-                    <p className="text-sm text-emerald-400 mt-1">Integração realizada com sucesso</p>
-                    <div className="flex items-center gap-2 mt-3">
-                      <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
-                      <span className="text-xs font-semibold text-emerald-400">Pronta para vender mais!</span>
+                    <p className="text-base sm:text-lg font-bold text-white">Conta Conectada!</p>
+                    <p className="text-xs sm:text-sm text-emerald-400 mt-0.5 sm:mt-1">Integração realizada com sucesso</p>
+                    <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 mt-2 sm:mt-3">
+                      <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" />
+                      <span className="text-[10px] sm:text-xs font-semibold text-emerald-400">Pronta para vender mais!</span>
                     </div>
                   </div>
                 </div>
@@ -403,23 +403,23 @@ export function AddAccountModal({
 
             {/* Estado de erro - Compact Premium Error Display */}
             {status === 'error' && (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center space-y-4 max-w-md">
-                  <div className="flex items-center gap-4">
+              <div className="flex items-center justify-center py-12 sm:py-16">
+                <div className="flex flex-col items-center space-y-3 sm:space-y-4 max-w-xs sm:max-w-md px-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left">
                     <div className="relative">
                       <div className="absolute inset-0 bg-red-500/20 blur-lg" />
-                      <div className="relative w-14 h-14 rounded-full bg-gradient-to-br from-red-500/20 to-red-600/10 flex items-center justify-center border border-red-500/30">
-                        <AlertCircle className="h-7 w-7 text-red-400" />
+                      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-red-500/20 to-red-600/10 flex items-center justify-center border border-red-500/30">
+                        <AlertCircle className="h-6 w-6 sm:h-7 sm:w-7 text-red-400" />
                       </div>
                     </div>
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-white">Erro na Conexão</p>
-                      <p className="text-xs text-red-400 mt-1">{errorMessage}</p>
+                    <div>
+                      <p className="text-xs sm:text-sm font-semibold text-white">Erro na Conexão</p>
+                      <p className="text-[10px] sm:text-xs text-red-400 mt-0.5 sm:mt-1">{errorMessage}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => { setStatus('idle'); setErrorMessage(''); }}
-                    className="px-4 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all"
+                    className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] sm:text-xs font-semibold hover:bg-red-500/20 transition-all"
                   >
                     Tentar Novamente
                   </button>
@@ -428,25 +428,25 @@ export function AddAccountModal({
             )}
           </div>
 
-          {/* Compact Premium Actions Bar */}
-          <div className="relative pt-3 pb-3 border-t border-white/5 flex-shrink-0">
+          {/* Responsive Premium Actions Bar */}
+          <div className="relative pt-2 sm:pt-3 pb-2 sm:pb-3 px-4 sm:px-6 border-t border-white/5 flex-shrink-0">
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gold/20 to-transparent" />
 
-            <div className="flex justify-between items-center gap-4">
-              {/* Security Badge */}
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <Shield className="h-3 w-3 text-gold/60" />
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-4">
+              {/* Security Badge - Hidden on mobile */}
+              <div className="hidden sm:flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs text-gray-500">
+                <Shield className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-gold/60" />
                 <span>Conexão segura</span>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-2">
+              {/* Action Buttons - Full width on mobile */}
+              <div className="flex gap-2 w-full sm:w-auto">
                 {status !== 'success' && (
                   <Button
                     variant="ghost"
                     onClick={onClose}
                     disabled={isLoading || status === 'authenticating'}
-                    className="px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-300"
+                    className="px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-300 flex-1 sm:flex-none"
                   >
                     Cancelar
                   </Button>
@@ -456,15 +456,15 @@ export function AddAccountModal({
                   <Button
                     onClick={handleAddAccount}
                     disabled={isLoading}
-                    className="relative group px-5 py-1.5 bg-gradient-to-r from-gold via-gold-light to-gold text-black text-xs font-bold rounded-lg shadow-lg shadow-gold/30 hover:shadow-xl hover:shadow-gold/40 transition-all duration-300 overflow-hidden"
+                    className="relative group px-4 sm:px-5 py-1 sm:py-1.5 bg-gradient-to-r from-gold via-gold-light to-gold text-black text-[10px] sm:text-xs font-bold rounded-lg shadow-lg shadow-gold/30 hover:shadow-xl hover:shadow-gold/40 transition-all duration-300 overflow-hidden flex-1 sm:flex-none"
                   >
                     {/* Shimmer Effect */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
 
-                    <div className="relative flex items-center gap-1.5">
-                      <ExternalLink className="h-3.5 w-3.5" />
+                    <div className="relative flex items-center justify-center gap-1 sm:gap-1.5">
+                      <ExternalLink className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                       <span>Conectar Agora</span>
-                      <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </Button>
                 )}
@@ -472,17 +472,17 @@ export function AddAccountModal({
                 {status === 'success' && (
                   <Button
                     onClick={onClose}
-                    className="px-5 py-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-500/30 hover:shadow-xl transition-all duration-300"
+                    className="px-4 sm:px-5 py-1 sm:py-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-[10px] sm:text-xs font-bold rounded-lg shadow-lg shadow-emerald-500/30 hover:shadow-xl transition-all duration-300 w-full sm:w-auto"
                   >
                     Concluir
                   </Button>
                 )}
 
                 {!canAddMoreAccounts && status === 'idle' && (
-                  <div className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                      <span className="text-xs font-semibold text-red-400">Limite Atingido</span>
+                  <div className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 w-full sm:w-auto">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+                      <AlertCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-red-400" />
+                      <span className="text-[10px] sm:text-xs font-semibold text-red-400">Limite Atingido</span>
                     </div>
                   </div>
                 )}

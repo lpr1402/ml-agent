@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { approvalTokenService } from '@/lib/services/approval-token-service'
 import { logger } from '@/lib/logger'
+import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,22 @@ export async function POST(request: NextRequest) {
     // Usar o ID sequencial SALVO no banco (não gerar novo)
     const sequentialId = validation.question.sequentialId || 'N/A'
 
+    // Generate WebSocket token for unique approval page
+    const SESSION_SECRET = process.env['SESSION_SECRET'] || 'ml-agent-session-secret-2025'
+    const wsToken = jwt.sign(
+      {
+        type: 'websocket',
+        organizationId: validation.question.mlAccount?.organizationId || 'org-default',
+        mlAccountId: validation.question.mlAccount?.id || 'unknown',
+        mlUserId: validation.question.mlAccount?.mlUserId || '',
+        nickname: validation.question.mlAccount?.nickname || 'Unknown',
+        questionId: validation.question.id,
+        mlQuestionId: validation.question.mlQuestionId
+      },
+      SESSION_SECRET,
+      { expiresIn: '1h' }
+    )
+
     logger.info('[ValidatePin] PIN validated successfully', {
       token,
       questionId: validation.question.id
@@ -46,7 +63,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       question: validation.question,
-      sequentialId: sequentialId // Usar o ID salvo
+      sequentialId: sequentialId, // Usar o ID salvo
+      wsToken: wsToken // WebSocket token for real-time connection
     })
 
   } catch (error) {

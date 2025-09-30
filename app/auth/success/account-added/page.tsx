@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { CheckCircle, Loader2 } from 'lucide-react'
 
 function AccountAddedContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [isClosing, setIsClosing] = useState(false)
 
   const accountName = searchParams.get('account') || 'Nova conta'
@@ -44,13 +45,14 @@ function AccountAddedContent() {
       } else {
         // Se não tem janela pai, redirecionar para agente após 2 segundos
         setTimeout(() => {
-          window.location.href = '/agente'
+          // Usar Next.js router para manter iOS PWA fullscreen
+          router.push('/agente')
         }, 2000)
       }
     }, 500)
     
     return () => clearTimeout(timer)
-  }, [accountName, error])
+  }, [accountName, error, router])
   
   return (
     <div 

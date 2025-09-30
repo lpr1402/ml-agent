@@ -1,7 +1,7 @@
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sendRevisionNotification } from "@/lib/services/whatsapp-professional"
+// Revisão removida - não enviamos mais notificações de revisão
 import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
 import { decryptToken } from "@/lib/security/encryption"
 
@@ -137,7 +137,8 @@ export async function POST(request: NextRequest) {
         buyerQuestions,
         {
           originalResponse: question.aiSuggestion || '',
-          revisionFeedback: feedback
+          revisionFeedback: feedback,
+          sellerNickname: question.mlAccount.nickname || 'Vendedor' // Adicionar nickname correto da conta ML
         }
       )
       
@@ -163,22 +164,50 @@ export async function POST(request: NextRequest) {
           error: fetchError.name === 'AbortError' ? 'Request timeout after 2 minutes' : fetchError.message
         })
 
-        // Update question status to FAILED with clear error
+        // IMPORTANT: Revert status back to AWAITING_APPROVAL for retry
         await prisma.question.update({
           where: { id: questionId },
           data: {
-            status: "FAILED",
-            failedAt: new Date(),
-            failureReason: fetchError.name === 'AbortError'
-              ? "IA demorou mais de 2 minutos para responder. Tente novamente."
-              : "Erro ao conectar com o serviço de IA. Tente novamente."
+            status: 'AWAITING_APPROVAL',
+            // Keep the original AI suggestion for user to retry or edit
+            aiSuggestion: question.aiSuggestion
           }
         })
+
+        logger.info('[Revision] Reverted status back to AWAITING_APPROVAL after error', {
+          questionId,
+          error: fetchError.name === 'AbortError'
+            ? 'Timeout after 2 minutes'
+            : fetchError.message
+        })
+
+        // Emit error event for real-time feedback with status revert
+        try {
+          const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
+          emitQuestionEvent(
+            question.mlQuestionId,
+            'revision-error',
+            {
+              failureReason: fetchError.name === 'AbortError'
+                ? '⏱️ IA demorou mais de 2 minutos para responder'
+                : '❌ Erro ao conectar com serviço de IA',
+              errorType: 'REVISION_ERROR',
+              status: 'AWAITING_APPROVAL',
+              retryable: true,
+              aiSuggestion: question.aiSuggestion
+            },
+            question.mlAccount.organizationId
+          )
+        } catch (wsError) {
+          logger.warn('[Revision] Failed to emit error event', { error: wsError })
+        }
 
         return NextResponse.json({
           error: fetchError.name === 'AbortError'
             ? "Timeout: A IA não respondeu em 2 minutos"
-            : "Erro de conexão com serviço de IA"
+            : "Erro de conexão com serviço de IA",
+          status: 'AWAITING_APPROVAL',
+          aiSuggestion: question.aiSuggestion
         }, { status: 500 })
       } finally {
         clearTimeout(timeoutId)
@@ -188,19 +217,47 @@ export async function POST(request: NextRequest) {
         const errorText = await n8nResponse.text()
         logger.error("N8N revision failed", { response: errorText })
 
-        // Update to FAILED status with clear error message
+        // IMPORTANT: Revert status back to AWAITING_APPROVAL for retry
         await prisma.question.update({
           where: { id: questionId },
           data: {
-            status: "FAILED",
-            failedAt: new Date(),
-            failureReason: `Erro na IA: ${errorText.substring(0, 200)}` // Limit error message size
+            status: 'AWAITING_APPROVAL',
+            // Keep the original AI suggestion for user to retry or edit
+            aiSuggestion: question.aiSuggestion
           }
         })
 
+        logger.info('[Revision] Reverted status back to AWAITING_APPROVAL after N8N error', {
+          questionId,
+          error: errorText
+        })
+
+        // Emit error event for real-time feedback with status revert
+        try {
+          const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
+          emitQuestionEvent(
+            question.mlQuestionId,
+            'revision-error',
+            {
+              failureReason: errorText.includes('Error in workflow')
+                ? '🤖 Erro no processamento da IA'
+                : `❌ Erro na IA: ${errorText.substring(0, 100)}`,
+              errorType: 'REVISION_ERROR',
+              status: 'AWAITING_APPROVAL',
+              retryable: true,
+              aiSuggestion: question.aiSuggestion
+            },
+            question.mlAccount.organizationId
+          )
+        } catch (wsError) {
+          logger.warn('[Revision] Failed to emit error event', { error: wsError })
+        }
+
         return NextResponse.json({
           error: "A IA retornou um erro. Tente novamente.",
-          details: errorText
+          details: errorText,
+          status: 'AWAITING_APPROVAL',
+          aiSuggestion: question.aiSuggestion
         }, { status: 500 })
       }
       
@@ -223,19 +280,11 @@ export async function POST(request: NextRequest) {
       where: { id: questionId },
       data: {
         aiSuggestion: revisedResponse,
-        status: "PENDING"
+        status: "AWAITING_APPROVAL" // Sempre AWAITING_APPROVAL após revisão
       }
     })
     
-    // Send WhatsApp notification about revision
-    await sendRevisionNotification({
-      sequentialId: parseInt(question.id.slice(-6), 16) || 0,
-      questionId,
-      productTitle: question.itemTitle || "Produto",
-      originalResponse: question.aiSuggestion || "",
-      revisedResponse,
-      approvalUrl: `https://gugaleo.axnexlabs.com.br/agente/aprovar/${questionId}`
-    })
+    // Notificações de revisão removidas - processo simplificado
     
     // Update metrics if userMetrics table exists
     try {

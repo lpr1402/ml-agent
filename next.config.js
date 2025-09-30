@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 
+// PWA plugin REMOVIDO - usamos service worker manual em public/sw.js
+// O plugin estava desabilitado (disable: true) e causando problemas de instalabilidade
+
 // Aumentar limite de listeners para evitar warnings em produção
 // 50 listeners para suportar múltiplos workers PM2, WebSocket connections e build process
 if (typeof process !== 'undefined' && process.setMaxListeners) {
@@ -60,7 +63,13 @@ const nextConfig = {
       'http2.mlstatic.com',
       'mlb-s2-p.mlstatic.com',
       'mlb-s1-p.mlstatic.com',
+      'mlb-s3-p.mlstatic.com',
       'secure.mlstatic.com',
+      'mla-s2-p.mlstatic.com',
+      'mlm-s2-p.mlstatic.com',
+      'perfil.mercadolivre.com.br',
+      'api.mercadolibre.com',
+      'api.mercadolivre.com.br',
       'gugaleo.axnexlabs.com.br'
     ]
   },

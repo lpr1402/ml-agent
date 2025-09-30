@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
+import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
 
 /**
  * GET /api/ml-accounts/switch
@@ -35,7 +36,85 @@ export async function GET(request: NextRequest) {
     if (!session || !session.organization) {
       return NextResponse.json({ error: 'Session not found' }, { status: 401 })
     }
-    
+
+    // Atualizar avatares de todas as contas usando users/me
+    logger.info('[ML Accounts] Updating avatars for all accounts')
+
+    const { decryptToken } = require('@/lib/security/encryption')
+
+    for (const account of session.organization.mlAccounts) {
+      // Só atualizar se tem token válido
+      if (account.tokenExpiresAt > new Date() && account.accessToken) {
+        try {
+          // Descriptografar token
+          const accessToken = decryptToken({
+            encrypted: account.accessToken,
+            iv: account.accessTokenIV,
+            authTag: account.accessTokenTag
+          })
+
+          // Buscar dados do usuário via users/me
+          const userResponse = await fetchWithRateLimit(
+            'https://api.mercadolibre.com/users/me',
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+              }
+            },
+            'users/me'
+          )
+
+          if (userResponse.ok) {
+            const userData = await userResponse.json()
+
+            // Extrair URL do avatar seguindo ordem de prioridade da API do ML
+            let avatarUrl = null
+
+            // 1. Thumbnail object (formato correto da API): { picture_id: "...", picture_url: "..." }
+            if (userData.thumbnail && typeof userData.thumbnail === 'object' && userData.thumbnail.picture_url) {
+              avatarUrl = userData.thumbnail.picture_url
+            }
+            // 2. Thumbnail string (formato legacy)
+            else if (userData.thumbnail && typeof userData.thumbnail === 'string') {
+              avatarUrl = userData.thumbnail
+            }
+            // 3. Logo (usuários empresariais)
+            else if (userData.logo && typeof userData.logo === 'string') {
+              avatarUrl = userData.logo
+            }
+
+            // Garantir URL completa
+            if (avatarUrl) {
+              if (avatarUrl.startsWith('//')) {
+                avatarUrl = `https:${avatarUrl}`
+              } else if (!avatarUrl.startsWith('http')) {
+                avatarUrl = `https://http2.mlstatic.com${avatarUrl}`
+              }
+            }
+
+            // Atualizar no banco se mudou
+            if (avatarUrl && avatarUrl !== account.thumbnail) {
+              await prisma.mLAccount.update({
+                where: { id: account.id },
+                data: {
+                  thumbnail: avatarUrl,
+                  updatedAt: new Date()
+                }
+              })
+
+              // Atualizar o objeto local também
+              account.thumbnail = avatarUrl
+
+              logger.info(`[ML Accounts] Avatar updated for ${account.nickname}`, { avatarUrl })
+            }
+          }
+        } catch (error) {
+          logger.warn(`[ML Accounts] Failed to update avatar for ${account.nickname}`, { error })
+        }
+      }
+    }
+
     // Mapear contas com status
     const accounts = session.organization.mlAccounts.map(account => ({
       id: account.id,

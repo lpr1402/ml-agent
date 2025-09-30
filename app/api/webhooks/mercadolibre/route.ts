@@ -106,10 +106,18 @@ export async function POST(request: NextRequest) {
     try {
       switch (data.topic) {
         case 'questions':
+          // GARANTIA EXTRA: Log de todas perguntas recebidas
+          logger.info('[Webhook] 📨 QUESTION WEBHOOK RECEIVED', {
+            questionId: data.resource?.split('/').pop(),
+            userId: data.user_id,
+            timestamp: new Date().toISOString(),
+            webhookId: webhookEvent.id
+          })
+
           // Processar nova pergunta
           if (mlAccount) {
             await processQuestionWebhook(data, mlAccount)
-            
+
             // Marcar webhook como processado
             await prisma.webhookEvent.update({
               where: { id: webhookEvent.id },
@@ -117,6 +125,16 @@ export async function POST(request: NextRequest) {
                 processed: true,
                 processedAt: new Date()
               }
+            })
+
+            logger.info('[Webhook] ✅ Question webhook processed successfully', {
+              questionId: data.resource?.split('/').pop(),
+              webhookId: webhookEvent.id
+            })
+          } else {
+            logger.warn('[Webhook] ⚠️ No ML account found for question webhook', {
+              questionId: data.resource?.split('/').pop(),
+              userId: data.user_id
             })
           }
           break

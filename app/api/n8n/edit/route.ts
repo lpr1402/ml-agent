@@ -9,6 +9,12 @@ import { prisma } from "@/lib/prisma"
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json()
+    console.log("🔥🔥🔥 [N8N EDIT] Response received from N8N:", {
+      output: payload.output?.substring(0, 100),
+      questionid: payload.questionid,
+      internalId: payload.internalId,
+      hasOutput: !!payload.output
+    })
     logger.info("🤖 N8N Edit Response received:", { payload })
     
     const { 
@@ -70,20 +76,32 @@ export async function POST(request: NextRequest) {
 
     // Emitir evento WebSocket de resposta revisada pronta
     try {
-      const { emitQuestionAwaitingApproval } = require('@/lib/websocket/emit-events.js')
+      const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
 
       // Usar organizationId da conta já buscada
       const organizationId = mlAccount?.organizationId
 
-      emitQuestionAwaitingApproval(
+      // Emitir evento de atualização com resposta revisada
+      emitQuestionEvent(
         question.mlQuestionId,
-        output,
+        'updated',
+        {
+          mlQuestionId: question.mlQuestionId,
+          questionId: question.id,
+          status: 'AWAITING_APPROVAL',
+          aiSuggestion: output,
+          revisedAnswer: output,
+          data: {
+            aiSuggestion: output
+          }
+        },
         organizationId
       )
 
       logger.info('[Edit N8N] WebSocket event emitted for revised response', {
         questionId: question.mlQuestionId,
-        status: 'AWAITING_APPROVAL'
+        status: 'AWAITING_APPROVAL',
+        event: 'question:updated'
       })
     } catch (wsError) {
       logger.warn('[Edit N8N] Failed to emit WebSocket event', { error: wsError })

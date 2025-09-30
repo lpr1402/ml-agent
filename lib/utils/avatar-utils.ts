@@ -6,24 +6,42 @@
 /**
  * Validates and returns a clean avatar URL
  * Safe for use in client components
+ * Handles both string URLs and thumbnail objects from ML API
  */
-export function getValidAvatarUrl(thumbnail: string | null | undefined): string | null {
+export function getValidAvatarUrl(thumbnail: string | { picture_url?: string } | null | undefined): string | null {
   if (!thumbnail) return null
 
-  // Se é uma URL completa válida, usar direto
-  if (thumbnail.startsWith('http://') || thumbnail.startsWith('https://')) {
-    return thumbnail
+  // Handle ML API thumbnail object format: { picture_id: "...", picture_url: "..." }
+  if (typeof thumbnail === 'object' && thumbnail.picture_url) {
+    return thumbnail.picture_url
   }
 
-  // Se for um caminho relativo do ML, adicionar o domínio
-  if (thumbnail.startsWith('/')) {
-    return `https://http2.mlstatic.com${thumbnail}`
+  // Handle string URLs
+  if (typeof thumbnail !== 'string') return null
+
+  // Clean and validate the URL
+  const cleanUrl = thumbnail.trim()
+
+  // If it's already a full valid URL, use it directly
+  if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+    return cleanUrl
   }
 
-  // Se não parece ser uma URL válida, retornar null
-  if (thumbnail.length < 10 || !thumbnail.includes('.')) {
+  // If it's a protocol-relative URL (//domain.com/path)
+  if (cleanUrl.startsWith('//')) {
+    return `https:${cleanUrl}`
+  }
+
+  // If it's a ML static path, add the domain
+  if (cleanUrl.startsWith('/') && cleanUrl.includes('.')) {
+    return `https://http2.mlstatic.com${cleanUrl}`
+  }
+
+  // If doesn't look like a valid URL at all, return null
+  // We DON'T generate fake URLs, only use what's stored
+  if (cleanUrl.length < 10 || !cleanUrl.includes('.')) {
     return null
   }
 
-  return thumbnail
+  return cleanUrl
 }

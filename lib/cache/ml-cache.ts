@@ -3,11 +3,11 @@ import { logger } from '@/lib/logger'
 
 export class MLCache {
   private static readonly TTL = {
-    USER: 3600,        // 1 hora - dados do vendedor mudam pouco
+    USER: 10800,       // 3 horas - dados do vendedor atualizados regularmente
     ITEM: 1800,        // 30 minutos - items podem ter atualizações
     ITEM_DESC: 1800,   // 30 minutos - descrição do item (igual ao item)
     SHIPPING: 3600,    // 1 hora - shipping raramente muda
-    METRICS: 600       // 10 minutos - métricas precisam ser mais frescas
+    METRICS: 10800     // 3 horas - métricas atualizadas regularmente
     // REMOVIDO: QUESTION (cada pergunta é única, sem cache)
     // REMOVIDO: REPUTATION (não precisamos buscar)
   }

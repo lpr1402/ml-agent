@@ -11,13 +11,13 @@ async function postAnswerToML(
   answer: string,
   accessToken: string,
   maxRetries: number = 3
-): Promise<{success: boolean; status: number; data: any; error?: string}> {
+): Promise<{success: boolean; status: number; data: any; error?: string; isRateLimit?: boolean}> {
   let lastError: string = ""
+  let isRateLimitError = false
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // Converter question_id para número conforme documentação oficial
-      // A documentação mostra: {"question_id": 3957150025, "text":"Test answer..."}
       const numericQuestionId = parseInt(questionId, 10)
 
       if (isNaN(numericQuestionId)) {
@@ -26,39 +26,25 @@ async function postAnswerToML(
           success: false,
           status: 400,
           data: null,
-          error: `Invalid question_id format: ${questionId}`
+          error: `Invalid question_id format: ${questionId}`,
+          isRateLimit: false
         }
       }
 
       // Formato EXATO da documentação oficial do ML
       const requestBody = {
-        question_id: numericQuestionId, // número inteiro
-        text: answer.trim() // texto da resposta sem espaços extras
+        question_id: numericQuestionId,
+        text: answer.trim()
       }
 
-      logger.info(`[ML API] 🚀 Attempt ${attempt}/${maxRetries} - Posting answer to Mercado Libre`, {
+      logger.info(`[ML API] 🚀 Attempt ${attempt}/${maxRetries} - Posting answer`, {
         attempt,
         maxRetries,
-        endpoint: 'https://api.mercadolibre.com/answers',
-        method: 'POST',
-        questionId: {
-          original: questionId,
-          numeric: numericQuestionId,
-          type: typeof numericQuestionId
-        },
-        requestBody: {
-          question_id: requestBody.question_id,
-          text: `${requestBody.text.substring(0, 50)}...`,
-          textLength: requestBody.text.length
-        },
-        token: {
-          hasToken: !!accessToken,
-          length: accessToken?.length
-        }
+        questionId: numericQuestionId,
+        textLength: requestBody.text.length
       })
 
       // Fazer POST direto conforme documentação oficial
-      // curl -i -X POST -H 'Authorization: Bearer $ACCESS_TOKEN' -H "Content-Type: application/json" -d '{"question_id": 3957150025, "text":"Test answer..."}' https://api.mercadolibre.com/answers
       const response = await fetch(
         "https://api.mercadolibre.com/answers",
         {
@@ -71,113 +57,113 @@ async function postAnswerToML(
         }
       )
 
-      logger.info(`[ML API] 📡 Response received from Mercado Libre`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        questionId
-      })
-
       const responseText = await response.text()
       let data = null
-      
+
       try {
         data = responseText ? JSON.parse(responseText) : null
       } catch {
         logger.error("Failed to parse ML response", { responseText })
       }
-      
+
       if (response.ok || response.status === 201) {
-        logger.info(`[ML API] ✅ SUCCESS! Answer successfully posted to Mercado Libre!`, {
+        logger.info(`[ML API] ✅ SUCCESS! Answer posted to ML`, {
           questionId,
-          status: response.status,
-          data,
-          message: 'Answer posted successfully to ML API'
+          status: response.status
         })
         return {
           success: true,
           status: response.status,
-          data
+          data,
+          isRateLimit: false
         }
       }
-      
-      // Handle specific ML errors
-      logger.warn(`[ML API] Response not OK for question ${questionId}`, {
-        status: response.status,
-        statusText: response.statusText,
-        responseBody: data,
-        responseText: responseText?.substring(0, 500)
-      })
 
+      // 🎯 TRATAMENTO ESPECIAL PARA 429 (Rate Limit)
+      if (response.status === 429) {
+        isRateLimitError = true
+        const retryAfter = response.headers.get('retry-after')
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 60000 // Default 60s
+
+        logger.warn(`[ML API] 🚫 Rate Limit 429 - attempt ${attempt}/${maxRetries}`, {
+          questionId,
+          retryAfter,
+          delayMs: delay,
+          willRetry: attempt < maxRetries
+        })
+
+        lastError = `Rate limit excedido. Aguardando ${delay/1000}s...`
+
+        if (attempt < maxRetries) {
+          logger.info(`[ML API] ⏳ Waiting ${delay}ms due to rate limit`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        } else {
+          // Último retry falhou por rate limit
+          lastError = "Rate limit do Mercado Livre. Tente novamente em alguns minutos."
+          break
+        }
+      }
+
+      // Check for "already answered"
       if (response.status === 400) {
-        // Check for "already answered" or "not unanswered" messages
         const errorMessage = data?.message || data?.error || responseText || ""
         if (errorMessage.includes("already answered") ||
-            errorMessage.includes("is not unanswered") ||
-            errorMessage.includes("Question") && errorMessage.includes("answered")) {
-          logger.info(`[ML API] Question ${questionId} already answered on ML`, {
-            questionId,
-            message: errorMessage
-          })
+            errorMessage.includes("is not unanswered")) {
+          logger.info(`[ML API] Question ${questionId} already answered on ML`)
           return {
-            success: true, // Consider already answered as success
-            status: 200, // Return 200 to indicate success
-            data: { message: "Question already answered on ML", original: data }
+            success: true,
+            status: 200,
+            data: { message: "Question already answered on ML", original: data },
+            isRateLimit: false
           }
         }
 
-        // Log detailed 400 error
-        logger.error(`[ML API] Bad Request (400) for question ${questionId}`, {
-          mlQuestionId: questionId,
+        logger.error(`[ML API] Bad Request (400)`, {
+          questionId,
           errorMessage,
-          mlApiResponse: data,
-          sentPayload: requestBody,
-          possibleCauses: [
-            'Pergunta já foi respondida',
-            'Pergunta não está com status UNANSWERED',
-            'Token inválido ou expirado',
-            'Formato incorreto do payload'
-          ]
+          sentPayload: requestBody
         })
       }
-      
-      // Don't retry on client errors (4xx) except 401/403
-      if (response.status >= 400 && response.status < 500 && response.status !== 401 && response.status !== 403) {
-        lastError = data?.message || data?.error || responseText || `Client error: ${response.status}`
-        logger.error(`[ML API] Client error (no retry)`, { 
+
+      // Don't retry on client errors (4xx) except 401/403/429
+      if (response.status >= 400 && response.status < 500 &&
+          response.status !== 401 && response.status !== 403 && response.status !== 429) {
+        lastError = data?.message || data?.error || responseText || `Erro ${response.status}`
+        logger.error(`[ML API] Client error (no retry)`, {
           status: response.status,
-          error: lastError,
-          data 
+          error: lastError
         })
         break
       }
-      
+
       lastError = data?.message || responseText || `HTTP ${response.status}`
       logger.error(`[ML API] Attempt ${attempt} failed`, { attempt, error: lastError })
-      
+
       // Exponential backoff before retry
       if (attempt < maxRetries) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000) // Max 10 seconds
+        const delay = Math.min(2000 * Math.pow(2, attempt - 1), 30000) // Max 30 seconds
         logger.info(`[ML API] Waiting ${delay}ms before retry...`, { delay })
         await new Promise(resolve => setTimeout(resolve, delay))
       }
-      
+
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
       logger.error(`[ML API] Network error on attempt ${attempt}`, { attempt, error: lastError })
-      
+
       if (attempt < maxRetries) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+        const delay = Math.min(2000 * Math.pow(2, attempt - 1), 30000)
         await new Promise(resolve => setTimeout(resolve, delay))
       }
     }
   }
-  
+
   return {
     success: false,
     status: 0,
     data: null,
-    error: lastError
+    error: lastError,
+    isRateLimit: isRateLimitError
   }
 }
 
@@ -389,6 +375,9 @@ export async function POST(request: NextRequest) {
     if (mlResult.success) {
       // Mark as SENT_TO_ML after successful ML response
       try {
+        // Capturar answer_id do ML (pode vir como answer_id ou id na resposta)
+        const mlAnswerId = mlResult.data?.answer_id || mlResult.data?.id || null
+
         await prisma.question.update({
           where: { id: questionId },
           data: {
@@ -400,14 +389,22 @@ export async function POST(request: NextRequest) {
           }
         })
 
-        // Emitir evento WebSocket de pergunta respondida
+        logger.info('[Approve] ✅ ML Answer posted successfully', {
+          mlQuestionId: question.mlQuestionId,
+          mlAnswerId: mlAnswerId,
+          status: mlResult.status
+        })
+
+        // Emitir evento WebSocket de pergunta respondida com answer_id
         const { emitQuestionUpdated } = require('@/lib/websocket/emit-events.js')
         emitQuestionUpdated(
           question.mlQuestionId,
           'RESPONDED',
           {
             answeredAt: new Date(),
-            mlResponseCode: mlResult.status || 200
+            mlResponseCode: mlResult.status || 200,
+            mlAnswerId: mlAnswerId, // ID da resposta no ML
+            sentToMLAt: new Date()
           },
           question.mlAccount.organizationId
         )
@@ -528,46 +525,72 @@ export async function POST(request: NextRequest) {
         mlResponse: mlResult.data
       })
     } else {
-      // Marcar como FAILED
+      // 🎯 TRATAMENTO DE ERRO MELHORADO
+      // Se é rate limit (429), manter como APPROVED para retry automático
+      // Se é outro erro, marcar como FAILED para análise manual
+
+      const newStatus = mlResult.isRateLimit ? 'APPROVED' : 'FAILED'
+      const failedAt = mlResult.isRateLimit ? null : new Date()
+
       await prisma.question.update({
         where: { id: questionId },
         data: {
-          status: "FAILED", // Marcar como falha
-          failedAt: new Date(),
-          failureReason: mlResult.error || null,
+          status: newStatus,
           mlResponseCode: mlResult.status || 500,
           mlResponseData: { error: mlResult.error || "Unknown error" },
-          retryCount: { increment: 1 }
+          retryCount: { increment: 1 },
+          failedAt: failedAt,
+          failureReason: mlResult.error || "Erro ao enviar para o Mercado Livre"
         }
       })
 
-      // Emitir evento WebSocket de falha
+      logger.error('[Approve] Failed to send to ML', {
+        questionId,
+        mlQuestionId: question.mlQuestionId,
+        error: mlResult.error,
+        status: mlResult.status,
+        isRateLimit: mlResult.isRateLimit,
+        newStatus
+      })
+
+      // 🎯 Emitir evento WebSocket de erro em tempo real
       try {
         const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+
         emitQuestionFailed(
           question.mlQuestionId,
-          mlResult.error || "Failed to send to ML",
+          mlResult.error || "Erro ao enviar resposta ao Mercado Livre",
           true, // retryable
-          question.mlAccount.organizationId
+          question.mlAccount.organizationId,
+          {
+            type: mlResult.isRateLimit ? 'RATE_LIMIT' : 'ML_API_ERROR',
+            code: mlResult.status?.toString() || '500',
+            hasResponse: true, // Tem resposta pronta, só falhou o envio
+            isRateLimit: mlResult.isRateLimit,
+            canRetryNow: !mlResult.isRateLimit, // Se não é rate limit, pode retry imediato
+            retryDelay: mlResult.isRateLimit ? 60 : 0 // Segundos para aguardar
+          }
         )
+
+        logger.info('[Approve] ✅ Error event emitted via WebSocket', {
+          questionId: question.mlQuestionId,
+          errorType: mlResult.isRateLimit ? 'RATE_LIMIT' : 'ML_API_ERROR'
+        })
       } catch (wsError) {
-        logger.warn('[Approve] Failed to emit failure event', { error: wsError })
+        logger.warn('[Approve] Failed to emit error event', { error: wsError })
       }
-      
-      logger.info(`[Approve] Failed to post - keeping as UNANSWERED for retry`)
-      
-      logger.error(`[Approve] Failed to post answer for question ${question.mlQuestionId}`, {
-        mlQuestionId: question.mlQuestionId,
-        error: mlResult.error
-      })
-      
+
       return NextResponse.json({
         success: false,
-        message: "Failed to post to Mercado Livre after 3 attempts",
+        message: mlResult.isRateLimit
+          ? "Rate limit do Mercado Livre. A pergunta será reenviada automaticamente."
+          : "Falha ao enviar para o Mercado Livre após 3 tentativas",
         error: mlResult.error,
         status: mlResult.status || 500,
-        canRetry: true
-      }, { status: 500 })
+        canRetry: true,
+        isRateLimit: mlResult.isRateLimit,
+        retryDelay: mlResult.isRateLimit ? 60 : 0
+      }, { status: mlResult.isRateLimit ? 429 : 500 })
     }
     
   } catch (error) {

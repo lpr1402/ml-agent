@@ -5,7 +5,7 @@
 
 "use client"
 
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
 import { Suspense } from 'react'
 import { APP_URLS } from '@/lib/constants'
@@ -47,20 +47,26 @@ const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
 
 function AuthErrorContent() {
   const searchParams = useSearchParams()
-  
+  const router = useRouter()
+
   const error = searchParams.get('error') || 'Unknown'
   const message = searchParams.get('message')
-  
+
   const errorInfo = ERROR_MESSAGES[error] || ERROR_MESSAGES['Unknown']
-  
+
   const handleRetry = () => {
-    // SEMPRE usa a URL correta do constants!
-    window.location.href = APP_URLS.API_AUTH_LOGIN
+    // Usar router para manter iOS PWA fullscreen
+    const isPWA = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches
+    if (isPWA) {
+      router.push('/login')
+    } else {
+      window.location.href = APP_URLS.API_AUTH_LOGIN
+    }
   }
-  
+
   const handleGoBack = () => {
-    // SEMPRE usa a URL correta do constants!
-    window.location.href = APP_URLS.HOME
+    // Usar router para manter iOS PWA fullscreen
+    router.push('/')
   }
   
   return (

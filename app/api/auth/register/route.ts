@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar se username já existe
+    // Verificar se username já existe (sempre em UPPERCASE)
     const existingOrg = await prisma.organization.findUnique({
-      where: { username: username.toLowerCase() }
+      where: { username: username.toUpperCase() }
     })
 
     if (existingOrg) {
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Criar nova organização com plano PRO grátis
     const organization = await prisma.organization.create({
       data: {
-        username: username.toLowerCase(),
+        username: username.toUpperCase(),
         pinHash,
         organizationName: username,
         plan: 'PRO',

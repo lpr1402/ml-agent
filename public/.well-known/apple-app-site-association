@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.com.axnexlabs.mlagent",
+        "paths": [
+          "/agente",
+          "/agente/*",
+          "/login"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAM_ID.com.axnexlabs.mlagent"]
+  },
+  "activitycontinuation": {
+    "apps": ["TEAM_ID.com.axnexlabs.mlagent"]
+  }
+}

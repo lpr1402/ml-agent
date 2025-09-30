@@ -2,7 +2,7 @@ import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 // import { tokenManager } from "@/lib/token-manager" // Reserved for future use
-import { sendApprovalConfirmation } from "@/lib/services/whatsapp-professional"
+import { zapsterService } from "@/lib/services/zapster-whatsapp"
 import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
 import { decryptToken } from "@/lib/security/encryption"
 
@@ -108,7 +108,7 @@ export async function POST(
       }
       
       // Send WhatsApp confirmation com parâmetros corretos
-      await sendApprovalConfirmation({
+      await zapsterService.sendApprovalConfirmation({
         sequentialId: parseInt(question.id.slice(-6), 16) || 0,
         questionText: question.text,
         finalAnswer: finalResponse,
@@ -229,7 +229,7 @@ export async function POST(
       })
       
       // Send WhatsApp notification com parâmetros corretos
-      await sendApprovalConfirmation({
+      await zapsterService.sendApprovalConfirmation({
         sequentialId: parseInt(question.id.slice(-6), 16) || 0,
         questionText: question.text,
         finalAnswer: editedResponse || question.aiSuggestion!,

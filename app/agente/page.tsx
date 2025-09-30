@@ -18,8 +18,6 @@ import {
   MessageSquare,
   Activity,
   LogOut,
-  RefreshCw,
-  Users,
   Clock
 } from 'lucide-react'
 
@@ -154,9 +152,13 @@ export default function AgenteMultiConta() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-black via-gray-950 to-black">
-      {/* Ultra Modern Header 2025 - Mobile Optimized */}
-      <header className="sticky top-0 z-50 backdrop-blur-2xl bg-gradient-to-b from-black/90 to-black/80 border-b border-white/5 shadow-2xl">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-black via-gray-950 to-black" role="main">
+      {/* Ultra Modern Header 2025 - Mobile Optimized with iOS Safe Area */}
+      <header className="sticky top-0 z-50 bg-black">
+        {/* iOS Safe Area Top - Black Background */}
+        <div className="pt-[env(safe-area-inset-top,20px)] bg-black"></div>
+        {/* Main Header Content */}
+        <div className="backdrop-blur-2xl bg-gradient-to-b from-black/90 to-black/80 border-b border-white/5 shadow-2xl relative">
         <div className="absolute inset-0 bg-gradient-to-r from-gold/3 via-transparent to-gold/3 opacity-50"></div>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-16 sm:h-20 lg:h-24 flex items-center justify-between relative">
@@ -175,79 +177,57 @@ export default function AgenteMultiConta() {
               />
 
               {/* Brand Text with Account Count */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-                <div className="flex items-baseline gap-1 sm:gap-2">
-                  <h1 className="text-lg sm:text-2xl lg:text-3xl font-light text-white tracking-wide">
-                    ML Agent
-                  </h1>
-                  {organizationData?.plan && organizationData.plan !== 'TRIAL' && organizationData.plan !== 'FREE' && (
-                    <span className="text-lg sm:text-2xl lg:text-3xl font-bold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider pr-1">
-                      {organizationData.plan.toUpperCase()}
-                    </span>
-                  )}
-                </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <h1 className="text-lg sm:text-2xl lg:text-3xl font-light text-white tracking-wide">
+                  ML Agent
+                </h1>
+                {organizationData?.plan && organizationData.plan !== 'TRIAL' && organizationData.plan !== 'FREE' && (
+                  <span className="text-lg sm:text-2xl lg:text-3xl font-bold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider pr-2">
+                    {organizationData.plan.toUpperCase()}
+                  </span>
+                )}
 
-                {/* Account Count Badge - Premium Design Matching Central de Atendimento */}
-                <div className="hidden sm:block relative rounded-xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-xl overflow-hidden">
-                  {/* Background Glow */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
-
-                  <div className="relative flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2">
-                    <div className="flex items-center gap-1 sm:gap-1.5">
-                      <Users className="h-3 sm:h-4 w-3 sm:w-4 text-gold drop-shadow-lg" />
-                      <span className="text-xs sm:text-sm font-bold text-gold">
-                        {organizationData?.accountCount || 1}
-                      </span>
-                    </div>
-                    <div className="w-px h-3 sm:h-4 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-                    <span className="text-xs sm:text-sm text-gray-400 font-medium">
-                      {organizationData?.accountCount === 1 ? 'Conta' : 'Contas'}
-                    </span>
-                  </div>
+                {/* Account Count - Matching MLAccountSwitcher Style */}
+                <div className="hidden sm:flex items-center gap-1.5 ml-2 sm:ml-4 px-3 py-1.5 rounded-lg bg-black/20 border border-white/5">
+                  <span className="text-xs font-medium text-gold">
+                    {organizationData?.accountCount || 1}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {organizationData?.accountCount === 1 ? 'conta' : 'contas'}
+                  </span>
                 </div>
               </div>
             </div>
             
-            {/* Premium Actions - Mobile Optimized */}
-            <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-              {/* Account Switcher - Matching Central de Atendimento Design */}
-              <div className="relative">
+            {/* Premium Actions - Ultra Minimalista */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Account Switcher Container - Mobile First Ultra Clean */}
+              <div className="[&>div]:!min-w-0 [&>div]:!w-auto sm:[&>div]:!min-w-[200px] lg:[&>div]:!min-w-[240px]
+                          [&>div]:!border-white/5 [&>div]:!bg-black/20 hover:[&>div]:!border-white/10
+                          [&>div]:!shadow-none [&>div]:!rounded-lg
+                          [&_button]:!h-10 [&_button]:!px-2 sm:[&_button]:!px-3 lg:[&_button]:!px-4
+                          [&_button]:!min-w-0">
                 <MLAccountSwitcher />
               </div>
 
-              {/* Separator - Hidden on mobile */}
-              <div className="hidden sm:block h-8 lg:h-10 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent"></div>
+              {/* Clean Divider */}
+              <div className="hidden sm:block h-6 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent" />
 
-              {/* Action Buttons - Mobile Optimized */}
-              <div className="flex items-center gap-1 sm:gap-2 lg:gap-3">
-                <button
-                  onClick={() => setRefreshKey(prev => prev + 1)}
-                  className="relative group p-2 sm:p-2.5 lg:p-3 rounded-xl text-gray-400 hover:text-white transition-all duration-300"
-                  title="Atualizar Dados"
-                >
-                  <div className="absolute inset-0 rounded-xl bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <RefreshCw className="h-4 sm:h-4 lg:h-5 w-4 sm:w-4 lg:w-5 relative z-10 group-hover:rotate-180 transition-transform duration-500" />
-                </button>
-
-
-                <button
-                  onClick={handleLogout}
-                  className="relative group px-2 sm:px-3 lg:px-5 py-2 sm:py-2 lg:py-2.5 rounded-xl text-gray-400 hover:text-white transition-all duration-300 overflow-hidden"
-                  title="Encerrar Sessão"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-red-500/0 to-red-500/10 translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-                  <div className="flex items-center gap-1 sm:gap-2 relative z-10">
-                    <LogOut className="h-4 w-4" />
-                    <span className="text-xs sm:text-sm font-medium hidden sm:inline">Sair</span>
-                  </div>
-                </button>
-              </div>
+              {/* Logout Button - Minimal */}
+              <button
+                onClick={handleLogout}
+                className="group p-2 rounded-lg hover:bg-white/5 transition-all duration-300"
+                title="Sair"
+              >
+                <LogOut className="h-4 w-4 text-gray-500 group-hover:text-white transition-colors" />
+              </button>
             </div>
           </div>
         </div>
-        
+
         {/* Bottom Gradient Line */}
         <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gold/30 to-transparent"></div>
+        </div>
       </header>
 
       {/* Main Content Area - Mobile Optimized */}
@@ -260,7 +240,14 @@ export default function AgenteMultiConta() {
           <div className="relative z-10 p-4 sm:p-6 lg:p-8">
             <div className="mb-4 sm:mb-6 lg:mb-8">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 relative w-full sm:w-auto">
+                  {/* Online Status - Mobile Top Right - Aligned with Title */}
+                  <div className="absolute -top-1 right-0 sm:hidden z-20">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/50 backdrop-blur">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-xs text-gray-400 font-semibold">Online</span>
+                    </div>
+                  </div>
                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
                     <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
                   </div>
@@ -285,6 +272,7 @@ export default function AgenteMultiConta() {
               filterStatus="pending"
               showFilters={true}
               renderFiltersTo="questions-filters-container"
+              pageKey="central-atendimento"
             />
           </div>
         </section>
@@ -378,6 +366,8 @@ export default function AgenteMultiConta() {
                             </p>
                           </div>
                         </div>
+                        {/* Portal container for filters - positioned at top right */}
+                        <div id="historico-filters-portal" className="flex items-center" />
                       </div>
                     </div>
 
@@ -386,6 +376,8 @@ export default function AgenteMultiConta() {
                       selectedAccountId={selectedAccountId}
                       filterStatus="completed"
                       showFilters={true}
+                      renderFiltersTo="historico-filters-portal"
+                      pageKey="historico-atendimento"
                     />
                   </div>
                 </section>

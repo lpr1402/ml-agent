@@ -20,8 +20,10 @@ Avatar.displayName = "Avatar"
 const AvatarImage = React.forwardRef<
   HTMLImageElement,
   React.ImgHTMLAttributes<HTMLImageElement>
->(({ className, alt = "", src }) => {
-  if (!src) return null
+>(({ className, alt = "", src, onError, width, height, ...props }) => {
+  const [error, setError] = React.useState(false)
+
+  if (!src || error) return null
 
   // Convert Blob to string if needed
   const imageSrc = typeof src === 'string' ? src : ''
@@ -30,10 +32,17 @@ const AvatarImage = React.forwardRef<
     <Image
       src={imageSrc}
       alt={alt}
-      width={40}
-      height={40}
+      width={width as number || 40}
+      height={height as number || 40}
       className={cn("aspect-square h-full w-full object-cover", className)}
       unoptimized
+      onError={(e) => {
+        setError(true)
+        if (onError) {
+          onError(e as any)
+        }
+      }}
+      {...props}
     />
   )
 })

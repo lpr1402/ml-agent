@@ -21,6 +21,7 @@ interface QueueJob {
 
 class SimpleQueueManager {
   private isProcessing = false
+  private isCurrentlyProcessing = false
   private processingInterval: NodeJS.Timeout | null = null
 
   /**

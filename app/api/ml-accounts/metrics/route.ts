@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
                 authTag: account.accessTokenTag!
               })
 
-              // Fetch user metrics
+              // Fetch user metrics (usa cache de 3 horas)
               const userResponse = await fetch(`https://api.mercadolibre.com/users/${account.mlUserId}`, {
                 headers: {
                   Authorization: `Bearer ${token}`
@@ -146,20 +146,9 @@ export async function GET(request: NextRequest) {
                 totalSales = userData.seller_reputation?.transactions?.completed || 0
               }
 
-              // Fetch active listings count
-              const itemsResponse = await fetch(
-                `https://api.mercadolibre.com/users/${account.mlUserId}/items/search?status=active&limit=1`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${token}`
-                  }
-                }
-              )
-
-              if (itemsResponse.ok) {
-                const itemsData = await itemsResponse.json()
-                activeListings = itemsData.paging?.total || 0
-              }
+              // REMOVIDO: Fetch active listings - não necessário para dashboard
+              // Economia de 1 chamada API por conta
+              activeListings = 0 // Será atualizado via job periódico se necessário
             } catch (error) {
               logger.warn("Failed to fetch ML metrics for account", {
                 accountId: account.id,

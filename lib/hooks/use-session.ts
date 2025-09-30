@@ -27,6 +27,7 @@ export function useSession() {
         if (res.ok) {
           return res.json()
         }
+        // Return null for 401 without logging error
         return null
       })
       .then(data => {
@@ -34,6 +35,7 @@ export function useSession() {
         setLoading(false)
       })
       .catch(() => {
+        // Silently handle errors (e.g., when user is not logged in)
         setSession(null)
         setLoading(false)
       })

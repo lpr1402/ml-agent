@@ -36,6 +36,13 @@ interface OrganizationMetrics {
   totalQuestionsToday: number
   fastResponseRate: number // Porcentagem de respostas em <1h
   conversionBoost: number // Aumento na conversão
+  previousPeriodAnswered?: number // Perguntas no período anterior
+  growthPercentage?: number // Crescimento vs período anterior
+  responseTimeStatus?: string // Status dinâmico do tempo de resposta
+  aiProcessingStatus?: string // Status dinâmico do processamento IA
+  salesConversionRate?: number // Taxa real de conversão em vendas
+  totalRevenue?: number // Receita total
+  projectedSales?: number // Vendas projetadas
 }
 
 export function MLAgentDashboardModern() {
@@ -53,6 +60,17 @@ export function MLAgentDashboardModern() {
     conversionBoost: 0
   })
   const [loading, setLoading] = useState(true)
+  const [period] = useState<string>('7d') // Período padrão: 7 dias
+
+  // Função para obter descrição legível do período
+  const getPeriodDescription = (period: string): string => {
+    const periodMap: Record<string, string> = {
+      '24h': 'últimas 24h',
+      '7d': 'últimos 7 dias',
+      '30d': 'últimos 30 dias'
+    }
+    return periodMap[period] || 'período anterior'
+  }
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -77,13 +95,22 @@ export function MLAgentDashboardModern() {
         conversionBoost: 0
       }
 
-      // Buscar métricas multi-conta
+      // Buscar métricas multi-conta (passando período)
       try {
-        const multiMetrics = await apiClient.get('/api/agent/metrics-multi')
+        const multiMetrics = await apiClient.get(`/api/agent/metrics-multi?period=${period}`)
         if (multiMetrics?.byAccount) {
           orgMetrics.totalQuestionsAnswered = multiMetrics.aggregated?.answeredQuestions || 0
           orgMetrics.avgSystemResponseTime = Math.round(multiMetrics.aggregated?.avgResponseTime || 0)
           orgMetrics.avgAIProcessingTime = Math.round(multiMetrics.aggregated?.avgProcessingTime || 0)
+
+          // 🎯 MÉTRICAS REAIS DO BACKEND
+          orgMetrics.previousPeriodAnswered = multiMetrics.aggregated?.previousPeriodAnswered || 0
+          orgMetrics.growthPercentage = multiMetrics.aggregated?.growthPercentage || 0
+          orgMetrics.responseTimeStatus = multiMetrics.aggregated?.responseTimeStatus || 'Calculando...'
+          orgMetrics.aiProcessingStatus = multiMetrics.aggregated?.aiProcessingStatus || 'Calculando...'
+          orgMetrics.salesConversionRate = multiMetrics.aggregated?.salesConversionRate || 0
+          orgMetrics.totalRevenue = multiMetrics.aggregated?.totalRevenue || 0
+          orgMetrics.projectedSales = multiMetrics.projectedSales || 0
 
           // Calculate automation rate
           const autoApproved = multiMetrics.aggregated?.autoApprovedQuestions || 0
@@ -96,15 +123,8 @@ export function MLAgentDashboardModern() {
           const totalResponses = multiMetrics.aggregated?.answeredQuestions || 0
           orgMetrics.fastResponseRate = totalResponses > 0 ? Math.round((fastResponses / totalResponses) * 100) : 0
 
-          // Calcular aumento na conversão baseado na documentação oficial do ML
-          // Segundo a API do ML: sales_percent_increase indica até 10% de aumento
-          // quando o vendedor melhora o tempo de resposta para <1h
-          // Fonte: GET /users/{id}/questions/response_time
-          // Calculamos o potencial de melhoria baseado nas respostas que ainda não são <1h
-          const slowResponseRate = 100 - orgMetrics.fastResponseRate
-          // Se 100% das respostas lentas fossem convertidas em rápidas, teríamos até 10% de aumento
-          orgMetrics.conversionBoost = slowResponseRate > 0 ?
-            Math.min(10, Math.round(slowResponseRate * 0.10)) : 0
+          // Conversão boost agora vem do backend com cálculo real
+          orgMetrics.conversionBoost = Math.round(multiMetrics.aggregated?.salesConversionRate || 0)
 
           orgMetrics.accountsMetrics = multiMetrics.byAccount.map((acc: any) => ({
             accountId: acc.accountId,
@@ -129,7 +149,7 @@ export function MLAgentDashboardModern() {
       logger.error('[Dashboard] Error fetching metrics:', { error: error instanceof Error ? error.message : 'Unknown' })
       setLoading(false)
     }
-  }, [])
+  }, [period])
 
   useEffect(() => {
     fetchMetrics()
@@ -163,65 +183,74 @@ export function MLAgentDashboardModern() {
 
   return (
     <div className="w-full">
-      {/* Main Dashboard Section */}
-      <div className="relative rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
+      {/* Main Dashboard Section - Mobile Optimized */}
+      <div className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
         {/* Background Glow */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
 
-        <div className="relative z-10 p-6 lg:p-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                <Activity className="w-6 h-6 text-black" />
+        <div className="relative z-10 p-4 sm:p-6 lg:p-8">
+          {/* Header - Mobile Optimized */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6 lg:mb-8">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
+                <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gold">
+                <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold">
                   Central de Performance
                 </h3>
-                <p className="text-sm text-gray-400">
+                <p className="text-xs sm:text-sm text-gray-400 hidden sm:block">
                   Métricas em tempo real da organização
                 </p>
               </div>
             </div>
 
-            {/* Plan Status */}
-            <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-black/50 border border-gold/20">
-              <Crown className={`h-5 w-5 ${isPro ? 'text-gold animate-pulse' : 'text-gray-600'}`} />
-              <span className={`text-sm font-medium ${isPro ? 'text-gold' : 'text-gray-400'}`}>
+            {/* Plan Status - Mobile Optimized */}
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-black/50 border border-gold/20">
+              <Crown className={`h-4 w-4 sm:h-5 sm:w-5 ${isPro ? 'text-gold animate-pulse' : 'text-gray-600'}`} />
+              <span className={`text-xs sm:text-sm font-medium ${isPro ? 'text-gold' : 'text-gray-400'}`}>
                 {metrics.organizationPlan === 'PRO' ? 'PRO' : 'FREE'}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-[10px] sm:text-xs text-gray-500">
                 {metrics.accountsActive}/{metrics.accountsLimit} contas
               </span>
             </div>
           </div>
 
-          {/* Main Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {/* Main Metrics Cards - Mobile Optimized */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4 mb-4 sm:mb-6 lg:mb-8">
             {/* Total Questions Card */}
             <motion.div
               whileHover={{ scale: 1.02 }}
-              className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-5 overflow-hidden group"
+              className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <MessageSquare className="w-5 h-5 text-gold" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-gold/10 text-gold font-semibold">
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
                     TOTAL
                   </span>
                 </div>
-                <p className="text-3xl font-bold text-gold mb-1">
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1">
                   {metrics.totalQuestionsAnswered.toLocaleString('pt-BR')}
                 </p>
-                <p className="text-xs text-gray-500">Perguntas respondidas</p>
-                <div className="flex items-center gap-1 mt-2">
-                  <TrendingUp className="w-3 h-3 text-green-400" />
-                  <span className="text-xs text-gray-400">
-                    +{Math.round(metrics.totalQuestionsAnswered * 0.1)} este mês
-                  </span>
+                <p className="text-[10px] sm:text-xs text-gray-500">Perguntas respondidas</p>
+                <div className="flex items-center gap-1 mt-1 sm:mt-2">
+                  {/* 🎯 COMPARAÇÃO REAL COM PERÍODO ANTERIOR */}
+                  {metrics.growthPercentage !== undefined && metrics.growthPercentage !== 0 ? (
+                    <>
+                      <TrendingUp className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${metrics.growthPercentage > 0 ? 'text-green-400' : 'text-red-400'}`} />
+                      <span className="text-[9px] sm:text-xs text-gray-400">
+                        {metrics.growthPercentage > 0 ? '+' : ''}{metrics.growthPercentage}% vs {getPeriodDescription(period)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[9px] sm:text-xs text-gray-400">
+                      {metrics.previousPeriodAnswered === 0 ? 'Primeiro período' : 'Sem mudanças'}
+                    </span>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -229,25 +258,26 @@ export function MLAgentDashboardModern() {
             {/* Response Time Card */}
             <motion.div
               whileHover={{ scale: 1.02 }}
-              className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-5 overflow-hidden group"
+              className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <Clock className="w-5 h-5 text-gold" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-white/5 text-gray-400 font-semibold">
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-white/5 text-gray-400 font-semibold">
                     TEMPO
                   </span>
                 </div>
-                <p className="text-3xl font-bold text-gold mb-1">
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1">
                   {formatTime(metrics.avgSystemResponseTime)}
                 </p>
-                <p className="text-xs text-gray-500">Tempo médio de resposta</p>
-                <div className="flex items-center gap-1 mt-2">
-                  <Award className="w-3 h-3 text-gold" />
-                  <span className="text-xs text-gray-400">
-                    {metrics.avgSystemResponseTime < 60 ? 'Excelente!' : 'Bom desempenho'}
+                <p className="text-[10px] sm:text-xs text-gray-500">Tempo médio de resposta</p>
+                <div className="flex items-center gap-1 mt-1 sm:mt-2">
+                  <Award className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  {/* 🎯 STATUS DINÂMICO REAL DO BACKEND */}
+                  <span className="text-[9px] sm:text-xs text-gray-400">
+                    {metrics.responseTimeStatus || 'Calculando...'}
                   </span>
                 </div>
               </div>
@@ -256,66 +286,67 @@ export function MLAgentDashboardModern() {
             {/* AI Processing Card */}
             <motion.div
               whileHover={{ scale: 1.02 }}
-              className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-5 overflow-hidden group"
+              className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <Zap className="w-5 h-5 text-gold" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-white/5 text-gray-400 font-semibold">
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-white/5 text-gray-400 font-semibold">
                     IA
                   </span>
                 </div>
-                <p className="text-3xl font-bold text-gold mb-1">
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1">
                   {formatProcessingTime(metrics.avgAIProcessingTime)}
                 </p>
-                <p className="text-xs text-gray-500">Processamento da IA</p>
-                <div className="flex items-center gap-1 mt-2">
-                  <Activity className="w-3 h-3 text-gold" />
-                  <span className="text-xs text-gray-400">
-                    Ultra-rápido
+                <p className="text-[10px] sm:text-xs text-gray-500">Processamento da IA</p>
+                <div className="flex items-center gap-1 mt-1 sm:mt-2">
+                  <Activity className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  {/* 🎯 STATUS DINÂMICO REAL DO PROCESSAMENTO N8N */}
+                  <span className="text-[9px] sm:text-xs text-gray-400">
+                    {metrics.aiProcessingStatus || 'Calculando...'}
                   </span>
                 </div>
               </div>
             </motion.div>
           </div>
 
-          {/* System Metrics Section */}
+          {/* System Metrics Section - Mobile Optimized */}
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Activity className="w-4 h-4 text-gold" />
-              <h4 className="text-sm font-semibold text-gold">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
+              <h4 className="text-xs sm:text-sm font-semibold text-gold">
                 Métricas do Sistema
               </h4>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
               {/* Automation Rate Metric */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-4"
+                className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <Zap className="w-5 h-5 text-gold/60" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-gold/10 text-gold font-semibold">
+                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-gold/60" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
                     AUTOMAÇÃO
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-white mb-1">
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1">
                   {metrics.automationRate}%
                 </p>
-                <p className="text-xs text-gray-500">Taxa de automação</p>
-                <div className="mt-2 flex items-center gap-1">
+                <p className="text-[10px] sm:text-xs text-gray-500">Taxa de automação</p>
+                <div className="mt-1 sm:mt-2 flex items-center gap-1">
                   <div className="h-1 flex-1 bg-gray-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-gold to-gold-light rounded-full transition-all duration-500"
                       style={{ width: `${metrics.automationRate}%` }}
                     />
                   </div>
-                  <span className="text-xs text-gold font-medium">
+                  <span className="text-[9px] sm:text-xs text-gold font-medium">
                     {metrics.totalQuestionsToday} hoje
                   </span>
                 </div>
@@ -326,45 +357,48 @@ export function MLAgentDashboardModern() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-4"
+                className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <Activity className="w-5 h-5 text-gold/60" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-gold/10 text-gold font-semibold">
+                  <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-gold/60" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
                     ONLINE
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-white mb-1">
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1">
                   99.9%
                 </p>
-                <p className="text-xs text-gray-500">Disponibilidade</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />
-                  <span className="text-xs text-gray-400">Sistema operacional</span>
+                <p className="text-[10px] sm:text-xs text-gray-500">Disponibilidade</p>
+                <div className="mt-1 sm:mt-2 flex items-center gap-1 sm:gap-2">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gold animate-pulse" />
+                  <span className="text-[9px] sm:text-xs text-gray-400">Sistema operacional</span>
                 </div>
               </motion.div>
 
-              {/* ML Conversion Boost */}
+              {/* ML Sales Conversion - REAL */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="relative rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-4"
+                className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <TrendingUp className="w-5 h-5 text-gold/60" />
-                  <span className="text-xs px-2 py-1 rounded-md bg-gold/10 text-gold font-semibold">
-                    ML
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-gold/60" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
+                    VENDAS
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-white mb-1">
-                  {metrics.conversionBoost > 0 ? `+${metrics.conversionBoost}%` : '--'}
+                {/* 🎯 CONVERSÃO EM VENDAS REAL baseada em benchmarks do ML */}
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1">
+                  {metrics.salesConversionRate ? `${metrics.salesConversionRate.toFixed(1)}%` : '--'}
                 </p>
-                <p className="text-xs text-gray-500">Potencial de aumento em vendas</p>
-                <div className="mt-2 flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-gold" />
-                  <span className="text-xs text-gray-400">
-                    {metrics.fastResponseRate}% respostas &lt;1h (todas as contas)
+                <p className="text-[10px] sm:text-xs text-gray-500">Taxa de conversão estimada</p>
+                <div className="mt-1 sm:mt-2 flex items-center gap-1">
+                  <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  <span className="text-[9px] sm:text-xs text-gray-400">
+                    {metrics.projectedSales
+                      ? `~R$ ${metrics.projectedSales.toLocaleString('pt-BR')} projetado`
+                      : `${metrics.fastResponseRate}% respostas <1h`}
                   </span>
                 </div>
               </motion.div>

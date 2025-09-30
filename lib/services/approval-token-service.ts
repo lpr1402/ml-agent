@@ -247,10 +247,41 @@ export class ApprovalTokenService {
   
   /**
    * Gera URL de aprovação com token
+   * @param token Token de aprovação
+   * @param options Opções adicionais (useRedirect para iOS)
    */
-  generateApprovalUrl(token: string): string {
+  generateApprovalUrl(token: string, options?: { useRedirect?: boolean }): string {
     const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
+
+    // Para iOS/WhatsApp, usar redirecionamento inteligente
+    if (options?.useRedirect) {
+      return `${baseUrl}/api/redirect/answer?token=${token}`
+    }
+
+    // Link padrão
     return `${baseUrl}/answer/${token}`
+  }
+
+  /**
+   * Gera URL universal para acessar o app (PWA deep link)
+   * @param organizationId ID da organização
+   * @param page Página de destino (padrão: agente)
+   * @param sessionToken Token de sessão opcional
+   */
+  generateUniversalAppUrl(organizationId?: string, page: string = 'agente', sessionToken?: string): string {
+    const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
+
+    let url = `${baseUrl}/api/redirect/app?page=${page}`
+
+    if (organizationId) {
+      url += `&org=${organizationId}`
+    }
+
+    if (sessionToken) {
+      url += `&token=${sessionToken}`
+    }
+
+    return url
   }
   
   /**

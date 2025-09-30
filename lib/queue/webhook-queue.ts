@@ -12,7 +12,6 @@ interface WebhookJob {
   payload: any
   organizationId: string
   mlAccountId: string
-  priority: number
   attemptNumber: number
 }
 
@@ -121,8 +120,7 @@ class WebhookQueueManager {
     webhookId: string,
     payload: any,
     organizationId: string,
-    mlAccountId?: string,
-    priority: number = 0
+    mlAccountId?: string
   ): Promise<Bull.Job<WebhookJob>> {
     try {
       const job = await this.queue.add(
@@ -132,20 +130,17 @@ class WebhookQueueManager {
           payload,
           organizationId,
           mlAccountId: mlAccountId || '',
-          priority,
           attemptNumber: 1
         },
         {
-          priority,
           delay: 0,
           ...QUEUE_CONFIG.defaultJobOptions
         }
       )
-      
+
       logger.info(`[WebhookQueue] Added webhook to queue`, {
         webhookId,
-        jobId: job.id,
-        priority
+        jobId: job.id
       })
       
       return job

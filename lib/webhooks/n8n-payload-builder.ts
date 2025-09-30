@@ -20,7 +20,7 @@ export interface N8NUnifiedPayload {
 
 /**
  * Formata informações completas do produto em uma string organizada
- * Agora usa dados completos do produto incluindo variações
+ * Formato otimizado para processamento por IA - sem emojis, estruturado e completo
  */
 export function formatProductInfo(product: MLCompleteProduct | any, legacyDescription?: any): string {
   // Se receber formato antigo com dois parâmetros, converter
@@ -31,205 +31,235 @@ export function formatProductInfo(product: MLCompleteProduct | any, legacyDescri
   if (product && product.description) {
     descriptionData = product.description
   }
-  const parts: string[] = []
 
-  // Título e ID
-  parts.push(`📦 PRODUTO: ${itemData.title || 'Produto sem título'}`)
-  parts.push(`ID: ${itemData.id || 'N/A'}`)
+  const sections: string[] = []
 
-  // Preço e condição
+  // HEADER
+  sections.push('INFORMAÇÕES DO PRODUTO')
+  sections.push('=' .repeat(50))
+  sections.push('')
+
+  // SEÇÃO: DADOS BÁSICOS
+  sections.push('DADOS BÁSICOS')
+  sections.push('-'.repeat(30))
+  sections.push(`Título: ${itemData.title || 'Produto sem título'}`)
+  sections.push(`ID do Produto: ${itemData.id || 'Não disponível'}`)
+
+  // Preço e desconto
   if (itemData.price) {
-    parts.push(`💰 PREÇO: ${formatPrice ? formatPrice(itemData.price) : `R$ ${itemData.price.toFixed(2).replace('.', ',')}`}`)
+    const priceFormatted = formatPrice ? formatPrice(itemData.price) : `R$ ${itemData.price.toFixed(2).replace('.', ',')}`
+    sections.push(`Preço Atual: ${priceFormatted}`)
+
+    if (itemData.original_price && itemData.original_price > itemData.price) {
+      const originalFormatted = formatPrice ? formatPrice(itemData.original_price) : `R$ ${itemData.original_price.toFixed(2).replace('.', ',')}`
+      const desconto = Math.round(((itemData.original_price - itemData.price) / itemData.original_price) * 100)
+      sections.push(`Preço Original: ${originalFormatted}`)
+      sections.push(`Desconto Aplicado: ${desconto}%`)
+    }
   }
 
-  if (itemData.original_price && itemData.original_price > itemData.price) {
-    const desconto = Math.round(((itemData.original_price - itemData.price) / itemData.original_price) * 100)
-    parts.push(`📍 PREÇO ORIGINAL: ${formatPrice ? formatPrice(itemData.original_price) : `R$ ${itemData.original_price.toFixed(2).replace('.', ',')}`} (${desconto}% OFF)`)
-  }
-
-  // Condição
+  // Condição do produto
   if (itemData.condition) {
-    parts.push(`📋 CONDIÇÃO: ${getConditionText ? getConditionText(itemData.condition) : itemData.condition}`)
+    const conditionText = getConditionText ? getConditionText(itemData.condition) : itemData.condition
+    sections.push(`Condição: ${conditionText}`)
   }
+  sections.push('')
 
-  // Estoque e vendas
+  // SEÇÃO: ESTOQUE E VENDAS
+  sections.push('ESTOQUE E VENDAS')
+  sections.push('-'.repeat(30))
   if (itemData.available_quantity !== undefined) {
-    parts.push(`📊 ESTOQUE: ${itemData.available_quantity} ${itemData.available_quantity === 1 ? 'unidade' : 'unidades'}`)
+    sections.push(`Quantidade Disponível: ${itemData.available_quantity} ${itemData.available_quantity === 1 ? 'unidade' : 'unidades'}`)
   }
-
-  if (itemData.sold_quantity) {
-    parts.push(`✅ VENDAS: ${itemData.sold_quantity} ${itemData.sold_quantity === 1 ? 'venda realizada' : 'vendas realizadas'}`)
+  if (itemData.sold_quantity !== undefined) {
+    sections.push(`Total de Vendas Realizadas: ${itemData.sold_quantity} ${itemData.sold_quantity === 1 ? 'unidade vendida' : 'unidades vendidas'}`)
   }
+  sections.push('')
 
-  // Frete
+  // SEÇÃO: FRETE E ENTREGA
   if (itemData.shipping) {
-    const shippingParts: string[] = []
+    sections.push('FRETE E ENTREGA')
+    sections.push('-'.repeat(30))
+
     if (itemData.shipping.free_shipping) {
-      shippingParts.push('Frete Grátis')
+      sections.push('Frete: GRÁTIS')
+    } else {
+      sections.push('Frete: Pago pelo comprador')
     }
+
     if (itemData.shipping.mode === 'me2') {
-      shippingParts.push('Mercado Envios Full')
+      sections.push('Tipo de Envio: Mercado Envios Full (Entrega rápida)')
     } else if (itemData.shipping.mode === 'me1') {
-      shippingParts.push('Mercado Envios')
+      sections.push('Tipo de Envio: Mercado Envios')
+    } else {
+      sections.push('Tipo de Envio: Combinado com o vendedor')
     }
+
     if (itemData.shipping.logistic_type === 'fulfillment') {
-      shippingParts.push('Fulfillment')
+      sections.push('Logística: Fulfillment (Produto no centro de distribuição do ML)')
     }
-    if (shippingParts.length > 0) {
-      parts.push(`🚚 FRETE: ${shippingParts.join(' | ')}`)
-    }
+    sections.push('')
   }
 
-  // Garantia
+  // SEÇÃO: GARANTIA
+  let hasWarranty = false
   if (itemData.warranty) {
-    parts.push(`🛡️ GARANTIA: ${itemData.warranty}`)
+    sections.push('GARANTIA')
+    sections.push('-'.repeat(30))
+    sections.push(`Garantia: ${itemData.warranty}`)
+    hasWarranty = true
   } else if (itemData.sale_terms) {
     const warranty = itemData.sale_terms.find((term: any) => term.id === 'WARRANTY_TIME')
     const warrantyType = itemData.sale_terms.find((term: any) => term.id === 'WARRANTY_TYPE')
     if (warranty || warrantyType) {
-      const warrantyParts = []
-      if (warrantyType) warrantyParts.push(warrantyType.value_name)
-      if (warranty) warrantyParts.push(warranty.value_name)
-      parts.push(`🛡️ GARANTIA: ${warrantyParts.join(' - ')}`)
+      sections.push('GARANTIA')
+      sections.push('-'.repeat(30))
+      if (warrantyType) {
+        sections.push(`Tipo de Garantia: ${warrantyType.value_name}`)
+      }
+      if (warranty) {
+        sections.push(`Período de Garantia: ${warranty.value_name}`)
+      }
+      hasWarranty = true
     }
   }
+  if (hasWarranty) sections.push('')
 
-  // Atributos importantes
+  // SEÇÃO: CARACTERÍSTICAS PRINCIPAIS
   if (itemData.attributes && Array.isArray(itemData.attributes)) {
-    const importantAttributes = ['BRAND', 'MODEL', 'COLOR', 'SIZE', 'MATERIAL', 'CAPACITY']
-    const attrs = itemData.attributes
-      .filter((attr: any) => importantAttributes.includes(attr.id) && attr.value_name)
-      .map((attr: any) => {
-        const nameMap: Record<string, string> = {
-          'BRAND': 'Marca',
-          'MODEL': 'Modelo',
-          'COLOR': 'Cor',
-          'SIZE': 'Tamanho',
-          'MATERIAL': 'Material',
-          'CAPACITY': 'Capacidade'
-        }
-        return `${nameMap[attr.id] || attr.name}: ${attr.value_name}`
-      })
+    const importantAttributes = ['BRAND', 'MODEL', 'COLOR', 'SIZE', 'MATERIAL', 'CAPACITY', 'WEIGHT', 'HEIGHT', 'WIDTH', 'LENGTH']
+    const nameMap: Record<string, string> = {
+      'BRAND': 'Marca',
+      'MODEL': 'Modelo',
+      'COLOR': 'Cor',
+      'SIZE': 'Tamanho',
+      'MATERIAL': 'Material',
+      'CAPACITY': 'Capacidade',
+      'WEIGHT': 'Peso',
+      'HEIGHT': 'Altura',
+      'WIDTH': 'Largura',
+      'LENGTH': 'Comprimento'
+    }
 
-    if (attrs.length > 0) {
-      parts.push(`📝 CARACTERÍSTICAS: ${attrs.join(' | ')}`)
+    const filteredAttrs = itemData.attributes
+      .filter((attr: any) => importantAttributes.includes(attr.id) && attr.value_name)
+      .map((attr: any) => ({
+        name: nameMap[attr.id] || attr.name,
+        value: attr.value_name
+      }))
+
+    if (filteredAttrs.length > 0) {
+      sections.push('CARACTERÍSTICAS PRINCIPAIS')
+      sections.push('-'.repeat(30))
+      filteredAttrs.forEach((attr: any) => {
+        sections.push(`${attr.name}: ${attr.value}`)
+      })
+      sections.push('')
     }
   }
 
-  // Variações detalhadas
+  // SEÇÃO: VARIAÇÕES DISPONÍVEIS
   if (itemData.variations && itemData.variations.length > 0) {
-    parts.push(`\n🎨 VARIAÇÕES DISPONÍVEIS (${itemData.variations.length} opções):`)
+    sections.push(`VARIAÇÕES DISPONÍVEIS (Total: ${itemData.variations.length} opções)`)
+    sections.push('-'.repeat(30))
 
     itemData.variations.forEach((v: any, index: number) => {
-      const attrs = v.attribute_combinations
-        ?.map((a: any) => `${a.name}: ${a.value_name}`)
-        .join(', ')
+      sections.push(`\nVariação ${index + 1}:`)
 
-      const varPrice = v.price || itemData.price
+      // Atributos da variação
+      if (v.attribute_combinations && v.attribute_combinations.length > 0) {
+        v.attribute_combinations.forEach((a: any) => {
+          sections.push(`  ${a.name}: ${a.value_name}`)
+        })
+      }
+
+      // Preço específico da variação
+      if (v.price && v.price !== itemData.price) {
+        const varPriceFormatted = formatPrice ? formatPrice(v.price) : `R$ ${v.price.toFixed(2).replace('.', ',')}`
+        sections.push(`  Preço desta variação: ${varPriceFormatted}`)
+      }
+
+      // Estoque da variação
       const varStock = v.available_quantity || 0
       const varSold = v.sold_quantity || 0
-
-      parts.push(`   [${index + 1}] ${attrs || 'Variação'}`)
-      if (v.price && v.price !== itemData.price) {
-        parts.push(`       Preço: ${formatPrice ? formatPrice(varPrice) : `R$ ${varPrice.toFixed(2).replace('.', ',')}`}`)
+      sections.push(`  Estoque: ${varStock} unidades`)
+      if (varSold > 0) {
+        sections.push(`  Vendidas: ${varSold} unidades`)
       }
-      parts.push(`       Estoque: ${varStock} | Vendidos: ${varSold}`)
     })
+    sections.push('')
   }
 
-  // Categoria e tipo de anúncio
-  if (itemData.category_id) {
-    parts.push(`📂 CATEGORIA: ${itemData.category_id}`)
-  }
-
-  if (itemData.listing_type_id) {
-    const listingTypes: Record<string, string> = {
-      'gold_special': 'Clássico',
-      'gold_pro': 'Premium',
-      'gold_premium': 'Premium',
-      'free': 'Gratuito'
-    }
-    parts.push(`⭐ TIPO DE ANÚNCIO: ${listingTypes[itemData.listing_type_id] || itemData.listing_type_id}`)
-  }
-
-  // Tags especiais
-  if (itemData.tags && Array.isArray(itemData.tags)) {
-    const importantTags = []
-    if (itemData.tags.includes('good_quality_picture')) importantTags.push('Fotos de Qualidade')
-    if (itemData.tags.includes('immediate_payment')) importantTags.push('Pagamento Imediato')
-    if (itemData.tags.includes('cart_eligible')) importantTags.push('Carrinho Disponível')
-    if (itemData.tags.includes('best_seller_candidate')) importantTags.push('Mais Vendido')
-
-    if (importantTags.length > 0) {
-      parts.push(`🏷️ DESTAQUES: ${importantTags.join(' | ')}`)
-    }
-  }
-
-  // Descrição completa (aumentada para 1000 chars)
+  // SEÇÃO: DESCRIÇÃO COMPLETA DO ANÚNCIO
   const desc = itemData.description || descriptionData
   if (desc?.plain_text || desc?.text) {
     const description = desc.plain_text || desc.text
     const cleanDescription = description
-      .replace(/\n+/g, ' ')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
       .replace(/\s+/g, ' ')
       .trim()
-      .substring(0, 1000)
 
     if (cleanDescription) {
-      parts.push(`\n📄 DESCRIÇÃO COMPLETA:\n${cleanDescription}${description.length > 1000 ? '...' : ''}`)
+      sections.push('DESCRIÇÃO COMPLETA DO ANÚNCIO')
+      sections.push('-'.repeat(30))
+      sections.push(cleanDescription)
+      sections.push('')
     }
   }
 
-  // Fotos disponíveis
-  if (itemData.pictures && itemData.pictures.length > 0) {
-    parts.push(`\n📸 FOTOS: ${itemData.pictures.length} imagens disponíveis`)
-  }
-
-  // Link do produto
+  // SEÇÃO: LINK DO PRODUTO
   if (itemData.permalink) {
-    parts.push(`🔗 LINK: ${itemData.permalink}`)
+    sections.push('LINK DO PRODUTO')
+    sections.push('-'.repeat(30))
+    sections.push(itemData.permalink)
+    sections.push('')
   }
 
-  return parts.join('\n')
+  // FOOTER
+  sections.push('=' .repeat(50))
+
+  return sections.join('\n')
 }
 
 /**
- * Formata o histórico das ÚLTIMAS 10 perguntas do comprador
- * Formato limpo e simplificado para prompt do N8N
+ * Formata o histórico de perguntas do COMPRADOR ESPECÍFICO
+ * Apenas as últimas 5 perguntas do mesmo comprador
  */
 export function formatBuyerQuestionsHistory(questions: any[]): string {
   if (!questions || questions.length === 0) {
-    return 'Histórico do comprador: Primeira interação deste cliente.'
+    return 'HISTÓRICO DO COMPRADOR: Primeira interação deste cliente com nossa loja.'
   }
 
-  const formattedQuestions = questions.map((q, index) => {
-    const date = new Date(q.dateCreated)
+  // Limitar para as últimas 5 perguntas
+  const recentQuestions = questions.slice(0, 5)
+  const sections: string[] = []
+
+  sections.push('HISTÓRICO DE PERGUNTAS ANTERIORES DO COMPRADOR')
+  sections.push('-'.repeat(50))
+  sections.push('')
+
+  recentQuestions.forEach((q, index) => {
+    const date = new Date(q.dateCreated || q.date_created)
     const dateStr = `${date.toLocaleDateString('pt-BR')} ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 
-    let text = `\nPergunta ${index + 1} (${dateStr}):\n`
-    text += `Cliente perguntou: "${q.text || 'Texto não disponível'}"\n`
+    sections.push(`Pergunta ${index + 1} (${dateStr}):`)
+    sections.push(`Cliente: "${q.text || 'Texto não disponível'}"`)
 
     if (q.answer && q.answer.trim()) {
-      text += `Nossa resposta: "${q.answer}"`
+      sections.push(`Resposta: "${q.answer}"`)
     } else {
-      text += `Status: Não respondida`
+      sections.push(`Resposta: Ainda não respondida`)
     }
+    sections.push('')
+  })
 
-    return text
-  }).join('\n')
-
-  const totalQuestions = questions.length
-  const answeredQuestions = questions.filter(q => q.answer && q.answer.trim()).length
-
-  const header = `Histórico de ${totalQuestions} perguntas anteriores do comprador:\n`
-  const summary = `\n\nResumo: Cliente fez ${totalQuestions} perguntas, ${answeredQuestions} foram respondidas.`
-
-  return header + formattedQuestions + summary
+  return sections.join('\n')
 }
 
 /**
- * Busca as últimas 10 perguntas do comprador direto da API do Mercado Livre
- * Segue a documentação oficial do ML para buscar perguntas
+ * Busca as últimas 5 perguntas do comprador direto da API do Mercado Livre
+ * Apenas perguntas do mesmo comprador nos anúncios da conta
  */
 export async function fetchBuyerQuestionsHistory(
   customerId: string,
@@ -270,13 +300,12 @@ export async function fetchBuyerQuestionsHistory(
       authTag: mlAccount.accessTokenTag!
     })
 
-    // Buscar perguntas direto da API do ML (documentação oficial)
-    // https://developers.mercadolivre.com.br/pt_br/gestao-de-perguntas
+    // Buscar perguntas direto da API do ML
     logger.info(`[PayloadBuilder] Fetching buyer ${customerId} questions from ML API`)
 
     try {
-      // Buscar perguntas recebidas do vendedor (sem filtro por from pois retorna 400)
-      const questionsUrl = `https://api.mercadolibre.com/questions/search?seller_id=${mlAccount.mlUserId}&limit=50&api_version=4&sort_fields=date_created&sort_types=DESC`
+      // Buscar perguntas recebidas do vendedor
+      const questionsUrl = `https://api.mercadolibre.com/questions/search?seller_id=${mlAccount.mlUserId}&limit=30&api_version=4&sort_fields=date_created&sort_types=DESC`
 
       const response = await fetch(questionsUrl, {
         headers: {
@@ -306,18 +335,15 @@ export async function fetchBuyerQuestionsHistory(
           q.from?.id === parseInt(customerId) &&
           q.id !== parseInt(currentQuestionId)
         )
-        .slice(0, 10) // Pegar apenas as 10 últimas
+        .slice(0, 5) // Limitar para as últimas 5 perguntas
 
-      logger.info(`[PayloadBuilder] Found ${filteredQuestions.length} questions from ML API`)
+      logger.info(`[PayloadBuilder] Found ${filteredQuestions.length} previous questions from buyer`)
 
       // Retornar no formato simples e limpo
       return filteredQuestions.map((q: any) => ({
-        id: q.id,
         text: q.text || '',
         answer: q.answer?.text || '',
-        status: q.status || 'UNANSWERED',
-        dateCreated: q.date_created || new Date(),
-        itemId: q.item_id || ''
+        dateCreated: q.date_created || new Date()
       }))
 
     } catch (apiError) {

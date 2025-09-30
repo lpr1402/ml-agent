@@ -138,28 +138,29 @@ export async function GET(request: NextRequest) {
       }
     }))
     
-    // Group by account for summary
-    const accountSummary = questions.reduce((acc, q) => {
-      const accountId = q.mlAccount.id
-      if (!acc[accountId]) {
-        acc[accountId] = {
-          accountId: q.mlAccount.id,
-          nickname: q.mlAccount.nickname,
-          thumbnail: q.mlAccount.thumbnail,
-          totalQuestions: 0,
-          pendingQuestions: 0,
-          completedQuestions: 0
-        }
+    // First get all active accounts for this organization
+    const allAccounts = await prisma.mLAccount.findMany({
+      where: {
+        organizationId: auth.organizationId,
+        isActive: true
+      },
+      select: {
+        id: true,
+        nickname: true,
+        thumbnail: true
       }
-      
-      acc[accountId].totalQuestions++
-      
-      if (['PROCESSING', 'AWAITING_APPROVAL', 'REVISING', 'FAILED', 'TOKEN_ERROR'].includes(q.status)) {
-        acc[accountId].pendingQuestions++
-      } else if (['APPROVED', 'COMPLETED'].includes(q.status)) {
-        acc[accountId].completedQuestions++
+    })
+
+    // Initialize account summary with all accounts (even those without questions)
+    const accountSummaryMap = allAccounts.reduce((acc, account) => {
+      acc[account.id] = {
+        accountId: account.id,
+        nickname: account.nickname,
+        thumbnail: account.thumbnail,
+        totalQuestions: 0,
+        pendingQuestions: 0,
+        completedQuestions: 0
       }
-      
       return acc
     }, {} as Record<string, {
       accountId: string
@@ -169,7 +170,21 @@ export async function GET(request: NextRequest) {
       pendingQuestions: number
       completedQuestions: number
     }>)
-    
+
+    // Now update the summary with questions data
+    questions.forEach(q => {
+      const accountId = q.mlAccount.id
+      if (accountSummaryMap[accountId]) {
+        accountSummaryMap[accountId].totalQuestions++
+
+        if (['PROCESSING', 'AWAITING_APPROVAL', 'REVISING', 'FAILED', 'TOKEN_ERROR'].includes(q.status)) {
+          accountSummaryMap[accountId].pendingQuestions++
+        } else if (['APPROVED', 'COMPLETED'].includes(q.status)) {
+          accountSummaryMap[accountId].completedQuestions++
+        }
+      }
+    })
+
     return NextResponse.json({
       questions: mappedQuestions,
       pagination: {
@@ -178,7 +193,7 @@ export async function GET(request: NextRequest) {
         offset,
         hasMore: offset + limit < totalCount
       },
-      accountSummary: Object.values(accountSummary),
+      accountSummary: Object.values(accountSummaryMap),
       filters: {
         accountId: filterAccountId,
         status: filterStatus

@@ -71,7 +71,7 @@ export async function createSession(
           lastSyncAt: new Date(),
           isActive: true,
           connectionError: null,
-          thumbnail: thumbnail || existingAccount.thumbnail,
+          thumbnail: thumbnail || existingAccount.thumbnail, // Always update with new one if available
           permalink: permalink || existingAccount.permalink
         }
       })

@@ -6,9 +6,20 @@ import { auditSecurityEvent } from "@/lib/audit/audit-logger"
 import { fetchWithRateLimit } from "@/lib/api/smart-rate-limiter"
 import { oauthManager } from "@/lib/auth/oauth-manager"
 import { prisma } from "@/lib/prisma"
+import { MLCache } from "@/lib/cache/ml-cache"
 import crypto from 'crypto'
 const REDIRECT_URI = process.env['ML_REDIRECT_URI']!
-const PRODUCTION_URL = 'https://gugaleo.axnexlabs.com.br'
+
+/**
+ * 🎯 iOS PWA FIX: Criar URL de redirect mantendo contexto standalone
+ * Usa clone() do nextUrl para preservar scheme/host/port exatamente iguais
+ */
+function createRedirectUrl(request: NextRequest, pathname: string, searchParams?: string): NextResponse {
+  const url = request.nextUrl.clone()
+  url.pathname = pathname
+  url.search = searchParams || ''
+  return NextResponse.redirect(url)
+}
 
 /**
  * Handles OAuth callback from Mercado Livre
@@ -32,20 +43,27 @@ export async function GET(request: NextRequest) {
   // 1. Tratar erros do Mercado Livre
   if (error) {
     logger.warn("[OAuth Callback] OAuth error from ML", { error })
-    return NextResponse.redirect(`${PRODUCTION_URL}/auth/error?error=${error}`)
+    // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
+    const errorUrl = request.nextUrl.clone()
+    errorUrl.pathname = '/auth/error'
+    errorUrl.search = `?error=${error}`
+    return NextResponse.redirect(errorUrl)
   }
 
   // 2. Validar presença do código
   if (!code) {
     logger.error("[OAuth Callback] No authorization code received")
-    return NextResponse.redirect(`${PRODUCTION_URL}/auth/error?error=NoCode`)
+    const errorUrl = request.nextUrl.clone()
+    errorUrl.pathname = '/auth/error'
+    errorUrl.search = '?error=NoCode'
+    return NextResponse.redirect(errorUrl)
   }
 
   // 3. Validar state (PKCE + CSRF protection)
   if (!state) {
     logger.error("[OAuth Callback] No state parameter - possible CSRF attempt")
     await auditSecurityEvent('oauth_no_state', {}, undefined)
-    return NextResponse.redirect(`${PRODUCTION_URL}/auth/error?error=NoState`)
+    return createRedirectUrl(request, '/auth/error', '?error=NoState')
   }
 
   try {
@@ -55,7 +73,10 @@ export async function GET(request: NextRequest) {
     if (!oauthState) {
       logger.error("[OAuth Callback] Invalid or expired state", { state })
       await auditSecurityEvent('oauth_invalid_state', { state }, undefined)
-      return NextResponse.redirect(`${PRODUCTION_URL}/auth/error?error=InvalidState`)
+      const errorUrl = request.nextUrl.clone()
+      errorUrl.pathname = '/auth/error'
+      errorUrl.search = '?error=InvalidState'
+      return NextResponse.redirect(errorUrl)
     }
 
     const { codeVerifier, organizationId, isPrimaryLogin } = oauthState
@@ -98,9 +119,7 @@ export async function GET(request: NextRequest) {
           errorCode = 'RateLimit'
         }
 
-        return NextResponse.redirect(
-          `${PRODUCTION_URL}/auth/error?error=${errorCode}&message=${encodeURIComponent(errorMessage)}`
-        )
+        return createRedirectUrl(request, '/auth/error', `?error=${errorCode}&message=${encodeURIComponent(errorMessage)}`)
       }
     } else {
       logger.info("[OAuth Callback] Using cached token")
@@ -109,9 +128,7 @@ export async function GET(request: NextRequest) {
     // 9. Validar que temos os tokens necessários
     if (!tokens || !tokens.access_token) {
       logger.error("[OAuth Callback] No access token received")
-      return NextResponse.redirect(
-        `${PRODUCTION_URL}/auth/error?error=NoToken&message=${encodeURIComponent('No access token received')}`
-      )
+      return createRedirectUrl(request, '/auth/error', `?error=NoToken&message=${encodeURIComponent('No access token received')}`)
     }
 
     logger.info("[OAuth Callback] Token exchange successful, fetching user info")
@@ -138,9 +155,7 @@ export async function GET(request: NextRequest) {
         error: jsonError,
         response: userResponseText
       })
-      return NextResponse.redirect(
-        `${PRODUCTION_URL}/auth/error?error=InvalidUserResponse&message=${encodeURIComponent('Failed to get user information')}`
-      )
+      return createRedirectUrl(request, '/auth/error', `?error=InvalidUserResponse&message=${encodeURIComponent('Failed to get user information')}`)
     }
 
     if (!userResponse.ok) {
@@ -148,47 +163,82 @@ export async function GET(request: NextRequest) {
         error: user,
         status: userResponse.status
       })
-      return NextResponse.redirect(`${PRODUCTION_URL}/auth/error?error=UserInfo`)
+      return createRedirectUrl(request, '/auth/error', '?error=UserInfo')
     }
 
-    // Buscar dados completos do usuário com foto de perfil
-    const fullUserResponse = await fetchWithRateLimit(
-      `https://api.mercadolibre.com/users/${user.id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
-          "User-Agent": "ML-Agent/1.0"
+    // Tentar buscar dados completos do cache primeiro (economia de API call)
+    let fullUser = await MLCache.get<any>('USER', user.id.toString())
+
+    if (!fullUser) {
+      // Se não tem cache, buscar dados completos com foto de perfil
+      const fullUserResponse = await fetchWithRateLimit(
+        `https://api.mercadolibre.com/users/${user.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            "User-Agent": "ML-Agent/1.0"
+          },
         },
-      },
-      'users'
-    )
+        'users'
+      )
 
-    let fullUser = user
-    if (fullUserResponse.ok) {
-      try {
-        const fullUserText = await fullUserResponse.text()
-        fullUser = JSON.parse(fullUserText)
-        logger.info("[OAuth Callback] Got full user data with thumbnail", {
-          userId: fullUser.id,
-          nickname: fullUser.nickname,
-          hasThumbnail: !!fullUser.thumbnail,
-          hasLogo: !!fullUser.logo
-        })
-      } catch (error) {
-        logger.warn("[OAuth Callback] Failed to get full user data, using basic info", { error })
+      if (fullUserResponse.ok) {
+        try {
+          const fullUserText = await fullUserResponse.text()
+          fullUser = JSON.parse(fullUserText)
+
+          // Cachear por 3 horas para economizar chamadas futuras
+          await MLCache.set('USER', user.id.toString(), fullUser)
+
+          logger.info("[OAuth Callback] Got full user data and cached (3h)", {
+            userId: fullUser.id,
+            nickname: fullUser.nickname,
+            hasThumbnail: !!fullUser.thumbnail,
+            hasLogo: !!fullUser.logo
+          })
+        } catch (error) {
+          logger.warn("[OAuth Callback] Failed to get full user data, using basic info", { error })
+          fullUser = user
+        }
+      } else {
+        fullUser = user
       }
+    } else {
+      logger.info("[OAuth Callback] Using cached user data (saved API call)", {
+        userId: fullUser.id,
+        nickname: fullUser.nickname
+      })
     }
 
-    // Extract thumbnail URL if thumbnail is an object
+    // Extract thumbnail URL with priority: thumbnail > logo > picture
     let thumbnailUrl = null
+
+    // Priority 1: thumbnail field (can be string or object)
     if (fullUser.thumbnail) {
       if (typeof fullUser.thumbnail === 'string') {
         thumbnailUrl = fullUser.thumbnail
       } else if (fullUser.thumbnail.picture_url) {
         thumbnailUrl = fullUser.thumbnail.picture_url
       }
-    } else if (fullUser.logo) {
+    }
+
+    // Priority 2: logo field (common for business accounts)
+    if (!thumbnailUrl && fullUser.logo) {
       thumbnailUrl = fullUser.logo
+    }
+
+    // Priority 3: picture field (older API format)
+    if (!thumbnailUrl && fullUser.picture) {
+      if (typeof fullUser.picture === 'string') {
+        thumbnailUrl = fullUser.picture
+      } else if (fullUser.picture.url) {
+        thumbnailUrl = fullUser.picture.url
+      }
+    }
+
+    // Ensure full URL format
+    if (thumbnailUrl && !thumbnailUrl.startsWith('http')) {
+      thumbnailUrl = `https:${thumbnailUrl}`
     }
 
     logger.info("[OAuth Callback] User authenticated successfully", {
@@ -244,13 +294,22 @@ export async function GET(request: NextRequest) {
             }
           })
 
-          // Definir cookie de sessão com nome padronizado
+          // Definir cookie de sessão persistente com nome padronizado
           cookieStore.set('ml-agent-session', newSessionToken, {
             httpOnly: true,
             secure: true,
             sameSite: 'lax',
             path: '/',
-            expires: sessionExpiry
+            maxAge: 30 * 24 * 60 * 60 // 30 dias
+          })
+
+          // Cookie para identificar organização
+          cookieStore.set('ml-agent-org', pendingOrgId, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 // 30 dias
           })
         }
 
@@ -264,12 +323,14 @@ export async function GET(request: NextRequest) {
           sessionToken: existingSessionToken ? 'existing' : 'new session created'
         })
 
-        return NextResponse.redirect(`${PRODUCTION_URL}/agente`)
+        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
+        const successUrl = request.nextUrl.clone()
+        successUrl.pathname = '/agente'
+        successUrl.search = ''
+        return NextResponse.redirect(successUrl)
       } catch (error) {
         logger.error("[OAuth Callback] Failed to connect ML account to organization", { error })
-        return NextResponse.redirect(
-          `${PRODUCTION_URL}/auth/error?error=MLConnection&message=${encodeURIComponent('Failed to connect ML account')}`
-        )
+        return createRedirectUrl(request, '/auth/error', `?error=MLConnection&message=${encodeURIComponent('Failed to connect ML account')}`)
       }
     }
 
@@ -291,12 +352,21 @@ export async function GET(request: NextRequest) {
           fullUser.permalink || null
         )
 
-        // Configurar cookie de sessão padronizado para produção
+        // Configurar cookie de sessão persistente padronizado para produção
         cookieStore.set('ml-agent-session', session.sessionToken, {
           httpOnly: true,
           secure: true,
-          sameSite: 'strict',
-          maxAge: 7 * 24 * 60 * 60, // 7 dias
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 dias
+          path: '/'
+        })
+
+        // Cookie para identificar organização
+        cookieStore.set('ml-agent-org', session.organizationId, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 dias
           path: '/'
         })
 
@@ -307,14 +377,15 @@ export async function GET(request: NextRequest) {
           nickname: fullUser.nickname
         })
 
-        // Redirecionar para dashboard
-        return NextResponse.redirect(`${PRODUCTION_URL}/agente`)
+        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
+        const successUrl = request.nextUrl.clone()
+        successUrl.pathname = '/agente'
+        successUrl.search = ''
+        return NextResponse.redirect(successUrl)
 
       } catch (sessionError) {
         logger.error("[OAuth Callback] Failed to create session", { error: sessionError })
-        return NextResponse.redirect(
-          `${PRODUCTION_URL}/auth/error?error=SessionCreation&message=${encodeURIComponent('Failed to create session')}`
-        )
+        return createRedirectUrl(request, '/auth/error', `?error=SessionCreation&message=${encodeURIComponent('Failed to create session')}`)
       }
 
     } else {
@@ -341,16 +412,16 @@ export async function GET(request: NextRequest) {
           nickname: user.nickname
         })
 
-        // Redirecionar para página de sucesso
-        return NextResponse.redirect(
-          `${PRODUCTION_URL}/auth/success/account-added?account=${encodeURIComponent(user.nickname)}`
-        )
+        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
+        const successUrl = request.nextUrl.clone()
+        successUrl.pathname = '/agente'
+        successUrl.search = ''
+        return NextResponse.redirect(successUrl)
 
       } catch (addError: any) {
         logger.error("[OAuth Callback] Failed to add ML account", { error: addError })
-        return NextResponse.redirect(
-          `${PRODUCTION_URL}/auth/success/account-added?error=${encodeURIComponent(addError.message || 'Failed to add account')}`
-        )
+        // Em caso de erro, ainda assim redireciona para o agente com mensagem de erro
+        return createRedirectUrl(request, '/agente', `?error=${encodeURIComponent(addError.message || 'Falha ao adicionar conta')}`)
       }
     }
 
@@ -365,8 +436,6 @@ export async function GET(request: NextRequest) {
     // Limpar rate limits para permitir nova tentativa
     await oauthManager.clearRateLimits().catch(() => {})
 
-    return NextResponse.redirect(
-      `${PRODUCTION_URL}/auth/error?error=Unknown&message=${encodeURIComponent('An unexpected error occurred')}`
-    )
+    return createRedirectUrl(request, '/auth/error', `?error=Unknown&message=${encodeURIComponent('An unexpected error occurred')}`)
   }
 }

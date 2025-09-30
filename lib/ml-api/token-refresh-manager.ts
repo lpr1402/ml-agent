@@ -1,14 +1,16 @@
 /**
- * Token Refresh Manager - Sistema Unificado
+ * Token Refresh Manager - Sistema Unificado CLUSTER-SAFE
  * Gerencia refresh automático de tokens ML seguindo documentação oficial
- * Integra com sistema multi-tenant e criptografia
+ * Usa Redis distributed locks para evitar refresh duplicados em cluster PM2
+ * Garante que TODAS as contas ML ficam ativas 24/7
  */
 
 import { logger } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { decryptToken, encryptToken } from '@/lib/security/encryption'
 import { auditLog } from '@/lib/audit/audit-logger'
-import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
+import { executeMLRequest } from './retry-handler'
+import Redis from 'ioredis'
 
 interface RefreshResult {
   success: boolean
@@ -19,9 +21,28 @@ interface RefreshResult {
 class TokenRefreshManager {
   private refreshingTokens: Map<string, Promise<RefreshResult>> = new Map()
   private refreshScheduler: Map<string, NodeJS.Timeout> = new Map()
-  
+  private redis: Redis
+  private instanceId: string
+
   constructor() {
-    logger.info('[TokenRefreshManager] Inicializado')
+    // Identificador único para esta instância
+    this.instanceId = `${process.pid}_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+    // Redis para distributed locks
+    const redisConfig: any = {
+      host: process.env['REDIS_HOST'] || 'localhost',
+      port: parseInt(process.env['REDIS_PORT'] || '6379'),
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true
+    }
+
+    if (process.env['REDIS_PASSWORD']) {
+      redisConfig.password = process.env['REDIS_PASSWORD']
+    }
+
+    this.redis = new Redis(redisConfig)
+
+    logger.info(`[TokenRefreshManager] Inicializado - Instance: ${this.instanceId}`)
     this.startMonitoring()
   }
 
@@ -92,17 +113,60 @@ class TokenRefreshManager {
         return accessToken
       }
 
-      // Precisa fazer refresh
-      logger.info(`[TokenRefresh] Token expirando para ${account.nickname}, renovando...`)
-      
-      const refreshPromise = this.refreshToken(account)
-      this.refreshingTokens.set(mlAccountId, refreshPromise)
-      
+      // Precisa fazer refresh - USAR REDIS LOCK!
+      logger.info(`[TokenRefresh] Token expirando para ${account.nickname}, tentando renovar...`)
+
+      // Tentar adquirir lock no Redis (cluster-safe)
+      const lockKey = `token:refresh:lock:${mlAccountId}`
+      const lockValue = this.instanceId
+      const lockTTL = 30000 // 30 segundos TTL para o lock
+
+      // SET com NX (only if not exists) e PX (TTL em ms)
+      const lockAcquired = await this.redis.set(lockKey, lockValue, 'PX', lockTTL, 'NX')
+
+      if (!lockAcquired) {
+        // Outra instância está fazendo refresh
+        logger.info(`[TokenRefresh] Lock já existe para ${account.nickname}, aguardando...`)
+
+        // Aguardar até 30 segundos pelo refresh
+        let attempts = 0
+        while (attempts < 30) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+
+          // Verificar se token foi atualizado
+          const updatedAccount = await prisma.mLAccount.findUnique({
+            where: { id: mlAccountId },
+            select: { tokenExpiresAt: true }
+          })
+
+          if (updatedAccount && new Date(updatedAccount.tokenExpiresAt) > new Date()) {
+            // Token foi renovado por outra instância
+            return accessToken // Retorna token atual que ainda é válido
+          }
+          attempts++
+        }
+
+        logger.error(`[TokenRefresh] Timeout esperando refresh para ${account.nickname}`)
+        return null
+      }
+
       try {
+        // Temos o lock! Fazer refresh
+        const refreshPromise = this.refreshToken(account)
+        this.refreshingTokens.set(mlAccountId, refreshPromise)
+
         const result = await refreshPromise
         return result.success ? result.accessToken! : null
       } finally {
+        // SEMPRE liberar o lock
         this.refreshingTokens.delete(mlAccountId)
+
+        // Deletar lock APENAS se ainda somos o dono
+        const currentLockValue = await this.redis.get(lockKey)
+        if (currentLockValue === lockValue) {
+          await this.redis.del(lockKey)
+          logger.info(`[TokenRefresh] Lock liberado para ${account.nickname}`)
+        }
       }
       
     } catch (error) {
@@ -123,10 +187,9 @@ class TokenRefreshManager {
         authTag: account.refreshTokenTag
       })
 
-      // Faz chamada para API do ML com rate limiting
-      const response = await fetchWithRateLimit(
-        'https://api.mercadolibre.com/oauth/token',
-        {
+      // Faz chamada para API do ML com retry em caso de 429
+      const operation = async () => {
+        const response = await fetch('https://api.mercadolibre.com/oauth/token', {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
@@ -138,8 +201,23 @@ class TokenRefreshManager {
             client_secret: process.env['ML_CLIENT_SECRET']!,
             refresh_token: refreshToken
           })
-        },
-        'oauth/token'
+        })
+
+        // Tratar erro 429 para retry
+        if (response.status === 429) {
+          const error: any = new Error('Too Many Requests')
+          error.status = 429
+          error.headers = Object.fromEntries(response.headers.entries())
+          throw error
+        }
+
+        return response
+      }
+
+      const response = await executeMLRequest(
+        operation,
+        'OAuth Token Refresh',
+        account.mlUserId
       )
 
       const data = await response.json()
@@ -234,57 +312,78 @@ class TokenRefreshManager {
 
   /**
    * Agenda refresh automático 5 minutos antes de expirar
+   * CLUSTER-SAFE: Usa Redis para coordenar entre instâncias
    */
-  private scheduleRefresh(mlAccountId: string, expiresAt: Date): void {
-    // Cancela agendamento anterior se houver
+  private async scheduleRefresh(mlAccountId: string, expiresAt: Date): Promise<void> {
+    // Cancela agendamento local anterior se houver
     if (this.refreshScheduler.has(mlAccountId)) {
       clearTimeout(this.refreshScheduler.get(mlAccountId)!)
     }
 
     // Calcula tempo até 5 min antes de expirar
     const refreshTime = expiresAt.getTime() - Date.now() - 5 * 60 * 1000
-    
+
     if (refreshTime > 0) {
+      // Registrar no Redis quando deve ser feito o próximo refresh
+      const scheduleKey = `token:refresh:schedule:${mlAccountId}`
+      await this.redis.set(scheduleKey, expiresAt.toISOString(), 'PX', refreshTime + 60000)
+
+      // Agendar localmente também
       const timeout = setTimeout(async () => {
         logger.info(`[TokenRefresh] Refresh agendado executando para ${mlAccountId}`)
         await this.getValidToken(mlAccountId)
       }, refreshTime)
-      
+
       this.refreshScheduler.set(mlAccountId, timeout)
-      
+
       logger.info(`[TokenRefresh] Refresh agendado para ${mlAccountId} em ${new Date(Date.now() + refreshTime)}`)
     }
   }
 
   /**
    * Monitora todas as contas ativas e agenda refreshes
+   * CLUSTER-SAFE: Coordena entre instâncias via Redis
    */
   private async startMonitoring(): Promise<void> {
-    // Executa a cada hora
+    // Executa a cada 30 minutos (mais frequente para garantir tokens sempre ativos)
     setInterval(async () => {
       try {
-        const accounts = await prisma.mLAccount.findMany({
-          where: { isActive: true },
-          select: {
-            id: true,
-            nickname: true,
-            tokenExpiresAt: true
-          }
-        })
+        // Tentar ser o coordenador global (apenas 1 instância faz isso)
+        const coordinatorKey = 'token:refresh:coordinator'
+        const coordinatorLock = await this.redis.set(coordinatorKey, this.instanceId, 'PX', 35000, 'NX')
 
-        for (const account of accounts) {
-          // Agenda refresh se não estiver agendado
-          if (!this.refreshScheduler.has(account.id)) {
-            this.scheduleRefresh(account.id, account.tokenExpiresAt)
+        if (coordinatorLock) {
+          logger.info(`[TokenRefresh] Esta instância (${this.instanceId}) é o coordenador`)
+
+          const accounts = await prisma.mLAccount.findMany({
+            where: { isActive: true },
+            select: {
+              id: true,
+              nickname: true,
+              tokenExpiresAt: true
+            }
+          })
+
+          for (const account of accounts) {
+            // Verificar se já tem schedule no Redis
+            const scheduleKey = `token:refresh:schedule:${account.id}`
+            const scheduled = await this.redis.get(scheduleKey)
+
+            if (!scheduled) {
+              // Ninguém agendou ainda
+              await this.scheduleRefresh(account.id, account.tokenExpiresAt)
+            }
           }
+
+          logger.info(`[TokenRefresh] Monitorando ${accounts.length} contas ativas - Coordenador: ${this.instanceId}`)
+        } else {
+          logger.info(`[TokenRefresh] Outra instância é o coordenador`)
         }
 
-        logger.info(`[TokenRefresh] Monitorando ${accounts.length} contas ativas`)
-        
       } catch (error) {
         logger.error('[TokenRefresh] Erro no monitoramento:', { error })
       }
-    }, 60 * 60 * 1000) // 1 hora
+    }, 30 * 60 * 1000) // 30 minutos
 
     // Executa imediatamente na inicialização
     this.monitorAccounts()
@@ -301,21 +400,25 @@ class TokenRefreshManager {
     })
 
     for (const account of accounts) {
-      this.scheduleRefresh(account.id, account.tokenExpiresAt)
+      await this.scheduleRefresh(account.id, account.tokenExpiresAt)
     }
 
-    logger.info(`[TokenRefresh] Iniciado monitoramento de ${accounts.length} contas`)
+    logger.info(`[TokenRefresh] Iniciado monitoramento de ${accounts.length} contas - Instance: ${this.instanceId}`)
   }
 
   /**
    * Para todos os agendamentos (para shutdown limpo)
    */
-  stopAll(): void {
+  async stopAll(): Promise<void> {
     for (const timeout of this.refreshScheduler.values()) {
       clearTimeout(timeout)
     }
     this.refreshScheduler.clear()
-    logger.info('[TokenRefresh] Todos os agendamentos cancelados')
+
+    // Desconectar Redis
+    await this.redis.quit()
+
+    logger.info(`[TokenRefresh] Todos os agendamentos cancelados - Instance: ${this.instanceId}`)
   }
 }
 
@@ -334,19 +437,19 @@ export async function getValidMLToken(mlAccountId: string): Promise<string | nul
   return getTokenRefreshManager().getValidToken(mlAccountId)
 }
 
-export function stopTokenRefresh(): void {
-  getTokenRefreshManager().stopAll()
+export async function stopTokenRefresh(): Promise<void> {
+  await getTokenRefreshManager().stopAll()
 }
 
 // Hook para shutdown gracioso
 if (typeof process !== 'undefined') {
-  process.on('SIGTERM', () => {
+  process.on('SIGTERM', async () => {
     logger.info('[TokenRefresh] SIGTERM recebido, parando refresh...')
-    stopTokenRefresh()
+    await stopTokenRefresh()
   })
-  
-  process.on('SIGINT', () => {
+
+  process.on('SIGINT', async () => {
     logger.info('[TokenRefresh] SIGINT recebido, parando refresh...')
-    stopTokenRefresh()
+    await stopTokenRefresh()
   })
 }

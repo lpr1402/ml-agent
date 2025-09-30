@@ -1,7 +1,7 @@
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sendQuestionNotification } from "@/lib/services/whatsapp-professional"
+// Removido: import de whatsapp-professional - usando apenas Zapster
 import { zapsterService } from "@/lib/services/zapster-whatsapp"
 
 export async function POST(request: NextRequest) {
@@ -117,25 +117,9 @@ export async function POST(request: NextRequest) {
         tokenPrefix: approvalToken.substring(0, 8)
       })
       
-      // Enviar notificação WhatsApp com todos os dados necessários
-      const notificationData: any = {
-        questionId: question.id,
-        sequentialId: question.sequentialId || '00/0000', // Usar ID salvo no banco
-        mlQuestionId: question.mlQuestionId,
-        question: question.text,
-        aiResponse: output,
-        productTitle: question.itemTitle || "Produto",
-        productPrice: question.itemPrice || 0,
-        productImage: productImage,
-        approvalUrl: approvalUrl,
-        sellerName: mlAccount.nickname,
-        sellerEmail: mlAccount.organization?.primaryEmail,
-        organizationName: mlAccount.organization?.primaryNickname
-      }
+      // Removido: notificação WhatsApp antiga - usando apenas Zapster abaixo
 
-      await sendQuestionNotification(notificationData)
-
-      // NOTIFICAÇÃO ADICIONAL 1: Enviar via Zapster WhatsApp
+      // NOTIFICAÇÃO via Zapster WhatsApp
       try {
         logger.info('[📢 Zapster] Preparando envio de notificação WhatsApp', {
           questionId,
@@ -189,10 +173,10 @@ export async function POST(request: NextRequest) {
       // Enviar evento especial para trigger notificação no browser de quem está logado
       try {
         const browserNotificationEvent = {
-          title: `🔔 Nova Pergunta - ${mlAccount.nickname}`,
+          title: `🔔 ${mlAccount.nickname}`,
           body: `Pergunta Recebida: ${question.text.substring(0, 100)}...\n\n🤖 IA já preparou uma resposta!`,
-          icon: '/mlagent-logo-3d.png',
-          badge: '/mlagent-logo-3d.png',
+          icon: '/mlagent-logo-3d.svg',
+          badge: '/mlagent-logo-3d.svg',
           tag: `question-${question.mlQuestionId}`,
           requireInteraction: true,
           approvalUrl: approvalUrl,

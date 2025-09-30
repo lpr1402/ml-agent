@@ -27,23 +27,25 @@ interface MLAccount {
  * Processa webhook de pergunta com extração completa de dados
  */
 export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAccount) {
+  // SALVAMENTO GARANTIDO - Primeiro nível de try-catch
+  const questionId = data.resource.split('/').pop()
+
+  if (!questionId) {
+    logger.error('[QuestionProcessor] Invalid resource format:', { data: data.resource })
+    return
+  }
+
+  // Log inicial com timestamp para rastreabilidade completa
+  logger.info(`[QuestionProcessor] 🔄 WEBHOOK RECEIVED - Question ${questionId}`, {
+    questionId,
+    accountId: mlAccount.id,
+    userId: mlAccount.mlUserId,
+    organizationId: mlAccount.organizationId,
+    timestamp: new Date().toISOString(),
+    resource: data.resource
+  })
+
   try {
-    // Extrair ID da pergunta do resource (formato: /questions/ID)
-    const questionId = data.resource.split('/').pop()
-
-    if (!questionId) {
-      logger.error('[QuestionProcessor] Invalid resource format:', { data: data.resource })
-      return
-    }
-
-    logger.info(`[QuestionProcessor] 🔄 Processing question ${questionId} for account ${mlAccount.mlUserId}`, {
-      questionId,
-      accountId: mlAccount.id,
-      userId: mlAccount.mlUserId,
-      organizationId: mlAccount.organizationId,
-      timestamp: new Date().toISOString()
-    })
-
     // Verificar se já temos essa pergunta
     const existingQuestion = await prisma.question.findUnique({
       where: { mlQuestionId: questionId }
@@ -54,39 +56,50 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       return
     }
 
-    // Obter token válido para a conta ANTES de criar a pergunta
-    const accessToken = await getValidMLToken(mlAccount.id)
+    // GARANTIA 1: Salvar imediatamente com status RECEIVED
+    await prisma.question.create({
+      data: {
+        mlQuestionId: questionId,
+        mlAccountId: mlAccount.id,
+        sellerId: mlAccount.mlUserId,
+        itemId: '',
+        text: 'Processando pergunta recebida do Mercado Livre',
+        status: 'RECEIVED',
+        receivedAt: new Date(),
+        dateCreated: new Date()
+      }
+    })
 
-    if (!accessToken) {
-      logger.error(`[QuestionProcessor] Failed to get valid token for account ${mlAccount.id}`)
-      // Criar pergunta com status FAILED se não tiver token
-      await prisma.question.create({
-        data: {
-          mlQuestionId: questionId,
-          mlAccountId: mlAccount.id,
-          sellerId: mlAccount.mlUserId,
-          itemId: '',
-          text: 'Erro ao obter token de autenticação',
-          status: 'FAILED',
-          receivedAt: new Date(),
-          dateCreated: new Date(),
-          failedAt: new Date(),
-          failureReason: 'Token inválido'
-        }
-      })
-      return
-    }
+    logger.info(`[QuestionProcessor] ✅ Question ${questionId} SAVED with RECEIVED status`)
+
+    // Agora tentar processar completamente
+    try {
+
+      // Obter token válido para a conta
+      const accessToken = await getValidMLToken(mlAccount.id)
+
+      if (!accessToken) {
+        logger.error(`[QuestionProcessor] Failed to get valid token for account ${mlAccount.id}`)
+        // Atualizar pergunta com status FAILED se não tiver token
+        await prisma.question.update({
+          where: { mlQuestionId: questionId },
+          data: {
+            status: 'FAILED',
+            failedAt: new Date(),
+            failureReason: 'Token inválido - faça login novamente na conta'
+          }
+        })
+        logger.info(`[QuestionProcessor] Question ${questionId} marked as FAILED - no token`)
+        return
+      }
 
     // Buscar detalhes da pergunta ANTES de criar no banco
     let questionDetails: any = null
     let itemDetails: any = null
 
     try {
-      // PERGUNTAS SÃO ÚNICAS - Buscar direto da API sem cache
-      // DELAY MAIOR para evitar rate limit (processamento sequencial)
-      const initialDelay = Math.random() * 2000 + 3000 // 3-5 segundos SEMPRE
-      await new Promise(resolve => setTimeout(resolve, initialDelay))
-      logger.info(`[QuestionProcessor] ⏳ Waiting ${Math.round(initialDelay/1000)}s before fetching question ${questionId}`)
+      // Buscar direto da API - SEM DELAYS ARTIFICIAIS
+      // O retry handler cuidará de 429 automaticamente
 
       // Buscar dados da pergunta com APENAS 1 RETRY
       let retries = 0
@@ -115,7 +128,16 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
 
       if (!questionDetails) {
         logger.error(`[QuestionProcessor] Could not fetch question details for ${questionId} after ${retries} retries`)
-        // NÃO criar pergunta sem dados - aguardar próxima tentativa
+        // Atualizar pergunta com status FAILED
+        await prisma.question.update({
+          where: { mlQuestionId: questionId },
+          data: {
+            status: 'FAILED',
+            failedAt: new Date(),
+            failureReason: 'Não foi possível buscar detalhes da pergunta na API do Mercado Livre'
+          }
+        })
+        logger.info(`[QuestionProcessor] Question ${questionId} marked as FAILED - no details from ML API`)
         return
       }
 
@@ -125,9 +147,6 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         itemDetails = await MLCache.get('ITEM', questionDetails.item_id, mlAccount.mlUserId)
 
         if (!itemDetails) {
-          // Se não tem cache, delay MAIOR
-          const itemDelay = Math.random() * 1000 + 2000 // 2-3 segundos
-          await new Promise(resolve => setTimeout(resolve, itemDelay))
           logger.debug(`[QuestionProcessor] Fetching item ${questionDetails.item_id}`)
         } else {
           logger.info(`[QuestionProcessor] ✨ Cache hit for item ${questionDetails.item_id}`)
@@ -177,17 +196,60 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       }
     } catch (err) {
       logger.error(`[QuestionProcessor] Error fetching data for ${questionId}`, { error: err })
+      // Atualizar pergunta com status FAILED
+      await prisma.question.update({
+        where: { mlQuestionId: questionId },
+        data: {
+          itemId: questionDetails?.item_id || '',
+          text: questionDetails?.text || 'Erro ao processar pergunta',
+          status: 'FAILED',
+          failedAt: new Date(),
+          failureReason: 'Erro ao buscar dados completos da pergunta'
+        }
+      })
+      logger.info(`[QuestionProcessor] Question ${questionId} marked as FAILED after fetch error`)
       return
     }
 
-    // CRIAR PERGUNTA COM DADOS COMPLETOS DO ITEM
+    // ATUALIZAR PERGUNTA COM DADOS COMPLETOS
     // Gerar ID sequencial ÚNICO para rastreio permanente
     const sequentialId = generateSequentialId(questionId)
 
-    const savedQuestion = await prisma.question.create({
+    // Buscar pergunta existente para verificar seu status atual
+    const existingQuestion = await prisma.question.findUnique({
+      where: { mlQuestionId: questionId },
+      select: {
+        status: true,
+        aiSuggestion: true,
+        answer: true
+      }
+    })
+
+    // Determinar o status correto baseado no estado atual
+    let newStatus = 'PROCESSING'
+
+    if (existingQuestion) {
+      // Se já tem resposta da IA, deve ser AWAITING_APPROVAL
+      if (existingQuestion.aiSuggestion && existingQuestion.status !== 'REVISING') {
+        newStatus = 'AWAITING_APPROVAL'
+      }
+      // Se está revisando, manter REVISING
+      else if (existingQuestion.status === 'REVISING') {
+        newStatus = 'REVISING'
+      }
+      // Se já foi respondida, manter o status
+      else if (['RESPONDED', 'COMPLETED', 'SENT_TO_ML'].includes(existingQuestion.status)) {
+        newStatus = existingQuestion.status
+      }
+      // Se falhou ou tem erro, manter para permitir retry
+      else if (['FAILED', 'ERROR', 'TOKEN_ERROR'].includes(existingQuestion.status)) {
+        newStatus = existingQuestion.status
+      }
+    }
+
+    const savedQuestion = await prisma.question.update({
+      where: { mlQuestionId: questionId },
       data: {
-        mlQuestionId: questionId,
-        mlAccountId: mlAccount.id,
         sellerId: questionDetails?.seller_id?.toString() || mlAccount.mlUserId,
         itemId: questionDetails?.item_id || '',
         itemTitle: itemDetails?.title || questionDetails?.item_id || 'Produto',
@@ -195,9 +257,8 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         itemPermalink: itemDetails?.permalink || null,
         customerId: questionDetails?.from?.id?.toString() || null,
         text: questionDetails?.text || 'Pergunta sem texto',
-        status: 'PROCESSING',
+        status: newStatus,
         dateCreated: questionDetails?.date_created ? new Date(questionDetails.date_created) : new Date(),
-        receivedAt: new Date(),
         sequentialId: sequentialId // ID ÚNICO que não muda
       }
     })
@@ -252,6 +313,52 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         text: savedQuestion.text.substring(0, 50)
       })
 
+      // ENVIAR PUSH NOTIFICATION para dispositivos PWA
+      try {
+        logger.info(`[QuestionProcessor] Sending push notification for question ${savedQuestion.mlQuestionId}`)
+
+        // Preparar payload da notificação
+        const pushPayload = {
+          type: 'new_question' as const,
+          questionId: savedQuestion.mlQuestionId,
+          sequentialId: savedQuestion.sequentialId,
+          questionText: savedQuestion.text,
+          productTitle: savedQuestion.itemTitle || 'Produto',
+          productImage: itemDetails?.thumbnail || null,
+          sellerName: account?.nickname || 'ML Agent',
+          accountId: mlAccount.id,
+          url: `/agente?questionId=${savedQuestion.mlQuestionId}`
+        }
+
+        // Enviar push para todos os dispositivos da organização
+        const pushResponse = await fetch(`${process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'}/api/push/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payload: pushPayload,
+            organizationId: mlAccount.organizationId,
+            broadcast: true
+          })
+        })
+
+        if (pushResponse.ok) {
+          const result = await pushResponse.json()
+          logger.info(`[QuestionProcessor] ✅ Push notifications sent`, {
+            questionId: savedQuestion.mlQuestionId,
+            sent: result.sent,
+            failed: result.failed
+          })
+        } else {
+          logger.warn(`[QuestionProcessor] Push notification request failed`, {
+            status: pushResponse.status
+          })
+        }
+
+      } catch (pushError) {
+        // Log mas não falhar se push notification tiver problema
+        logger.error(`[QuestionProcessor] Push notification error (non-fatal):`, { data: pushError })
+      }
+
       console.log('[QuestionProcessor] 🚀 Real-time event emitted:', {
         questionId: savedQuestion.mlQuestionId,
         org: mlAccount.organizationId,
@@ -293,18 +400,16 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       return
     }
 
-    // OTIMIZADO: Buscar descrição do item e dados do vendedor (com cache)
+    // OTIMIZADO: Buscar descrição do item (dados do vendedor já em cache do login)
     const [itemDescription, sellerData] = await Promise.all([
       // Buscar descrição do item (importante para contexto da IA)
       questionDetails.item_id ?
         MLCache.getOrFetch('ITEM_DESC', questionDetails.item_id,
           () => fetchItemDescription(questionDetails.item_id, accessToken),
           mlAccount.mlUserId, 1800) : null, // Cache 30min
-      // Buscar dados do vendedor
+      // Dados do vendedor já em cache (3h) desde o login - ECONOMIA DE 1 CHAMADA API
       questionDetails.seller_id ?
-        MLCache.getOrFetch('USER', questionDetails.seller_id.toString(),
-          () => fetchUserDetails(questionDetails.seller_id.toString(), accessToken),
-          mlAccount.mlUserId, 3600) : null // Cache 1h
+        MLCache.get('USER', questionDetails.seller_id.toString()) : null
     ])
 
     const buyerData = null // Não essencial - removido
@@ -353,9 +458,56 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       }
     })
     
-  } catch (_error) {
-    logger.error('[QuestionProcessor] Error processing webhook:', { error: _error })
-    throw _error
+    } catch (innerError) {
+      // Se falhar o processamento interno, garantir que a pergunta está salva como FAILED
+      logger.error(`[QuestionProcessor] Error during processing for ${questionId}:`, { error: innerError })
+
+      try {
+        await prisma.question.update({
+          where: { mlQuestionId: questionId },
+          data: {
+            status: 'FAILED',
+            failedAt: new Date(),
+            failureReason: 'Erro durante processamento - será reprocessado'
+          }
+        })
+      } catch (updateErr) {
+        logger.error(`[QuestionProcessor] Failed to update question status:`, { error: updateErr })
+      }
+    }
+
+  } catch (outerError) {
+    // ÚLTIMA GARANTIA: Se tudo falhar, ainda assim salvar a pergunta
+    logger.error(`[QuestionProcessor] CRITICAL ERROR for question ${questionId}:`, { error: outerError })
+
+    try {
+      // Verificar se conseguimos pelo menos salvar
+      const exists = await prisma.question.findUnique({
+        where: { mlQuestionId: questionId }
+      })
+
+      if (!exists) {
+        // Última tentativa de salvar
+        await prisma.question.create({
+          data: {
+            mlQuestionId: questionId,
+            mlAccountId: mlAccount.id,
+            sellerId: mlAccount.mlUserId,
+            itemId: '',
+            text: 'Erro crítico - pergunta salva para processamento posterior',
+            status: 'FAILED',
+            receivedAt: new Date(),
+            dateCreated: new Date(),
+            failedAt: new Date(),
+            failureReason: 'Erro crítico no processamento'
+          }
+        })
+        logger.info(`[QuestionProcessor] ⚠️ Question ${questionId} SAVED in emergency mode`)
+      }
+    } catch (emergencyError) {
+      logger.error(`[QuestionProcessor] EMERGENCY SAVE FAILED:`, { error: emergencyError })
+      // Aqui poderíamos enviar para uma fila de dead letter ou notificar admin
+    }
   }
 }
 
@@ -530,33 +682,9 @@ async function fetchItemDescription(itemId: string, accessToken: string) {
   }
 }
 
-/**
- * Busca detalhes de um usuário (vendedor ou comprador)
- */
-async function fetchUserDetails(userId: string, accessToken: string) {
-  try {
-    const response = await fetch(`https://api.mercadolibre.com/users/${userId}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      logger.warn(`[QuestionProcessor] Failed to fetch user ${userId}: ${response.status}`)
-      return null
-    }
-
-    const data = await response.json()
-    logger.info(`[QuestionProcessor] Data fetched successfully`, data)
-    return data
-  } catch (_error: any) {
-    logger.warn(`[QuestionProcessor] Failed to fetch user ${userId}:`, {
-      error: _error?.message || _error
-    })
-    return null
-  }
-}
+// REMOVIDO: fetchUserDetails - não é mais necessário
+// Agora usamos cache do login (3 horas) para economizar chamadas API
+// Economia: 1 chamada API por pergunta processada
 
 /**
  * Mapeia status do ML para nosso sistema
@@ -575,7 +703,7 @@ async function fetchUserDetails(userId: string, accessToken: string) {
 // }
 
 /**
- * Envia pergunta para processamento no N8N com dados COMPLETOS e OTIMIZADOS
+ * Envia pergunta para processamento no N8N usando FORMATO UNIFICADO
  */
 async function sendToN8NProcessingOptimized(
   question: any,
@@ -588,14 +716,14 @@ async function sendToN8NProcessingOptimized(
 ) {
   try {
     const n8nWebhookUrl = process.env['N8N_WEBHOOK_URL']
-    
+
     if (!n8nWebhookUrl) {
       logger.info('[QuestionProcessor] N8N webhook not configured')
       return
     }
-    
-    const { itemDetails, itemDescription, sellerData, buyerData } = enrichedData
-    
+
+    const { itemDetails, itemDescription } = enrichedData
+
     // Buscar conta ML com organização
     const fullMlAccount = await prisma.mLAccount.findUnique({
       where: { id: question.mlAccountId },
@@ -603,12 +731,12 @@ async function sendToN8NProcessingOptimized(
         organization: true
       }
     })
-    
+
     if (!fullMlAccount) {
       logger.error('[QuestionProcessor] ML Account not found for question processing')
       await prisma.question.update({
         where: { id: question.id },
-        data: { 
+        data: {
           status: 'FAILED',
           failedAt: new Date(),
           failureReason: 'ML Account not found'
@@ -616,83 +744,37 @@ async function sendToN8NProcessingOptimized(
       })
       return
     }
-    
-    // Buscar histórico de perguntas do comprador
-    const [previousQuestionsAllItems, previousQuestionsThisItem] = await Promise.all([
-      // Perguntas em OUTROS itens do vendedor
-      question.customerId ? prisma.question.findMany({
-        where: {
-          customerId: question.customerId,
-          sellerId: question.sellerId,
-          itemId: { not: question.itemId }, // OUTROS itens
-          id: { not: question.id },
-          answer: { not: null }
-        },
-        select: {
-          text: true,
-          answer: true,
-          itemTitle: true,
-          answeredAt: true
-        },
-        orderBy: { answeredAt: 'desc' },
-        take: 3
-      }) : [],
-      
-      // Perguntas no MESMO item
-      question.customerId ? prisma.question.findMany({
-        where: {
-          customerId: question.customerId,
-          itemId: question.itemId, // MESMO item
-          id: { not: question.id },
-          answer: { not: null }
-        },
-        select: {
-          text: true,
-          answer: true,
-          answeredAt: true
-        },
-        orderBy: { answeredAt: 'desc' },
-        take: 5
-      }) : []
-    ])
-    
-    // Formatar contexto COMPLETO do produto
-    const productContext = formatProductContext(itemDetails, itemDescription)
-    
-    // Formatar contexto do vendedor
-    const sellerContext = formatSellerContext(sellerData || fullMlAccount)
-    
-    // Formatar contexto do comprador
-    const buyerContext = formatBuyerContext(buyerData)
-    
-    // Formatar histórico de perguntas
-    const questionsHistory = formatQuestionsHistory(previousQuestionsThisItem, previousQuestionsAllItems, question.itemTitle)
-    
-    // Preparar payload ULTRA-COMPLETO para N8N
-    const n8nPayload = {
-      // 1. IDENTIFICAÇÃO
-      'question-id': question.mlQuestionId,
-      'item-id': question.itemId, // ID do anúncio adicionado!
-      'ml_item_id': question.itemId, // Duplicar para compatibilidade com formato unificado
 
-      // 2. PERGUNTA
-      question: question.text,
+    // IMPORTAR FUNÇÕES DO PAYLOAD BUILDER
+    const { buildN8NPayload, fetchBuyerQuestionsHistory } = await import('@/lib/webhooks/n8n-payload-builder')
+    const { decryptToken } = await import('@/lib/security/encryption')
 
-      // 3. CONTEXTO COMPLETO DO PRODUTO
-      product_context: productContext,
+    // Buscar histórico de perguntas do COMPRADOR ESPECÍFICO
+    const buyerQuestions = await fetchBuyerQuestionsHistory(
+      question.customerId || '',
+      fullMlAccount.organizationId,
+      question.mlQuestionId,
+      prisma,
+      decryptToken
+    )
 
-      // 4. CONTEXTO DO VENDEDOR
-      seller_context: sellerContext,
-
-      // 5. CONTEXTO DO COMPRADOR
-      buyer_context: buyerContext,
-
-      // 6. HISTÓRICO DE PERGUNTAS
-      buyer_questions_history: questionsHistory,
-
-      // 7. INSTRUÇÕES PARA IA
-      instructions: 'Responda em português brasileiro, máximo 500 caracteres, seja direto, cordial e profissional. Use os dados fornecidos para personalizar a resposta.'
-    }
+    // CONSTRUIR PAYLOAD UNIFICADO - Formato padrão para processamento
+    const n8nPayload = await buildN8NPayload(
+      {
+        mlQuestionId: question.mlQuestionId,
+        id: question.mlQuestionId,
+        text: question.text,
+        item_id: question.itemId,
+        sellerNickname: fullMlAccount.nickname || 'Vendedor'
+      },
+      itemDetails,
+      itemDescription,
+      buyerQuestions,
+      {
+        sellerNickname: fullMlAccount.nickname
+        // SEM original_response e revision_feedback - apenas para revisão
+      }
+    )
     
     // Enviar para N8N
     try {
@@ -727,43 +809,99 @@ async function sendToN8NProcessingOptimized(
         })
       } else {
         const errorText = await response.text()
-        logger.error('[QuestionProcessor] N8N webhook returned error', { 
-          status: response.status, 
-          error: errorText 
+        logger.error('[QuestionProcessor] N8N webhook returned error', {
+          status: response.status,
+          error: errorText
         })
-        
+
         await prisma.question.update({
           where: { id: question.id },
-          data: { 
+          data: {
             status: 'FAILED',
             failedAt: new Date(),
-            failureReason: `N8N error: ${response.status}`
+            failureReason: errorText.includes('Error in workflow')
+              ? 'Error in workflow'
+              : `N8N error: ${response.status}`
           }
         })
+
+        // Emitir evento de erro em tempo real
+        try {
+          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+          emitQuestionFailed(
+            question.mlQuestionId,
+            errorText.includes('Error in workflow') ? 'Erro no processamento da IA' : `Erro no serviço: ${response.status}`,
+            true, // retryable
+            fullMlAccount.organizationId,
+            {
+              type: 'N8N_ERROR',
+              code: response.status.toString(),
+              hasResponse: false
+            }
+          )
+        } catch (wsError) {
+          logger.warn('[QuestionProcessor] Failed to emit error event', { error: wsError })
+        }
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         logger.error('[QuestionProcessor] N8N request timeout')
-        
+
         await prisma.question.update({
           where: { id: question.id },
-          data: { 
+          data: {
             status: 'FAILED',
             failedAt: new Date(),
             failureReason: 'N8N processing timeout'
           }
         })
+
+        // Emitir evento de timeout
+        try {
+          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+          emitQuestionFailed(
+            question.mlQuestionId,
+            'Tempo limite de processamento excedido',
+            true, // retryable
+            fullMlAccount.organizationId,
+            {
+              type: 'TIMEOUT',
+              code: 'TIMEOUT',
+              hasResponse: false
+            }
+          )
+        } catch (wsError) {
+          logger.warn('[QuestionProcessor] Failed to emit timeout event', { error: wsError })
+        }
       } else {
         logger.error('[QuestionProcessor] Error sending to N8N:', { error })
-        
+
         await prisma.question.update({
           where: { id: question.id },
-          data: { 
+          data: {
             status: 'FAILED',
             failedAt: new Date(),
             failureReason: `Failed to send to N8N: ${error.message}`
           }
         })
+
+        // Emitir evento de erro genérico
+        try {
+          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+          emitQuestionFailed(
+            question.mlQuestionId,
+            `Erro ao processar: ${error.message}`,
+            true, // retryable
+            fullMlAccount.organizationId,
+            {
+              type: 'CONNECTION_ERROR',
+              code: 'NETWORK_ERROR',
+              hasResponse: false
+            }
+          )
+        } catch (wsError) {
+          logger.warn('[QuestionProcessor] Failed to emit error event', { error: wsError })
+        }
       }
     }
     
@@ -785,127 +923,9 @@ async function sendToN8NProcessingOptimized(
   }
 }
 
-/**
- * Formata contexto completo do produto com descrição
- */
-function formatProductContext(itemDetails: any, itemDescription: any): string {
-  if (!itemDetails) return 'Produto não encontrado'
+// REMOVIDO: Funções antigas de formatação - usando buildN8NPayload agora
 
-  const parts = [
-    itemDetails.title,
-    `Preço: R$ ${itemDetails.price}`,
-    itemDetails.original_price ? `Preço original: R$ ${itemDetails.original_price} (${Math.round((1 - itemDetails.price/itemDetails.original_price) * 100)}% OFF)` : null,
-    itemDetails.sold_quantity > 0 ? `${itemDetails.sold_quantity} vendas realizadas` : 'Produto novo no catálogo',
-    itemDetails.condition === 'new' ? 'Produto novo' : 'Produto usado',
-    `${itemDetails.available_quantity} unidades disponíveis`,
-    itemDetails.shipping?.free_shipping ? 'FRETE GRÁTIS' : 'Frete a calcular',
-    itemDetails.shipping?.mode === 'me2' ? 'Mercado Envios FULL' : null,
-    itemDetails.warranty || 'Garantia do fabricante',
-    // Atributos principais
-    ...extractMainAttributes(itemDetails.attributes),
-    // Descrição COMPLETA do anúncio para contexto da IA - SEM CORTES
-    itemDescription?.plain_text ? `\nDESCRIÇÃO COMPLETA:\n${itemDescription.plain_text}` : null
-  ]
-
-  return parts.filter(Boolean).join('\n')
-}
-
-/**
- * Extrai atributos principais do produto
- */
-function extractMainAttributes(attributes: any[]): string[] {
-  if (!attributes) return []
-  
-  const importantAttributes = ['BRAND', 'MODEL', 'COLOR', 'SIZE', 'MATERIAL', 'CAPACITY', 'WEIGHT']
-  const result: string[] = []
-  
-  for (const attr of attributes) {
-    if (importantAttributes.includes(attr.id) && attr.value_name) {
-      const label = attr.name || attr.id
-      result.push(`${label}: ${attr.value_name}`)
-    }
-  }
-  
-  return result
-}
-
-/**
- * Formata contexto do vendedor
- */
-function formatSellerContext(sellerData: any): string {
-  if (!sellerData) return 'Vendedor do Mercado Livre'
-
-  // Retornar apenas o nome do vendedor conforme solicitado
-  return sellerData.nickname || 'Vendedor'
-}
-
-/**
- * Traduz nível de reputação
- */
-// function _translateReputation(level: string): string {
-//   const levels: Record<string, string> = {
-//     '5_green': 'Excelente (Verde)',
-//     '4_light_green': 'Muito Boa (Verde Claro)',
-//     '3_yellow': 'Boa (Amarelo)',
-//     '2_orange': 'Regular (Laranja)',
-//     '1_red': 'Ruim (Vermelho)',
-//     'newbie': 'Iniciante'
-//   }
-//
-//   return levels[level] || level
-// }
-
-/**
- * Formata contexto do comprador
- */
-function formatBuyerContext(buyerData: any): string {
-  if (!buyerData) return 'Comprador do Mercado Livre'
-  
-  const parts = [
-    buyerData.nickname || 'Comprador',
-    buyerData.registration_date ? `Cliente desde ${new Date(buyerData.registration_date).getFullYear()}` : null,
-    buyerData.seller_reputation?.transactions?.completed > 0 ? `${buyerData.seller_reputation.transactions.completed} compras realizadas` : null,
-    buyerData.buyer_reputation?.tags?.includes('good_buyer') ? 'Bom comprador' : null,
-    buyerData.buyer_reputation?.canceled_transactions > 0 ? `${buyerData.buyer_reputation.canceled_transactions} compras canceladas` : null
-  ]
-  
-  return parts.filter(Boolean).join('\n')
-}
-
-/**
- * Formata histórico de perguntas do comprador
- */
-function formatQuestionsHistory(thisItemQuestions: any[], otherItemsQuestions: any[], currentItemTitle: string): string {
-  const parts: string[] = []
-  
-  // Perguntas no MESMO item
-  if (thisItemQuestions.length > 0) {
-    parts.push(`=== PERGUNTAS ANTERIORES NESTE PRODUTO (${currentItemTitle}) ===`)
-    thisItemQuestions.forEach((q, i) => {
-      parts.push(`[Pergunta ${i+1}]`)
-      parts.push(`P: ${q.text}`)
-      parts.push(`R: ${q.answer}`)
-      parts.push('')
-    })
-  }
-  
-  // Perguntas em OUTROS itens
-  if (otherItemsQuestions.length > 0) {
-    parts.push(`=== PERGUNTAS EM OUTROS PRODUTOS DO VENDEDOR ===`)
-    otherItemsQuestions.forEach((q) => {
-      parts.push(`[Pergunta sobre: ${q.itemTitle}]`)
-      parts.push(`P: ${q.text}`)
-      parts.push(`R: ${q.answer}`)
-      parts.push('')
-    })
-  }
-  
-  if (parts.length === 0) {
-    return 'Primeira interação deste comprador com o vendedor'
-  }
-  
-  return parts.join('\n')
-}
+// REMOVIDO: Funções antigas de formatação - todas substituídas por buildN8NPayload
 
 const questionProcessor = {
   processQuestionWebhook

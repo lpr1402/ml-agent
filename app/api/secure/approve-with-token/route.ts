@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger'
 import { approvalTokenService } from '@/lib/services/approval-token-service'
 import { getValidMLToken } from '@/lib/ml-api/token-manager'
 import { sanitizeAnswerText } from '@/lib/security/input-validator'
-import { sendApprovalConfirmation } from '@/lib/services/whatsapp-professional'
+import { zapsterService } from '@/lib/services/zapster-whatsapp'
 
 export async function POST(request: NextRequest) {
   try {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       
       // Enviar confirmação WhatsApp
       try {
-        await sendApprovalConfirmation({
+        await zapsterService.sendApprovalConfirmation({
           sequentialId: parseInt(question.id.slice(-6), 16) || 0,
           questionText: question.text,
           finalAnswer: sanitizedResponse,
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         
         // Enviar novo link via WhatsApp
         try {
-          await sendApprovalConfirmation({
+          await zapsterService.sendApprovalConfirmation({
             sequentialId: parseInt(question.id.slice(-6), 16) || 0,
             questionText: question.text,
             finalAnswer: userResponse,

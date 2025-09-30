@@ -26,12 +26,14 @@ module.exports = {
         NODE_OPTIONS: '--max-old-space-size=1024',
         UV_THREADPOOL_SIZE: '16', // Otimizado: 16 threads para 10 contas
 
-        // Database - Otimizado para single-tenant
-        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
-        DB_POOL_SIZE: '20', // Otimizado: 20 conexões (2 por conta)
-        DB_POOL_TIMEOUT: '5000',
-        DB_STATEMENT_TIMEOUT: '10000',
-        DB_IDLE_TIMEOUT: '30000',
+        // Database - Otimizado para produção com múltiplas contas ML
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public&pool_timeout=0&connection_limit=30',
+        DB_POOL_SIZE: '30', // Otimizado: 30 conexões são suficientes
+        DB_POOL_MIN: '5', // Mínimo de 5 conexões sempre ativas
+        DB_POOL_MAX: '30', // Máximo de 30 conexões
+        DB_POOL_TIMEOUT: '0', // Sem timeout para aguardar conexão
+        DB_STATEMENT_TIMEOUT: '30000', // 30 segundos para queries
+        DB_IDLE_TIMEOUT: '10000', // Liberar conexões idle após 10s
         DB_CONNECTION_TIMEOUT: '5000',
 
         // Redis
@@ -87,6 +89,11 @@ module.exports = {
         N8N_WEBHOOK_EDIT_URL: 'https://dashboard.axnexlabs.com.br/webhook/editar',
         N8N_WEBHOOK_SECRET: 'n8n-webhook-secret',
 
+        // PWA Push Notifications VAPID Keys
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'BFDQNvQB1cWQbPHStt5S6mRtVCGldecWfKMDWfyBx2HTPhvitpZdVE7kMIAQPpGawd5GN7XrzMnvfMq3n7NOM0g',
+        VAPID_PRIVATE_KEY: 'XqWkLgd7DvUVAd3jxglkrrqEubb2DxQm0cz5o_PnE10',
+        VAPID_EMAIL: 'mailto:support@axnexlabs.com.br',
+
         // Feature Flags
         ENABLE_WEBHOOK_PROCESSING: 'true',
         ENABLE_AUTO_ANSWER: 'true',
@@ -129,12 +136,12 @@ module.exports = {
       max_memory_restart: '512M', // Otimizado: 512M suficiente
       env_production: {
         NODE_ENV: 'production',
-        // Herda configurações essenciais
-        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
+        // Herda configurações essenciais com pool otimizado
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public&pool_timeout=0&connection_limit=30',
         REDIS_URL: 'redis://localhost:6379',
         ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
         // Queue settings otimizadas
-        QUEUE_CONCURRENCY: '5', // 5 jobs simultâneos
+        QUEUE_CONCURRENCY: '20', // Aumentado para processar mais em paralelo
         QUEUE_MAX_RETRIES: '3',
         QUEUE_RETRY_DELAY: '5000',
         LOG_LEVEL: 'warn',
@@ -166,6 +173,10 @@ module.exports = {
         REDIS_URL: 'redis://localhost:6379',
         ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
         ML_WEBHOOK_SECRET: 'webhook-secret-ml-2025',
+        // PWA Push Notifications
+        NEXT_PUBLIC_APP_URL: 'https://gugaleo.axnexlabs.com.br',
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'BFDQNvQB1cWQbPHStt5S6mRtVCGldecWfKMDWfyBx2HTPhvitpZdVE7kMIAQPpGawd5GN7XrzMnvfMq3n7NOM0g',
+        VAPID_PRIVATE_KEY: 'XqWkLgd7DvUVAd3jxglkrrqEubb2DxQm0cz5o_PnE10',
         // Worker settings otimizadas
         WORKER_CONCURRENCY: '5', // 5 webhooks simultâneos
         WEBHOOK_TIMEOUT: '5000', // 5 segundos timeout

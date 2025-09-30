@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Test - ML Agent</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #ffd700;
+        }
+        .status {
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #333;
+        }
+        .success { border-color: #4caf50; }
+        .error { border-color: #f44336; }
+        .warning { border-color: #ff9800; }
+        .info { border-color: #2196f3; }
+        button {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #ffed4e;
+        }
+        button:disabled {
+            background: #666;
+            color: #999;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .log {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 PWA Test - ML Agent</h1>
+
+        <div class="status info">
+            <h3>📊 Status do PWA</h3>
+            <div id="status"></div>
+        </div>
+
+        <div class="status">
+            <h3>🔧 Ações</h3>
+            <button id="registerSW">Registrar Service Worker</button>
+            <button id="checkInstallable">Verificar Instalabilidade</button>
+            <button id="forcePrompt">Forçar Prompt de Instalação</button>
+            <button id="installPWA" disabled>Instalar PWA</button>
+            <button id="clearData">Limpar Dados</button>
+        </div>
+
+        <div class="status">
+            <h3>📝 Logs</h3>
+            <pre class="log" id="logs"></pre>
+        </div>
+    </div>
+
+    <script>
+        let deferredPrompt = null;
+        const logs = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            logs.push(logMessage);
+            console.log(logMessage);
+            document.getElementById('logs').textContent = logs.join('\n');
+        }
+
+        function updateStatus() {
+            const status = document.getElementById('status');
+            const checks = [];
+
+            // HTTPS Check
+            const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
+            checks.push(`✅ HTTPS: ${isSecure ? 'Sim' : 'Não'}`);
+
+            // Service Worker Support
+            const swSupport = 'serviceWorker' in navigator;
+            checks.push(`✅ Service Worker Support: ${swSupport ? 'Sim' : 'Não'}`);
+
+            // Manifest Link
+            const manifestLink = document.querySelector('link[rel="manifest"]');
+            checks.push(`✅ Manifest Link: ${manifestLink ? 'Presente' : 'Ausente'}`);
+
+            // Display Mode
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            checks.push(`✅ Rodando como PWA: ${isStandalone ? 'Sim' : 'Não'}`);
+
+            // Browser
+            const ua = navigator.userAgent;
+            const browser = ua.includes('Chrome') ? 'Chrome' :
+                           ua.includes('Edge') ? 'Edge' :
+                           ua.includes('Firefox') ? 'Firefox' :
+                           ua.includes('Safari') ? 'Safari' : 'Outro';
+            checks.push(`✅ Navegador: ${browser}`);
+
+            // Platform
+            const platform = navigator.platform || 'Unknown';
+            checks.push(`✅ Plataforma: ${platform}`);
+
+            // Deferred Prompt
+            checks.push(`✅ Prompt Capturado: ${deferredPrompt ? 'Sim' : 'Não'}`);
+
+            status.innerHTML = checks.join('<br>');
+        }
+
+        // Register Service Worker
+        document.getElementById('registerSW').addEventListener('click', async () => {
+            log('Registrando Service Worker...');
+
+            if ('serviceWorker' in navigator) {
+                try {
+                    // Unregister all existing service workers first
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                        log(`Desregistrado: ${registration.scope}`);
+                    }
+
+                    // Register new service worker
+                    const registration = await navigator.serviceWorker.register('/sw.js', {
+                        scope: '/',
+                        updateViaCache: 'none'
+                    });
+
+                    log(`Service Worker registrado: ${registration.scope}`, 'success');
+
+                    // Force update
+                    registration.update();
+
+                    // Wait for activation
+                    if (registration.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+
+                    updateStatus();
+                } catch (error) {
+                    log(`Erro ao registrar SW: ${error.message}`, 'error');
+                }
+            } else {
+                log('Service Worker não suportado', 'error');
+            }
+        });
+
+        // Check Installability
+        document.getElementById('checkInstallable').addEventListener('click', async () => {
+            log('Verificando instalabilidade...');
+
+            try {
+                // Check manifest
+                const manifestResponse = await fetch('/manifest.json');
+                const manifest = await manifestResponse.json();
+                log(`Manifest carregado: ${manifest.name}`);
+                log(`Display: ${manifest.display}`);
+                log(`Start URL: ${manifest.start_url}`);
+                log(`Icons: ${manifest.icons ? manifest.icons.length : 0}`);
+
+                // Check service worker
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                log(`Service Workers registrados: ${registrations.length}`);
+
+                if (registrations.length > 0) {
+                    const reg = registrations[0];
+                    log(`SW Scope: ${reg.scope}`);
+                    log(`SW Active: ${reg.active ? 'Sim' : 'Não'}`);
+                    log(`SW Waiting: ${reg.waiting ? 'Sim' : 'Não'}`);
+                    log(`SW Installing: ${reg.installing ? 'Sim' : 'Não'}`);
+                }
+
+                // Check installability criteria
+                log('');
+                log('Critérios PWA:');
+                log('1. HTTPS: ' + (location.protocol === 'https:' ? '✅' : '❌'));
+                log('2. Service Worker: ' + (registrations.length > 0 ? '✅' : '❌'));
+                log('3. Manifest válido: ✅');
+                log('4. Start URL acessível: ✅');
+                log('5. Icons 192x192 e 512x512: ✅');
+                log('');
+                log('⚠️ Se todos os critérios estão OK mas o prompt não aparece:');
+                log('1. Abra chrome://flags');
+                log('2. Procure por "Bypass app banner engagement checks"');
+                log('3. Ative a flag');
+                log('4. Reinicie o Chrome');
+                log('5. Recarregue esta página');
+
+            } catch (error) {
+                log(`Erro ao verificar: ${error.message}`, 'error');
+            }
+        });
+
+        // Force Prompt
+        document.getElementById('forcePrompt').addEventListener('click', () => {
+            log('Tentando forçar prompt...');
+
+            // Try to trigger beforeinstallprompt
+            window.dispatchEvent(new Event('beforeinstallprompt'));
+
+            // Alternative method
+            setTimeout(() => {
+                if (!deferredPrompt) {
+                    log('Prompt não disponível. Tentando método alternativo...');
+
+                    // Show manual instructions
+                    const instructions = `
+Para instalar manualmente:
+
+Chrome/Edge Desktop:
+1. Clique nos 3 pontos (⋮) no canto superior direito
+2. Procure "Instalar ML Agent"
+3. Clique em "Instalar"
+
+OU
+
+1. Pressione F12 para abrir DevTools
+2. Vá em Application > Manifest
+3. Clique em "Install" no topo da aba
+
+Chrome Android:
+1. Toque nos 3 pontos (⋮)
+2. Toque em "Adicionar à tela inicial"
+                    `;
+                    log(instructions, 'warning');
+                    alert(instructions);
+                }
+            }, 1000);
+        });
+
+        // Install PWA
+        document.getElementById('installPWA').addEventListener('click', async () => {
+            log('Botão de instalação clicado');
+
+            if (!deferredPrompt) {
+                log('Nenhum prompt disponível', 'error');
+                return;
+            }
+
+            try {
+                log('Mostrando prompt de instalação...');
+                deferredPrompt.prompt();
+
+                const { outcome } = await deferredPrompt.userChoice;
+                log(`Escolha do usuário: ${outcome}`);
+
+                if (outcome === 'accepted') {
+                    log('PWA instalado com sucesso!', 'success');
+                } else {
+                    log('Instalação cancelada pelo usuário', 'warning');
+                }
+
+                deferredPrompt = null;
+                document.getElementById('installPWA').disabled = true;
+                updateStatus();
+
+            } catch (error) {
+                log(`Erro ao mostrar prompt: ${error.message}`, 'error');
+            }
+        });
+
+        // Clear Data
+        document.getElementById('clearData').addEventListener('click', async () => {
+            if (confirm('Isso vai limpar todos os dados do site. Continuar?')) {
+                log('Limpando dados...');
+
+                // Clear service workers
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                        log(`SW desregistrado: ${registration.scope}`);
+                    }
+                }
+
+                // Clear caches
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (const cacheName of cacheNames) {
+                        await caches.delete(cacheName);
+                        log(`Cache deletado: ${cacheName}`);
+                    }
+                }
+
+                // Clear storage
+                localStorage.clear();
+                sessionStorage.clear();
+
+                log('Dados limpos. Recarregando...', 'success');
+                setTimeout(() => location.reload(), 2000);
+            }
+        });
+
+        // Listen for beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            log('🎉 beforeinstallprompt capturado!', 'success');
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installPWA').disabled = false;
+            updateStatus();
+
+            // Log prompt details
+            if (e.platforms) {
+                log(`Plataformas: ${e.platforms.join(', ')}`);
+            }
+        });
+
+        // Listen for app installed
+        window.addEventListener('appinstalled', () => {
+            log('🎊 PWA instalado com sucesso!', 'success');
+            deferredPrompt = null;
+            document.getElementById('installPWA').disabled = true;
+            updateStatus();
+        });
+
+        // Initialize
+        updateStatus();
+        log('PWA Test iniciado');
+
+        // Auto-register service worker on load
+        if ('serviceWorker' in navigator && location.protocol === 'https:') {
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+                log(`Service Worker auto-registrado: ${reg.scope}`);
+                updateStatus();
+            }).catch(err => {
+                log(`Erro no auto-registro: ${err.message}`, 'error');
+            });
+        }
+
+        // Check for existing prompt
+        if (window.deferredPrompt) {
+            deferredPrompt = window.deferredPrompt;
+            document.getElementById('installPWA').disabled = false;
+            log('Prompt existente encontrado');
+            updateStatus();
+        }
+
+        // Debug info after 3 seconds
+        setTimeout(() => {
+            if (!deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+                log('');
+                log('⚠️ Prompt não capturado após 3 segundos', 'warning');
+                log('Possíveis causas:');
+                log('1. O Chrome já tentou instalar este PWA antes');
+                log('2. Você precisa interagir com a página primeiro');
+                log('3. A flag de bypass não está ativada');
+                log('4. O PWA já está instalado');
+                log('');
+                log('Tente:');
+                log('1. Limpar dados do site (botão acima)');
+                log('2. Abrir em janela anônima');
+                log('3. Ativar flag chrome://flags/#bypass-app-banner-engagement-checks');
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

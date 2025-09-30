@@ -88,7 +88,18 @@ export function AccountSwitcher({ className }: AccountSwitcherProps) {
       
       if (response.ok) {
         const { authUrl } = await response.json()
-        window.location.href = authUrl
+
+        // CRÍTICO: Detectar se está em modo PWA standalone
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                           (window.navigator as any).standalone === true
+
+        if (isStandalone) {
+          // Em modo PWA: abrir em nova aba para não quebrar fullscreen
+          window.open(authUrl, '_blank')
+        } else {
+          // Em navegador normal: navegar normalmente
+          window.location.href = authUrl
+        }
       }
     } catch (error) {
       logger.error('Failed to add account:', { error })

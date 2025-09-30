@@ -57,25 +57,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Atualizar status para EDITING_WITH_AI
+    // Atualizar status para REVISING
     await prisma.question.update({
       where: { id: questionId },
       data: {
-        status: 'EDITING_WITH_AI',
+        status: 'REVISING',
         updatedAt: new Date()
       }
     })
 
     // Emitir evento WebSocket de início de revisão
     try {
-      const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
-      emitQuestionEvent(
+      const { emitQuestionRevising } = require('@/lib/websocket/emit-events.js')
+      emitQuestionRevising(
         question.mlQuestionId,
-        'revising',
-        {
-          status: 'EDITING_WITH_AI',
-          message: 'ML Agent está revisando sua resposta...'
-        },
+        feedback || 'Melhorando resposta',
         question.mlAccount.organizationId
       )
     } catch (wsError) {
@@ -171,6 +167,22 @@ export async function POST(request: NextRequest) {
           }
         })
 
+        // Emitir evento de erro
+        try {
+          const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
+          emitQuestionEvent(
+            question.mlQuestionId,
+            'revision-error',
+            {
+              failureReason: 'Erro ao processar revisão com IA',
+              status: 'AWAITING_APPROVAL'
+            },
+            question.mlAccount.organizationId
+          )
+        } catch (wsError) {
+          logger.warn('[ReviseAnswer] Failed to emit error event', { error: wsError })
+        }
+
         return NextResponse.json(
           { error: 'Failed to process revision with AI' },
           { status: 500 }
@@ -197,6 +209,22 @@ export async function POST(request: NextRequest) {
           updatedAt: new Date()
         }
       })
+
+      // Emitir evento de erro
+      try {
+        const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
+        emitQuestionEvent(
+          question.mlQuestionId,
+          'revision-error',
+          {
+            failureReason: 'Erro ao conectar com serviço de IA',
+            status: 'AWAITING_APPROVAL'
+          },
+          question.mlAccount.organizationId
+        )
+      } catch (wsError) {
+        logger.warn('[ReviseAnswer] Failed to emit error event', { error: wsError })
+      }
 
       return NextResponse.json(
         { error: 'Failed to connect to AI service' },

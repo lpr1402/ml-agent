@@ -1,31 +1,49 @@
 /**
- * Worker Simples - Processamento de tarefas em background
- * Production-ready com retry e error handling
+ * Worker Principal - Envia respostas APROVADAS ao Mercado Livre
+ * Production-ready com processamento INSTANTÂNEO
+ * Recebe notificações em tempo real via Redis pub/sub
  */
 
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { getValidMLToken } from './lib/ml-api/token-manager'
 import { getTokenRefreshManager } from './lib/ml-api/token-refresh-manager'
+import { mlAccountsUpdater } from './lib/jobs/update-ml-accounts'
+import Redis from 'ioredis'
 
 // Configuração
-const POLL_INTERVAL = 30000 // 30 segundos - reduzido para economia de CPU
 const MAX_RETRIES = 3
 const BATCH_SIZE = 10
+const INSTANT_PROCESS_DELAY = 100 // 100ms para evitar race conditions
+
+// Redis para receber notificações em tempo real
+const redisConfig: any = {
+  host: process.env['REDIS_HOST'] || 'localhost',
+  port: parseInt(process.env['REDIS_PORT'] || '6379')
+}
+
+if (process.env['REDIS_PASSWORD']) {
+  redisConfig.password = process.env['REDIS_PASSWORD']
+}
+
+const redis = new Redis(redisConfig)
+const pubsub = new Redis(redisConfig)
 
 /**
- * Processar perguntas pendentes
+ * Processar perguntas APROVADAS instantaneamente
+ * Agora com isolamento por conta ML
  */
-async function processQuestions(): Promise<boolean> {
+async function processQuestions(filterQuestionId?: string): Promise<boolean> {
   try {
     // Buscar APENAS perguntas APROVADAS para enviar ao ML
-    // NUNCA enviar perguntas PROCESSING ou AWAITING_APPROVAL
+    // Se filterQuestionId fornecido, processar apenas essa pergunta (processamento instantâneo)
     const questions = await prisma.question.findMany({
       where: {
-        status: 'APPROVED', // APENAS perguntas aprovadas pelo usuário!
-        retryCount: { lt: MAX_RETRIES }
+        status: 'APPROVED',
+        retryCount: { lt: MAX_RETRIES },
+        ...(filterQuestionId ? { id: filterQuestionId } : {})
       },
-      take: BATCH_SIZE,
+      take: filterQuestionId ? 1 : BATCH_SIZE,
       orderBy: { receivedAt: 'asc' },
       include: {
         mlAccount: true
@@ -39,6 +57,7 @@ async function processQuestions(): Promise<boolean> {
     logger.info(`[Worker] Processing ${questions.length} questions`)
     
     for (const question of questions) {
+      const startTime = Date.now()
       try {
         // Verificar se tem resposta AI
         if (!question.aiSuggestion) {
@@ -87,7 +106,20 @@ async function processQuestions(): Promise<boolean> {
               mlResponseData: await response.text()
             }
           })
-          logger.info(`[Worker] Question ${question.id} sent to ML successfully`)
+          logger.info(`[Worker] Question ${question.id} sent to ML successfully in ${Date.now() - startTime}ms`, {
+          mlAccountId: question.mlAccount.id,
+          organizationId: question.mlAccount.organizationId
+        })
+
+        // Emitir evento de sucesso via Redis
+        await redis.publish('question:sent_to_ml', JSON.stringify({
+          questionId: question.id,
+          mlQuestionId: question.mlQuestionId,
+          mlAccountId: question.mlAccount.id,
+          organizationId: question.mlAccount.organizationId,
+          status: 'SENT_TO_ML',
+          timestamp: new Date()
+        }))
         } else {
           // Erro
           const errorText = await response.text()
@@ -104,8 +136,10 @@ async function processQuestions(): Promise<boolean> {
           logger.error(`[Worker] Question ${question.id} failed: ${response.status}`)
         }
         
-        // Delay entre processamentos
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        // Delay menor para processamento mais rápido (apenas se múltiplas perguntas)
+        if (questions.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
         
       } catch (error) {
         logger.error(`[Worker] Error processing question ${question.id}:`, { error })
@@ -173,37 +207,68 @@ async function cleanupOldData() {
 }
 
 /**
+ * Processar pergunta específica instantaneamente
+ */
+async function processInstantQuestion(questionId: string) {
+  const startTime = Date.now()
+  try {
+    logger.info(`[Worker] 🚀 INSTANT processing question ${questionId}`)
+    await processQuestions(questionId)
+    logger.info(`[Worker] ✅ INSTANT processed in ${Date.now() - startTime}ms`)
+  } catch (error) {
+    logger.error(`[Worker] ❌ INSTANT processing failed for ${questionId}:`, { error })
+  }
+}
+
+/**
  * Loop principal do worker
  */
 async function main() {
-  logger.info('[Worker] Starting simple worker...')
+  logger.info('[Worker] Starting optimized worker with INSTANT processing...')
 
   // Inicializar TokenRefreshManager para manter tokens atualizados 24/7
-  getTokenRefreshManager() // Inicializa o singleton
+  getTokenRefreshManager()
   logger.info('[Worker] TokenRefreshManager initialized - tokens will be refreshed automatically')
+
+  // Inicializar MLAccountsUpdater para atualizar dados das contas a cada 3 horas
+  mlAccountsUpdater.start()
+  logger.info('[Worker] MLAccountsUpdater initialized - account data will be updated every 3 hours')
+
+  // NOVO: Subscribe para processar APPROVED instantaneamente
+  pubsub.subscribe('question:approved')
+  pubsub.on('message', async (channel, message) => {
+    if (channel === 'question:approved') {
+      try {
+        const data = JSON.parse(message)
+        logger.info(`[Worker] 📨 Received APPROVED notification for question ${data.questionId}`)
+
+        // Pequeno delay para garantir que o banco foi atualizado
+        await new Promise(resolve => setTimeout(resolve, INSTANT_PROCESS_DELAY))
+
+        // Processar instantaneamente
+        await processInstantQuestion(data.questionId)
+      } catch (error) {
+        logger.error('[Worker] Error processing instant approval:', { error })
+      }
+    }
+  })
+
+  logger.info('[Worker] 📡 Listening for APPROVED questions via Redis pub/sub')
 
   // Cleanup inicial
   await cleanupOldData()
-  
-  // Processar perguntas com backoff dinâmico
-  let consecutiveEmptyRuns = 0
 
-  const runWorker = async () => {
+  // Ainda fazer polling para pegar perguntas perdidas (fallback)
+  const runFallbackWorker = async () => {
     const hadQuestions = await processQuestions()
 
-    // Backoff dinâmico: aumenta intervalo se não há trabalho
-    if (!hadQuestions) {
-      consecutiveEmptyRuns++
-      const backoffInterval = Math.min(POLL_INTERVAL * Math.pow(1.5, consecutiveEmptyRuns), 120000) // Max 2 min
-      setTimeout(runWorker, backoffInterval)
-    } else {
-      consecutiveEmptyRuns = 0
-      setTimeout(runWorker, POLL_INTERVAL)
-    }
+    // Polling mais espaçado já que temos notificações instantâneas
+    const nextInterval = hadQuestions ? 30000 : 60000 // 30s se tinha perguntas, 60s se não
+    setTimeout(runFallbackWorker, nextInterval)
   }
 
-  // Iniciar worker
-  runWorker()
+  // Iniciar fallback worker após 10 segundos
+  setTimeout(runFallbackWorker, 10000)
   
   // Cleanup diário
   setInterval(cleanupOldData, 24 * 60 * 60 * 1000)
@@ -211,11 +276,13 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     logger.info('[Worker] Received SIGTERM, shutting down...')
+    mlAccountsUpdater.stop() // Para o job de atualização
     process.exit(0)
   })
-  
+
   process.on('SIGINT', () => {
     logger.info('[Worker] Received SIGINT, shutting down...')
+    mlAccountsUpdater.stop() // Para o job de atualização
     process.exit(0)
   })
 }

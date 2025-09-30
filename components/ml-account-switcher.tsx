@@ -79,24 +79,9 @@ export function MLAccountSwitcher() {
         }
       }
 
-      // Se não há imagem em nenhuma conta, tenta buscar do ML
-      const hasNoImages = response.accounts.every((acc: MLAccount) => !acc.thumbnail)
-      if (hasNoImages) {
-        logger.info('[MLAccountSwitcher] No profile images found, fetching from ML...')
-        try {
-          await apiClient.get('/api/ml-accounts/update-profile-image')
-          logger.info('[MLAccountSwitcher] Avatar update process initiated')
-
-          // Aguardar um pouco e recarregar contas
-          setTimeout(async () => {
-            const refreshedResponse = await apiClient.get('/api/ml-accounts/switch')
-            setAccounts(refreshedResponse.accounts)
-            logger.info('[MLAccountSwitcher] Accounts refreshed with avatars')
-          }, 2000)
-        } catch (updateError) {
-          logger.warn('[MLAccountSwitcher] Failed to update profile images:', { error: updateError })
-        }
-      }
+      // Avatares já são atualizados automaticamente no endpoint /api/ml-accounts/switch
+      // usando a chamada users/me, então não precisa fazer nada extra aqui
+      logger.info('[MLAccountSwitcher] Accounts loaded with avatars')
     } catch (error) {
       logger.error('Failed to fetch accounts:', { error })
     } finally {
@@ -384,9 +369,6 @@ export function MLAccountSwitcher() {
                     </div>
                     <div className="flex-1">
                       <span className="text-sm font-bold text-gold block">
-                        Adicionar Nova Conta
-                      </span>
-                      <span className="text-xs text-gray-400">
                         Conecte mais contas do Mercado Livre
                       </span>
                     </div>

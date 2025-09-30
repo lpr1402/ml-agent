@@ -6,19 +6,16 @@ import { apiClient } from '@/lib/api-client'
 import { logger } from '@/lib/logger'
 import { useWebSocket } from '@/hooks/use-websocket'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
+import { motion } from 'framer-motion'
+import Image from 'next/image'
+import { QuestionStatus } from '@/lib/constants/question-status'
 import {
   MessageSquare,
-  Filter,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
-  Users2,
-  Package,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  Clock
+  Users2
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -84,13 +81,15 @@ interface Props {
   filterStatus?: 'all' | 'pending' | 'completed'
   showFilters?: boolean
   renderFiltersTo?: string
+  pageKey?: string // Unique key for pagination state
 }
 
 export function MultiAccountQuestions({
   selectedAccountId,
   filterStatus = 'pending',
   showFilters = true,
-  renderFiltersTo
+  renderFiltersTo,
+  pageKey = 'default'
 }: Props) {
   // WebSocket connection
   const {
@@ -114,11 +113,27 @@ export function MultiAccountQuestions({
   const [refreshing, setRefreshing] = useState(false)
   const [statusFilter, setStatusFilter] = useState(filterStatus)
   const [accountFilter, setAccountFilter] = useState<string>(() => selectedAccountId || 'all')
-  const [currentPage, setCurrentPage] = useState(1)
+  // Unique page state for each instance using pageKey
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(`page-${pageKey}`)
+      return saved ? parseInt(saved) : 1
+    }
+    return 1
+  })
   const questionsPerPage = 5
   const [mounted, setMounted] = useState(false)
+
+  // Save page state when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(`page-${pageKey}`, currentPage.toString())
+    }
+  }, [currentPage, pageKey])
   const isFetchingRef = useRef(false)
   const notifiedQuestionsRef = useRef<Set<string>>(new Set())
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
+  const [lastApprovedQuestion, setLastApprovedQuestion] = useState<QuestionWithAccount | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -248,9 +263,14 @@ export function MultiAccountQuestions({
         const question = questions.find(q => q.mlQuestionId === questionId || q.id === questionId)
         if (question) {
           try {
+            // Truncar resposta da IA para preview (máximo 100 caracteres)
+            const truncatedAnswer = data.answer.length > 100
+              ? data.answer.substring(0, 100) + '...'
+              : data.answer
+
             const notifData: Parameters<typeof sendQuestionNotification>[0] = {
               sequentialId: question.sequentialId || 0,
-              questionText: `🤖 IA respondeu: "${data.answer.substring(0, 100)}..."`,
+              questionText: `O ML Agent respondeu sua pergunta. Clique para revisar e aprovar:\n\n"${truncatedAnswer}"`,
               productTitle: question.item?.title || question.itemTitle || 'Produto',
               sellerName: question.mlAccount?.nickname || 'Vendedor',
               approvalUrl: '' // Não usar link na notificação do browser
@@ -316,15 +336,139 @@ export function MultiAccountQuestions({
       }
     }
 
+    // Handler para erros em tempo real
+    const handleQuestionError = (event: CustomEvent) => {
+      const { questionId, failureReason, errorType, errorCode, keepStatus } = event.detail
+      logger.info('[Multi Questions] Question error received', {
+        questionId,
+        errorType,
+        errorCode,
+        keepStatus
+      })
+
+      setQuestions(prev => prev.map(q => {
+        if (q.mlQuestionId === questionId) {
+          // Se for erro de revisão/aprovação, manter status AWAITING_APPROVAL
+          const currentStatus = q.status
+          const shouldKeepStatus = keepStatus ||
+            (currentStatus === 'AWAITING_APPROVAL' || currentStatus === 'REVISING')
+
+          if (shouldKeepStatus) {
+            // Apenas adiciona informação do erro sem mudar o status
+            return {
+              ...q,
+              lastError: failureReason || 'Erro no processamento',
+              lastErrorAt: new Date().toISOString(),
+              lastErrorType: errorType
+            }
+          } else {
+            // Erro durante processamento inicial - muda status para FAILED
+            return {
+              ...q,
+              status: QuestionStatus.FAILED,
+              failedAt: new Date().toISOString(),
+              failureReason: failureReason || 'Erro no processamento'
+            }
+          }
+        }
+        return q
+      }))
+
+      // Notificar usuário do erro
+      const errorMessage = errorType === 'REVISION_ERROR'
+        ? 'Erro ao revisar resposta. Você pode tentar novamente.'
+        : errorType === 'APPROVAL_ERROR'
+        ? 'Erro ao enviar resposta. Tente novamente mais tarde.'
+        : 'Erro ao processar pergunta'
+
+      toast.error(errorMessage, {
+        description: failureReason || 'Ocorreu um erro ao processar a pergunta',
+        duration: 7000
+      })
+    }
+
+    // Handler específico para erros de revisão
+    const handleRevisionError = (event: CustomEvent) => {
+      const { questionId, failureReason, status, aiSuggestion } = event.detail
+      logger.info('[Multi Questions] Revision error received', {
+        questionId,
+        failureReason,
+        status
+      })
+
+      // Atualizar pergunta com status AWAITING_APPROVAL e mostrar erro
+      setQuestions(prev => prev.map(q => {
+        if (q.mlQuestionId === questionId) {
+          return {
+            ...q,
+            status: 'AWAITING_APPROVAL',
+            aiSuggestion: aiSuggestion || q.aiSuggestion,
+            revisionError: failureReason,
+            revisionErrorAt: new Date().toISOString()
+          }
+        }
+        return q
+      }))
+
+      // Notificar usuário com mensagem específica de erro de revisão
+      toast.error('Erro ao revisar com IA', {
+        description: failureReason || 'A IA não conseguiu processar a revisão. Tente novamente.',
+        duration: 10000,
+        action: {
+          label: 'Tentar novamente',
+          onClick: () => {
+            // Limpar erro de revisão
+            setQuestions(prev => prev.map(q => {
+              if (q.mlQuestionId === questionId) {
+                return {
+                  ...q,
+                  revisionError: undefined,
+                  revisionErrorAt: undefined
+                }
+              }
+              return q
+            }))
+          }
+        }
+      })
+    }
+
+    // Handler para edição manual de resposta
+    const handleAnswerEdited = (event: CustomEvent) => {
+      const { questionId, mlQuestionId, editedAnswer } = event.detail
+      logger.info('[Multi Questions] Answer edited received', {
+        questionId,
+        mlQuestionId
+      })
+
+      // Atualizar pergunta na lista
+      setQuestions(prev => prev.map(q => {
+        if (q.mlQuestionId === mlQuestionId || q.id === questionId) {
+          return {
+            ...q,
+            aiSuggestion: editedAnswer,
+            status: 'AWAITING_APPROVAL'
+          }
+        }
+        return q
+      }))
+    }
+
     // Add event listeners
     window.addEventListener('websocket:question:new' as any, handleNewQuestion)
     window.addEventListener('websocket:question:updated' as any, handleQuestionUpdate)
+    window.addEventListener('websocket:question:error' as any, handleQuestionError)
+    window.addEventListener('websocket:question:revision-error' as any, handleRevisionError)
+    window.addEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
     window.addEventListener('websocket:questions:initial' as any, handleInitialQuestions)
 
     // Cleanup
     return () => {
       window.removeEventListener('websocket:question:new' as any, handleNewQuestion)
       window.removeEventListener('websocket:question:updated' as any, handleQuestionUpdate)
+      window.removeEventListener('websocket:question:error' as any, handleQuestionError)
+      window.removeEventListener('websocket:question:revision-error' as any, handleRevisionError)
+      window.removeEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
       window.removeEventListener('websocket:questions:initial' as any, handleInitialQuestions)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -377,9 +521,9 @@ export function MultiAccountQuestions({
           payload.feedback = data?.feedback
           break
         case 'edit':
-          endpoint = '/api/agent/approve-question'
-          payload.action = 'manual'
-          payload.response = data?.answer
+          // Usar o novo endpoint que APENAS salva no banco (não envia ao ML)
+          endpoint = '/api/agent/save-answer-edit'
+          payload.editedAnswer = data?.answer
           break
       }
 
@@ -389,23 +533,49 @@ export function MultiAccountQuestions({
         // Optimistic update
         setQuestions(prev => prev.map(q => {
           if (q.id === questionId) {
-            return {
-              ...q,
-              status: action === 'approve' || action === 'edit' ? 'RESPONDED' : 'REVIEWING',
-              answer: data?.answer || q.answer,
-              approvedAt: action === 'approve' || action === 'edit' ? new Date().toISOString() : (q.approvedAt || null),
-              approvalType: action === 'edit' ? 'MANUAL' : action === 'approve' ? 'AUTO' : (q.approvalType || null)
-            } as QuestionWithAccount
+            if (action === 'edit') {
+              // Para edição, apenas atualizar a resposta e manter status AWAITING_APPROVAL
+              return {
+                ...q,
+                status: 'AWAITING_APPROVAL',
+                aiSuggestion: data?.answer || q.aiSuggestion
+              } as QuestionWithAccount
+            } else {
+              // Para outras ações, comportamento original
+              return {
+                ...q,
+                status: action === 'approve' ? 'RESPONDED' : 'REVIEWING',
+                answer: data?.answer || q.answer,
+                approvedAt: action === 'approve' ? new Date().toISOString() : (q.approvedAt || null),
+                approvalType: action === 'approve' ? 'AUTO' : (q.approvalType || null)
+              } as QuestionWithAccount
+            }
           }
           return q
         }))
 
-        toast.success(
-          action === 'approve' ? 'Resposta aprovada!' :
-          action === 'revise' ? 'Revisão solicitada!' :
-          'Resposta editada!',
-          { duration: 3000 }
-        )
+        // Mostrar animação de sucesso apenas para aprovação (não para edição)
+        if (action === 'approve') {
+          const approvedQuestion = questions.find(q => q.id === questionId)
+          if (approvedQuestion) {
+            setLastApprovedQuestion(approvedQuestion)
+            setShowSuccessAnimation(true)
+            setTimeout(() => setShowSuccessAnimation(false), 2300)
+          }
+        }
+
+        // Toast removido - usando apenas animação visual personalizada
+        // toast.success(
+        //   action === 'approve' ? '✅ Resposta enviada ao Mercado Livre!' :
+        //   action === 'revise' ? '🔄 Revisão solicitada!' :
+        //   '✏️ Resposta editada e enviada!',
+        //   {
+        //     duration: 4000,
+        //     description: action === 'approve' || action === 'edit'
+        //       ? 'O cliente receberá a resposta em breve'
+        //       : 'O ML Agent está revisando a resposta'
+        //   }
+        // )
       }
 
       return response
@@ -423,12 +593,12 @@ export function MultiAccountQuestions({
   const filteredQuestions = questions.filter(q => {
     // Filtro de status
     if (statusFilter === 'pending') {
-      // Pendentes: perguntas aguardando ação (processando, aguardando aprovação ou revisando)
-      if (!['PENDING', 'RECEIVED', 'PROCESSING', 'AWAITING_APPROVAL', 'REVIEWING', 'REVISING'].includes(q.status)) {
+      // Pendentes: perguntas aguardando ação (incluindo ERROS)
+      if (!['PENDING', 'RECEIVED', 'PROCESSING', 'AWAITING_APPROVAL', 'REVIEWING', 'REVISING', 'FAILED', 'ERROR', 'TIMEOUT'].includes(q.status)) {
         return false
       }
     } else if (statusFilter === 'completed') {
-      // Respondidas: perguntas já enviadas ao ML
+      // Respondidas: perguntas já enviadas ao ML (excluindo erros)
       if (!['RESPONDED', 'COMPLETED', 'APPROVED', 'SENT_TO_ML'].includes(q.status)) {
         return false
       }
@@ -473,84 +643,141 @@ export function MultiAccountQuestions({
     )
   }
 
-  // Componente de Filtros
+  // Componente de Filtros - Design Padronizado com ROI e Análise
   const FiltersComponent = () => (
-    <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-3">
-      {/* Connection Status - Mobile Optimized */}
-      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-black/50 border border-white/5">
-        {isConnected ? (
-          <>
-            <Wifi className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-green-500" />
-            <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">Tempo Real</span>
-          </>
-        ) : connectionStatus === 'connecting' ? (
-          <>
-            <RefreshCw className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-yellow-500 animate-spin" />
-            <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">Conectando...</span>
-          </>
-        ) : (
-          <>
-            <WifiOff className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-red-500" />
-            <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">Offline</span>
-          </>
-        )}
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      {/* Filtros de Status - Mesmo Design de ROI */}
+      <div className="flex gap-2 bg-black/50 p-1 rounded-xl">
+        <button
+          onClick={() => setStatusFilter('pending')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+            statusFilter === 'pending'
+              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          Pendentes
+        </button>
+        <button
+          onClick={() => setStatusFilter('completed')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+            statusFilter === 'completed'
+              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          Respondidas
+        </button>
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+            statusFilter === 'all'
+              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          Todas
+        </button>
       </div>
 
-      {/* Account Filter */}
-      {accountSummary.length > 1 && (
+      {/* Account Filter - Design Padronizado */}
+      {accountSummary.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="relative rounded-lg bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 hover:border-gold/20 text-gray-300 hover:text-gold transition-all duration-300 gap-1 sm:gap-2 group px-2 sm:px-3 lg:px-4 h-8 sm:h-9 lg:h-10">
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-0 group-hover:opacity-30 transition-opacity duration-300 pointer-events-none rounded-lg" />
-              <Filter className="h-3 w-3 sm:h-3.5 sm:w-3.5 lg:h-4 lg:w-4 relative z-10" />
-              <span className="relative z-10 text-xs sm:text-sm hidden xs:inline truncate max-w-[60px] sm:max-w-[100px] lg:max-w-none">
-                {accountFilter === 'all' ? 'Todas' :
-                  accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 10) || 'Conta'}
+            <Button variant="ghost" className="relative rounded-lg bg-black/50 hover:bg-white/5 text-gray-400 hover:text-white transition-all duration-300 gap-2 px-4 py-2 h-auto group">
+              <Users2 className="h-4 w-4 text-gold/60 group-hover:text-gold" />
+              <span className="text-sm font-semibold">
+                {accountFilter === 'all' ? `Todas (${accountSummary.length})` :
+                  accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 15) || 'Conta'}
               </span>
-              <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 lg:h-4 lg:w-4 relative z-10" />
+              {accountFilter !== 'all' && (
+                <span className="absolute -top-1 -right-1 bg-gold text-black text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {accountSummary.find(a => a.accountId === accountFilter)?.pendingQuestions || 0}
+                </span>
+              )}
+              <ChevronDown className="h-3 w-3 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[280px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10"
+            className="w-[320px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10"
           >
-            <DropdownMenuLabel className="text-gold font-semibold">Filtrar por Conta</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-gold font-semibold flex items-center gap-2">
+              <Users2 className="h-4 w-4" />
+              Filtrar por Conta ML
+            </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-white/10" />
+
+            {/* Opção Todas */}
             <DropdownMenuItem
               onClick={() => setAccountFilter('all')}
-              className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer"
+              className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-3"
             >
               <div className="flex items-center gap-3 w-full">
-                <Users2 className="h-4 w-4 text-gold" />
-                <span className="flex-1 text-white">Todas as Contas</span>
-                {accountFilter === 'all' && <CheckCircle className="h-4 w-4 text-gold" />}
+                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-gold/20 to-yellow-500/20 flex items-center justify-center">
+                  <Users2 className="h-4 w-4 text-gold" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-white font-medium">Todas as Contas</span>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-[10px] text-gray-400">
+                      {accountSummary.reduce((acc, a) => acc + a.pendingQuestions, 0)} pendentes total
+                    </span>
+                    <span className="text-[10px] text-gray-600">|</span>
+                    <span className="text-[10px] text-gray-400">
+                      {accountSummary.length} contas ativas
+                    </span>
+                  </div>
+                </div>
+                {accountFilter === 'all' && (
+                  <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center">
+                    <CheckCircle className="h-3 w-3 text-gold" />
+                  </div>
+                )}
               </div>
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator className="bg-white/5 my-1" />
+
+            {/* Contas Individuais */}
             {accountSummary.map((account) => (
               <DropdownMenuItem
                 key={account.accountId}
                 onClick={() => setAccountFilter(account.accountId)}
-                className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer"
+                className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-3"
               >
                 <div className="flex items-center gap-3 w-full">
-                  <Avatar className="h-6 w-6 border-gold/30">
+                  <Avatar className="h-8 w-8 border border-gold/20">
                     {account.thumbnail ? (
                       <AvatarImage src={account.thumbnail} alt={account.nickname} />
                     ) : (
-                      <AvatarFallback className="bg-gray-800 text-gold text-xs">
+                      <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900 text-gold text-xs font-bold">
                         {account.nickname.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
                     )}
                   </Avatar>
                   <div className="flex-1">
-                    <span className="text-white text-sm">{account.nickname}</span>
+                    <span className="text-white text-sm font-medium">{account.nickname}</span>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-500">
-                        {account.pendingQuestions} pendentes
-                      </span>
+                      {account.pendingQuestions > 0 ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                            <span className="text-[10px] text-yellow-500 font-bold">
+                              {account.pendingQuestions}
+                            </span>
+                            <span className="text-[10px] text-yellow-500/70">pendente{account.pendingQuestions > 1 ? 's' : ''}</span>
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-gray-500">Sem pendentes</span>
+                      )}
                     </div>
                   </div>
-                  {accountFilter === account.accountId && <CheckCircle className="h-4 w-4 text-gold" />}
+                  {accountFilter === account.accountId && (
+                    <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center">
+                      <CheckCircle className="h-3 w-3 text-gold" />
+                    </div>
+                  )}
                 </div>
               </DropdownMenuItem>
             ))}
@@ -558,63 +785,109 @@ export function MultiAccountQuestions({
         </DropdownMenu>
       )}
 
-      {/* Status Filter */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="relative rounded-lg bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 hover:border-gold/20 text-gray-300 hover:text-gold transition-all duration-300 gap-1 sm:gap-2 group px-2 sm:px-3 lg:px-4 h-8 sm:h-9 lg:h-10">
-            <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-0 group-hover:opacity-30 transition-opacity duration-300 pointer-events-none rounded-lg" />
-            <Package className="h-3 w-3 sm:h-3.5 sm:w-3.5 lg:h-4 lg:w-4 relative z-10" />
-            <span className="relative z-10 text-xs sm:text-sm">
-              {statusFilter === 'all' ? 'Todas' :
-                statusFilter === 'pending' ? 'Pendentes' : 'Respondidas'}
-            </span>
-            <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 lg:h-4 lg:w-4 relative z-10" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-[200px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10"
-        >
-          <DropdownMenuLabel className="text-gold font-semibold">Status</DropdownMenuLabel>
-          <DropdownMenuSeparator className="bg-white/10" />
-          <DropdownMenuItem
-            onClick={() => setStatusFilter('all')}
-            className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer"
-          >
-            <div className="flex items-center gap-3 w-full">
-              <MessageSquare className="h-4 w-4 text-gold" />
-              <span className="flex-1 text-white">Todas</span>
-              {statusFilter === 'all' && <CheckCircle className="h-4 w-4 text-gold" />}
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setStatusFilter('pending')}
-            className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer"
-          >
-            <div className="flex items-center gap-3 w-full">
-              <Clock className="h-4 w-4 text-yellow-500" />
-              <span className="flex-1 text-white">Pendentes</span>
-              {statusFilter === 'pending' && <CheckCircle className="h-4 w-4 text-gold" />}
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setStatusFilter('completed')}
-            className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer"
-          >
-            <div className="flex items-center gap-3 w-full">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span className="flex-1 text-white">Respondidas</span>
-              {statusFilter === 'completed' && <CheckCircle className="h-4 w-4 text-gold" />}
-            </div>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Connection Status - Design Padronizado - Hidden on Mobile */}
+      <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/50">
+        {isConnected ? (
+          <>
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+            <span className="text-xs text-gray-500 font-semibold">Online</span>
+          </>
+        ) : connectionStatus === 'connecting' ? (
+          <>
+            <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
+            <span className="text-xs text-gray-500 font-semibold">Conectando</span>
+          </>
+        ) : (
+          <>
+            <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+            <span className="text-xs text-gray-500 font-semibold">Offline</span>
+          </>
+        )}
+      </div>
     </div>
   )
 
   // Render principal
   return (
     <>
+      {/* Animação de Sucesso - Feedback Visual Premium */}
+      {showSuccessAnimation && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+        >
+          {/* Backdrop suave */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, type: 'spring', stiffness: 300, damping: 25 }}
+            className="relative bg-gradient-to-br from-gray-900/90 via-black/90 to-gray-900/90 backdrop-blur-xl rounded-xl border border-gold/20 p-6 shadow-xl shadow-gold/20 max-w-xs mx-4"
+          >
+            {/* Glow Effect */}
+            <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 rounded-2xl opacity-50 pointer-events-none" />
+
+            <div className="relative flex flex-col items-center gap-6 text-center">
+              {/* Logo ML Agent */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-gold/50 to-yellow-500/50 rounded-full blur-[40px] scale-[1.5] animate-pulse" />
+                <Image
+                  src="/mlagent-logo-3d.svg"
+                  alt="ML Agent"
+                  width={60}
+                  height={60}
+                  className="relative drop-shadow-2xl"
+                  style={{
+                    filter: 'drop-shadow(0 15px 40px rgba(255, 230, 0, 0.4))',
+                  }}
+                  priority
+                />
+              </div>
+
+              {/* Check de Sucesso */}
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.3, duration: 0.5, type: 'spring' }}
+                className="relative"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/40 to-green-500/40 rounded-full blur-xl" />
+                <div className="relative bg-gradient-to-br from-emerald-600/30 to-green-600/30 rounded-full p-3 border border-emerald-500/60 backdrop-blur-sm">
+                  <CheckCircle className="h-8 w-8 text-emerald-400" strokeWidth={3} />
+                </div>
+              </motion.div>
+
+              {/* Mensagem de Sucesso */}
+              <div className="space-y-2">
+                <h3 className="text-xl font-semibold text-gold">
+                  Resposta Enviada!
+                </h3>
+                <p className="text-sm text-gray-300">
+                  Enviada com sucesso ao Mercado Livre
+                </p>
+                {lastApprovedQuestion && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Pergunta #{lastApprovedQuestion.sequentialId || 'N/A'} - {lastApprovedQuestion.mlAccount.nickname}
+                  </p>
+                )}
+              </div>
+
+              {/* Progress Bar Animation */}
+              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: '0%' }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 2, ease: 'easeOut' }}
+                  className="h-full bg-gradient-to-r from-gold via-yellow-500 to-gold"
+                />
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       {/* Render filters in portal if specified */}
       {mounted && showFilters && renderFiltersTo && (
         <>
@@ -629,6 +902,39 @@ export function MultiAccountQuestions({
       {showFilters && !renderFiltersTo && (
         <div className="mb-6">
           <FiltersComponent />
+        </div>
+      )}
+
+      {/* Paginação Minimalista no Topo */}
+      {filteredQuestions.length > 5 && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              setCurrentPage(prev => Math.max(1, prev - 1))
+            }}
+            disabled={currentPage === 1}
+            className="p-1.5 rounded-lg border border-white/5 hover:border-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-all duration-200"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-gray-400">{currentPage}</span>
+            <span className="text-gray-600">/</span>
+            <span className="text-gray-500">{totalPages}</span>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              setCurrentPage(prev => Math.min(totalPages, prev + 1))
+            }}
+            disabled={currentPage === totalPages}
+            className="p-1.5 rounded-lg border border-white/5 hover:border-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-all duration-200"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
@@ -648,9 +954,12 @@ export function MultiAccountQuestions({
                 : 'Ajuste os filtros para ver mais resultados'}
             </p>
             {isConnected && (
-              <p className="text-xs text-green-500 mt-2">
-                🟢 Conectado em tempo real - novas perguntas aparecerão automaticamente
-              </p>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                <p className="text-xs text-green-500">
+                  Novas perguntas aparecerão automaticamente
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -686,65 +995,36 @@ export function MultiAccountQuestions({
           />
         ))}
 
-        {/* Paginação Premium */}
-        {totalPages > 1 && statusFilter !== 'pending' && (
-          <div className="flex items-center justify-center gap-2 mt-8 mb-4">
-            <Button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+        {/* Paginação Minimalista no Final */}
+        {filteredQuestions.length <= 5 && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-6">
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                setCurrentPage(prev => Math.max(1, prev - 1))
+              }}
               disabled={currentPage === 1}
-              variant="outline"
-              className="relative rounded-lg bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 hover:border-gold/20 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 hover:text-gold transition-all duration-300 group"
+              className="p-1.5 rounded-lg border border-white/5 hover:border-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-all duration-200"
             >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
 
-            <div className="flex items-center gap-1">
-              {[...Array(Math.min(5, totalPages))].map((_, index) => {
-                let pageNumber
-                if (totalPages <= 5) {
-                  pageNumber = index + 1
-                } else if (currentPage <= 3) {
-                  pageNumber = index + 1
-                } else if (currentPage >= totalPages - 2) {
-                  pageNumber = totalPages - 4 + index
-                } else {
-                  pageNumber = currentPage - 2 + index
-                }
-
-                return (
-                  <Button
-                    key={index}
-                    onClick={() => setCurrentPage(pageNumber)}
-                    variant="outline"
-                    className={`
-                      relative w-10 h-10 rounded-lg transition-all duration-300
-                      ${
-                        currentPage === pageNumber
-                          ? 'bg-gradient-to-br from-gold/20 to-yellow-500/10 border-gold/50 text-gold shadow-lg shadow-gold/20'
-                          : 'bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 border-white/5 text-gray-400 hover:border-gold/20 hover:text-gold'
-                      }
-                    `}
-                  >
-                    {pageNumber}
-                  </Button>
-                )
-              })}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400">{currentPage}</span>
+              <span className="text-gray-600">/</span>
+              <span className="text-gray-500">{totalPages}</span>
             </div>
 
-            <Button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                setCurrentPage(prev => Math.min(totalPages, prev + 1))
+              }}
               disabled={currentPage === totalPages}
-              variant="outline"
-              className="relative rounded-lg bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 hover:border-gold/20 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 hover:text-gold transition-all duration-300 group"
+              className="p-1.5 rounded-lg border border-white/5 hover:border-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-all duration-200"
             >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-
-            <div className="ml-4 px-3 py-1 rounded-lg bg-black/50 border border-white/5">
-              <span className="text-xs text-gray-400">
-                Página {currentPage} de {totalPages}
-              </span>
-            </div>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -753,7 +1033,7 @@ export function MultiAccountQuestions({
           <div className="text-center py-4 text-xs text-gray-500">
             <div className="flex items-center justify-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span>Conectado em tempo real - atualizações instantâneas</span>
+              <span>Novas perguntas aparecerão automaticamente</span>
             </div>
           </div>
         )}
