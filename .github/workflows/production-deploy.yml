@@ -118,7 +118,7 @@ jobs:
             package.json
             package-lock.json
             prisma
-            ecosystem.config.js
+            ecosystem.single-tenant.config.js
   
   # ================================================
   # PERFORMANCE TEST
@@ -182,7 +182,8 @@ jobs:
             git pull origin ${{ github.head_ref }}
             npm ci --production
             npx prisma migrate deploy
-            pm2 reload ecosystem.staging.config.js
+            npm run build
+            NODE_ENV=staging pm2 reload ecosystem.single-tenant.config.js --env staging || NODE_ENV=staging pm2 start ecosystem.single-tenant.config.js --env staging
       
       - name: Run Smoke Tests
         run: |
@@ -225,34 +226,37 @@ jobs:
             cd /var/www/ml-agent
             ./scripts/backup.sh
       
-      - name: Blue-Green Deployment
+      - name: Single-Tenant Deployment
         uses: appleboy/ssh-action@v0.1.5
         with:
           host: ${{ secrets.PRODUCTION_HOST }}
           username: ${{ secrets.PRODUCTION_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           script: |
-            # Deploy to Blue environment
-            cd /var/www/ml-agent-blue
+            # Deploy to production
+            cd /var/www/ml-agent
+
+            # Create backup
+            ./scripts/backup.sh || echo "Backup script not found, skipping..."
+
+            # Pull latest code
             git pull origin main
+
+            # Install dependencies
             npm ci --production
+
+            # Run migrations
             npx prisma migrate deploy
+
+            # Build application
             npm run build
-            
-            # Health check Blue
-            pm2 start ecosystem.blue.config.js
+
+            # Reload PM2 with zero-downtime
+            NODE_ENV=production pm2 reload ecosystem.single-tenant.config.js --env production || NODE_ENV=production pm2 start ecosystem.single-tenant.config.js --env production
+
+            # Health check
             sleep 10
-            curl -f http://localhost:3001/api/health || exit 1
-            
-            # Switch traffic to Blue
-            sudo nginx -s reload
-            
-            # Stop Green
-            cd /var/www/ml-agent-green
-            pm2 stop ecosystem.green.config.js
-            
-            # Sync Green with Blue for next deployment
-            rsync -av --delete /var/www/ml-agent-blue/ /var/www/ml-agent-green/
+            curl -f http://localhost:3007/api/health || exit 1
       
       - name: Verify Deployment
         run: |
@@ -291,7 +295,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     environment:
       name: production-rollback
-    
+
     steps:
       - name: Rollback Deployment
         uses: appleboy/ssh-action@v0.1.5
@@ -300,17 +304,18 @@ jobs:
           username: ${{ secrets.PRODUCTION_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           script: |
-            # Switch back to Green
-            cd /var/www/ml-agent-green
-            pm2 start ecosystem.green.config.js
-            
-            # Switch traffic to Green
-            sudo nginx -s reload
-            
-            # Stop Blue
-            cd /var/www/ml-agent-blue
-            pm2 stop ecosystem.blue.config.js
-      
+            cd /var/www/ml-agent
+
+            # Restore from latest backup
+            ./scripts/restore-backup.sh
+
+            # Reload PM2
+            NODE_ENV=production pm2 reload ecosystem.single-tenant.config.js --env production
+
+            # Health check
+            sleep 10
+            curl -f http://localhost:3007/api/health || exit 1
+
       - name: Notify Rollback
         uses: 8398a7/action-slack@v3
         with:

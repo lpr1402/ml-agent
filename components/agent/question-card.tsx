@@ -1096,6 +1096,49 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           </div>
         )}
 
+        {/* ✅ Success Confirmation - Shows when successfully sent to ML */}
+        {question.status === 'RESPONDED' && question.sentToMLAt && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4"
+          >
+            <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-green-500/10 border border-emerald-500/30 backdrop-blur-sm">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-emerald-400 mb-1">
+                    ✅ Resposta Publicada no Mercado Livre
+                  </p>
+                  <p className="text-sm text-emerald-300/90 mb-2">
+                    O cliente recebeu a resposta com sucesso
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 text-xs text-emerald-300/70">
+                    <span>
+                      {new Date(question.sentToMLAt).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                    {question.mlAnswerId && (
+                      <>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="font-mono">
+                          ID: {question.mlAnswerId}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Revision Error Alert - Shows temporarily when revision fails */}
         {showRevisionError && revisionError && (
           <motion.div
