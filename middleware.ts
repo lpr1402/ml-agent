@@ -174,9 +174,7 @@ export async function middleware(request: NextRequest) {
     '/api/agent/monitor-stuck-questions',
     '/api/agent/reprocess-question',  // Endpoint autônomo - usa dados da pergunta
     '/api/redirect',  // IMPORTANTE: Redirecionamento universal PWA
-    '/answer',  // Página de resposta com link único
-    '/api/answer',  // APIs de resposta com link único
-    '/approve',  // Página de aprovação
+    '/api/answer',  // APIs de resposta ainda usadas internamente
     '/api/secure/approve-with-token',  // Aprovação com token único
     '/_next',  // IMPORTANTE: Recursos do Next.js
     '/favicon',

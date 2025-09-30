@@ -58,6 +58,7 @@ interface QuestionWithAccount {
   mlResponseCode?: number | null
   mlResponseData?: any
   sentToMLAt?: string | null
+  mlAnswerId?: string | null // ID da resposta enviada ao ML
   mlAccount: {
     id: string
     mlUserId: string
@@ -868,9 +869,22 @@ export function MultiAccountQuestions({
                   Enviada com sucesso ao Mercado Livre
                 </p>
                 {lastApprovedQuestion && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Pergunta #{lastApprovedQuestion.sequentialId || 'N/A'} - {lastApprovedQuestion.mlAccount.nickname}
-                  </p>
+                  <>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Pergunta #{lastApprovedQuestion.sequentialId || 'N/A'} - {lastApprovedQuestion.mlAccount.nickname}
+                    </p>
+                    {/* Mostrar Answer ID do ML se disponível */}
+                    {lastApprovedQuestion.mlAnswerId && (
+                      <div className="mt-3 px-3 py-2 rounded-lg bg-gradient-to-br from-emerald-900/30 to-green-900/30 border border-emerald-500/30">
+                        <p className="text-[10px] text-emerald-400/70 font-medium mb-0.5">
+                          ID da Resposta no ML
+                        </p>
+                        <p className="text-xs text-emerald-300 font-mono font-semibold">
+                          {lastApprovedQuestion.mlAnswerId}
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

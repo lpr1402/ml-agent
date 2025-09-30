@@ -29,6 +29,8 @@ interface QuestionCardProps {
       mlUserId?: string
       thumbnail?: string | null
     }
+    mlAnswerId?: string | null // ID da resposta enviada ao ML
+    sentToMLAt?: Date | string | null
   }
   onApprove?: (answer: string) => Promise<void>
   onRevise?: (feedback: string) => Promise<void>
@@ -878,21 +880,45 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           </div>
 
           {/* Premium Status Badge - Mobile Optimized */}
-          <div className={`
-            flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl
-            bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90
-            backdrop-blur-xl border ${statusConfig.border}
-            ${statusConfig.pulse ? 'animate-pulse' : ''}
-            shadow-lg min-w-[100px] sm:min-w-[140px] justify-center
-          `}>
-            <StatusIcon className={`
-              w-3.5 h-3.5 sm:w-4 sm:h-4 ${statusConfig.text}
-              ${statusConfig.spin ? 'animate-spin' : ''}
-              drop-shadow-lg
-            `} />
-            <span className={`text-[10px] sm:text-xs font-semibold ${statusConfig.text} uppercase tracking-wide sm:tracking-wider`}>
-              {statusConfig.label}
-            </span>
+          <div className="flex flex-col gap-2 items-end">
+            <div className={`
+              flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl
+              bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90
+              backdrop-blur-xl border ${statusConfig.border}
+              ${statusConfig.pulse ? 'animate-pulse' : ''}
+              shadow-lg min-w-[100px] sm:min-w-[140px] justify-center
+            `}>
+              <StatusIcon className={`
+                w-3.5 h-3.5 sm:w-4 sm:h-4 ${statusConfig.text}
+                ${statusConfig.spin ? 'animate-spin' : ''}
+                drop-shadow-lg
+              `} />
+              <span className={`text-[10px] sm:text-xs font-semibold ${statusConfig.text} uppercase tracking-wide sm:tracking-wider`}>
+                {statusConfig.label}
+              </span>
+            </div>
+
+            {/* Badge de Confirmação quando enviado ao ML com sucesso */}
+            {question.status === 'RESPONDED' && question.mlAnswerId && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: -5 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gradient-to-br from-emerald-900/40 to-green-900/40 border border-emerald-500/30 backdrop-blur-sm"
+              >
+                <div className="flex items-center gap-1 sm:gap-1.5">
+                  <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400 flex-shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="text-[8px] sm:text-[9px] text-emerald-400/70 font-medium leading-tight">
+                      ML ID
+                    </span>
+                    <span className="text-[9px] sm:text-[10px] text-emerald-300 font-mono font-semibold leading-tight">
+                      {question.mlAnswerId}
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
         </div>
 

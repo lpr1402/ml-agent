@@ -522,7 +522,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "Answer posted to Mercado Livre",
-        mlResponse: mlResult.data
+        mlResponse: mlResult.data,
+        mlAnswerId: mlResult.data?.answer_id || mlResult.data?.id || null
       })
     } else {
       // 🎯 TRATAMENTO DE ERRO MELHORADO
