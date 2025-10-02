@@ -2,7 +2,7 @@
   "name": "ML Agent",
   "short_name": "ML Agent",
   "description": "Automação inteligente para vendedores do Mercado Livre com notificações push 24/7. Responda perguntas automaticamente com IA, gerencie múltiplas contas e monitore suas vendas em tempo real.",
-  "start_url": "https://gugaleo.axnexlabs.com.br/agente",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],

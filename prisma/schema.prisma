@@ -302,20 +302,13 @@ model Revision {
   id           String   @id @default(cuid())
   questionId   String
   question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  
-  // Novos campos para revisão
-  userFeedback String   @db.Text  // Feedback do usuário para revisão
+
+  // Campos essenciais para revisão
+  userFeedback String   @db.Text  // Feedback do usuário solicitando revisão
   aiRevision   String   @db.Text  // Resposta revisada pela IA
-  
-  // Campos legados (mantidos para compatibilidade)
-  originalText String?  @db.Text
-  revisedText  String?  @db.Text
-  confidence   Float    @default(0)
-  approved     Boolean  @default(false)
-  approvedBy   String?
-  
+
   createdAt    DateTime @default(now())
-  
+
   @@index([questionId])
 }
 

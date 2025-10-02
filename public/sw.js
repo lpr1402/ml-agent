@@ -5,7 +5,7 @@
  */
 
 // Versão do Service Worker - Production 2025
-const SW_VERSION = '4.0.0';
+const SW_VERSION = '4.1.1';
 const APP_NAME = 'ML Agent';
 const CACHE_NAME = `ml-agent-cache-v${SW_VERSION}`;
 const RUNTIME_CACHE = `ml-agent-runtime-v${SW_VERSION}`;
@@ -49,8 +49,9 @@ async function networkFirst(request, timeoutMs = NETWORK_TIMEOUT) {
     const fetchPromise = fetch(request);
     const response = await Promise.race([fetchPromise, timeoutPromise]);
 
-    // Cachear resposta válida em runtime cache
-    if (response && response.ok) {
+    // Cachear resposta válida em runtime cache (apenas GET/HEAD)
+    // Cache API não suporta POST, PUT, DELETE, PATCH
+    if (response && response.ok && request.method === 'GET') {
       const cache = await caches.open(RUNTIME_CACHE);
       cache.put(request, response.clone());
     }
@@ -90,7 +91,8 @@ async function cacheFirst(request) {
 
   try {
     const response = await fetch(request);
-    if (response && response.ok) {
+    // Apenas cachear GET/HEAD (Cache API não suporta POST, PUT, DELETE, PATCH)
+    if (response && response.ok && request.method === 'GET') {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
@@ -145,7 +147,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then(cached => {
         const fetchPromise = fetch(request).then(response => {
-          if (response && response.ok) {
+          // Apenas cachear GET/HEAD (Cache API não suporta POST, PUT, DELETE, PATCH)
+          if (response && response.ok && request.method === 'GET') {
             const cache = caches.open(CACHE_NAME);
             cache.then(c => c.put(request, response.clone()));
           }
@@ -237,7 +240,7 @@ self.addEventListener('push', (event) => {
 
   let notificationData = {
     title: '🔔 ML Agent',
-    body: 'Nova notificação do Mercado Livre',
+    body: 'Você tem uma nova notificação de cliente',
     icon: '/mlagent-logo-3d.png',
     badge: '/mlagent-logo-3d.png',
     tag: 'ml-notification',
@@ -256,7 +259,7 @@ self.addEventListener('push', (event) => {
         case 'new_question':
           notificationData = {
             title: `🔔 ${payload.sellerName || 'ML Agent'}`,
-            body: payload.questionText || 'Nova pergunta recebida',
+            body: `Um cliente perguntou: "${payload.questionText || 'Nova pergunta recebida'}"`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: `question-${payload.questionId}`,
@@ -272,7 +275,7 @@ self.addEventListener('push', (event) => {
             actions: [
               {
                 action: 'answer',
-                title: '✅ Responder',
+                title: '✅ Responder Agora',
                 icon: '/icons/shortcuts/questions.png'
               },
               {
@@ -287,7 +290,7 @@ self.addEventListener('push', (event) => {
         case 'batch_questions':
           notificationData = {
             title: `🔔 ${payload.sellerName || 'ML Agent'}`,
-            body: `Você tem ${payload.count} novas perguntas`,
+            body: `Você tem ${payload.count} ${payload.count === 1 ? 'nova pergunta' : 'novas perguntas'} de clientes aguardando resposta`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: 'questions-batch',
@@ -303,8 +306,8 @@ self.addEventListener('push', (event) => {
 
         case 'urgent_question':
           notificationData = {
-            title: `⚠️ URGENTE - ${payload.sellerName}`,
-            body: `Pergunta há ${payload.hours}h sem resposta: ${payload.questionText}`,
+            title: `⚠️ PERGUNTA URGENTE - ${payload.sellerName}`,
+            body: `Cliente aguardando há ${payload.hours}h: "${payload.questionText}"`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: `urgent-${payload.questionId}`,
@@ -328,8 +331,8 @@ self.addEventListener('push', (event) => {
 
         case 'answer_approved':
           notificationData = {
-            title: '✅ Resposta Aprovada',
-            body: `${payload.sellerName}: ${payload.message}`,
+            title: '✅ Resposta Enviada com Sucesso',
+            body: `Sua resposta foi aprovada e enviada ao cliente no Mercado Livre`,
             icon: '/icons/icon-192x192.png',
             badge: '/icons/icon-72x72.png',
             tag: `approved-${payload.questionId}`,
@@ -343,8 +346,8 @@ self.addEventListener('push', (event) => {
 
         case 'error':
           notificationData = {
-            title: '❌ Erro no ML Agent',
-            body: payload.message || 'Ocorreu um erro ao processar sua solicitação',
+            title: '⚠️ Atenção Necessária',
+            body: payload.message || 'Ocorreu um erro ao processar sua solicitação. Verifique o painel.',
             icon: '/icons/icon-192x192.png',
             badge: '/icons/icon-72x72.png',
             tag: 'error',

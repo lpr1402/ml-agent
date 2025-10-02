@@ -266,14 +266,40 @@ export async function POST(request: NextRequest) {
       revisedResponse = response.output
     }
     
-    // Create revision record
-    await prisma.revision.create({
-      data: {
+    // 🔒 FIX: Create revision record SIMPLIFICADO
+    // Validar campos obrigatórios @db.Text
+    const sanitizedFeedback = (feedback && feedback.trim().length > 0)
+      ? feedback.trim()
+      : "Manual edit"
+
+    const sanitizedRevision = (revisedResponse && revisedResponse.trim().length > 0)
+      ? revisedResponse.trim()
+      : question.aiSuggestion || "Resposta revisada"
+
+    try {
+      await prisma.revision.create({
+        data: {
+          questionId,
+          userFeedback: sanitizedFeedback,
+          aiRevision: sanitizedRevision
+        }
+      })
+      logger.info('[Revision] ✅ Revision record created successfully', {
         questionId,
-        userFeedback: feedback || "Manual edit",
-        aiRevision: revisedResponse
-      }
-    })
+        feedbackLength: sanitizedFeedback.length,
+        revisionLength: sanitizedRevision.length
+      })
+    } catch (revisionError: any) {
+      // Log detalhado mas não falhar o processo
+      logger.error('[Revision] Failed to create revision record (non-fatal)', {
+        questionId,
+        errorType: revisionError?.name || 'Unknown',
+        errorCode: revisionError?.code || 'UNKNOWN',
+        errorMessage: revisionError?.message || String(revisionError),
+        errorMeta: revisionError?.meta || null
+      })
+      // Continuar mesmo se falhar a gravação do histórico
+    }
     
     // Update question with revised response
     await prisma.question.update({

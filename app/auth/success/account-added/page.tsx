@@ -1,23 +1,22 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { CheckCircle, Loader2 } from 'lucide-react'
 
 function AccountAddedContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [isClosing, setIsClosing] = useState(false)
 
-  const accountName = searchParams.get('account') || 'Nova conta'
+  const accountName = searchParams.get('nickname') || searchParams.get('account') || 'Nova conta'
   const error = searchParams.get('error')
-  
+
   useEffect(() => {
     // Pequeno delay para garantir que o modal está pronto para receber mensagem
     const timer = setTimeout(() => {
       if (window.opener && !window.opener.closed) {
+        // 🎯 POPUP MODE: Enviar mensagem para janela pai e fechar
         if (error) {
-          // Enviar mensagem de erro
           window.opener.postMessage(
             {
               type: 'ml-oauth-error',
@@ -26,33 +25,35 @@ function AccountAddedContent() {
             window.location.origin
           )
         } else {
-          // Enviar mensagem de sucesso
           window.opener.postMessage(
             {
               type: 'ml-oauth-success',
-              account: decodeURIComponent(accountName)
+              account: accountName
             },
             window.location.origin
           )
         }
-        
+
         setIsClosing(true)
-        
+
         // Fechar janela após enviar mensagem
         setTimeout(() => {
           window.close()
         }, 1500)
       } else {
-        // Se não tem janela pai, redirecionar para agente após 2 segundos
+        // 🎯 NEW TAB MODE: NÃO redirecionar automaticamente
+        // Usuário deve fechar manualmente ou clicar no botão
+        setIsClosing(true)
+
+        // Tentar fechar após 2 segundos (pode funcionar em alguns browsers)
         setTimeout(() => {
-          // Usar Next.js router para manter iOS PWA fullscreen
-          router.push('/agente')
+          window.close()
         }, 2000)
       }
-    }, 500)
-    
+    }, 300)
+
     return () => clearTimeout(timer)
-  }, [accountName, error, router])
+  }, [accountName, error])
   
   return (
     <div 
@@ -101,20 +102,49 @@ function AccountAddedContent() {
             </div>
             
             <div className="space-y-2">
-              <h1 className="text-2xl font-bold">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">
                 Conta adicionada com sucesso!
               </h1>
-              <p className="text-gray-400">
-                {decodeURIComponent(accountName)} foi conectada à sua organização
+              <p className="text-gray-300 font-medium">
+                {accountName}
+              </p>
+              <p className="text-sm text-gray-500">
+                Todas as suas contas ML funcionam simultaneamente
               </p>
             </div>
           </>
         )}
         
         {isClosing && (
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Fechando janela...</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Fechando janela...</span>
+            </div>
+
+            {/* Botão manual para fechar caso não feche automaticamente */}
+            <button
+              onClick={() => window.close()}
+              className="px-6 py-3 rounded-xl font-semibold transition-all duration-300"
+              style={{
+                background: 'linear-gradient(135deg, #FFE600 0%, #FFC700 100%)',
+                color: '#000',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)'
+              }}
+            >
+              Fechar e Voltar
+            </button>
+
+            <p className="text-xs text-gray-600">
+              Se a janela não fechar automaticamente, clique no botão acima
+            </p>
           </div>
         )}
       </div>

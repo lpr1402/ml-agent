@@ -46,19 +46,12 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
   })
 
   try {
-    // Verificar se já temos essa pergunta
-    const existingQuestion = await prisma.question.findUnique({
-      where: { mlQuestionId: questionId }
-    })
-
-    if (existingQuestion) {
-      logger.info(`[QuestionProcessor] Question ${questionId} already exists`)
-      return
-    }
-
-    // GARANTIA 1: Salvar imediatamente com status RECEIVED
-    await prisma.question.create({
-      data: {
+    // 🔒 FIX: Usar UPSERT atômico para evitar race condition P2002
+    // Se webhook duplicado chegar simultaneamente, apenas um cria e outro atualiza vazio
+    const existingQuestion = await prisma.question.upsert({
+      where: { mlQuestionId: questionId },
+      update: {}, // Não fazer nada se já existir
+      create: {
         mlQuestionId: questionId,
         mlAccountId: mlAccount.id,
         sellerId: mlAccount.mlUserId,
@@ -69,6 +62,12 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         dateCreated: new Date()
       }
     })
+
+    // Se já existia, retornar sem processar novamente
+    if (existingQuestion.status !== 'RECEIVED' || existingQuestion.text !== 'Processando pergunta recebida do Mercado Livre') {
+      logger.info(`[QuestionProcessor] ✓ Question ${questionId} already processed, skipping duplicate webhook`)
+      return
+    }
 
     logger.info(`[QuestionProcessor] ✅ Question ${questionId} SAVED with RECEIVED status`)
 

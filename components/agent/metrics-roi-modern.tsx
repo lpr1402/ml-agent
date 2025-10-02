@@ -61,7 +61,7 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
     roi: 0,
     savedHours: 0,
     efficiency: 0,
-    costPerResponse: 0
+    autoApprovalRate: 0
   })
 
   // Fetch metrics
@@ -97,21 +97,47 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
         roi: metrics.roi?.percentage || 0,
         savedHours: metrics.timeEconomy?.hoursEconomized || 0,
         efficiency: metrics.aiPerformance?.efficiency || 0,
-        costPerResponse: metrics.costAnalysis?.costPerResponse || 0
+        autoApprovalRate: metrics.aiPerformance?.autoApprovalRate || 0
       })
     }, 100)
     return () => clearTimeout(timer)
   }, [metrics])
 
-  // Chart data
+  // Chart data with real-time labels
+  const getChartLabels = () => {
+    const now = new Date()
+
+    if (selectedPeriod === "24h") {
+      // Show current hour and previous hours
+      return Array.from({length: 24}, (_, i) => {
+        const hour = (now.getHours() - (23 - i) + 24) % 24
+        return `${hour}h`
+      })
+    } else if (selectedPeriod === "7d") {
+      // Show last 7 days with day names
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+      return Array.from({length: 7}, (_, i) => {
+        const date = new Date(now)
+        date.setDate(date.getDate() - (6 - i))
+        return `${days[date.getDay()]} ${date.getDate()}`
+      })
+    } else {
+      // Show last 30 days with dates
+      return Array.from({length: 30}, (_, i) => {
+        if (i % 5 === 0) {
+          const date = new Date(now)
+          date.setDate(date.getDate() - (29 - i))
+          return `${date.getDate()}/${date.getMonth() + 1}`
+        }
+        return ''
+      })
+    }
+  }
+
   const chartDataFormatted = {
-    labels: selectedPeriod === "24h"
-      ? Array.from({length: 24}, (_, i) => `${i}h`)
-      : selectedPeriod === "7d"
-      ? ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-      : Array.from({length: 30}, (_, i) => i % 5 === 0 ? `${i+1}` : ''),
+    labels: getChartLabels(),
     datasets: [{
-      label: "Perguntas",
+      label: selectedPeriod === "24h" ? "Perguntas por Hora" : "Perguntas por Dia",
       data: chartData.length > 0 ? chartData :
         (selectedPeriod === "24h" ? Array(24).fill(0) :
          selectedPeriod === "7d" ? Array(7).fill(0) :
@@ -293,7 +319,7 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
               </div>
             </motion.div>
 
-            {/* Cost Per Response Card - Real */}
+            {/* Auto-Approval Rate Card - More Valuable Metric */}
             <motion.div
               whileHover={{ scale: 1.02 }}
               className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
@@ -304,7 +330,7 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
                 <div className="flex items-center justify-between mb-2 sm:mb-3">
                   <Target className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
                   <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-white/5 text-gray-400 font-semibold">
-                    CUSTO
+                    AUTO
                   </span>
                 </div>
                 <motion.p
@@ -312,13 +338,13 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
                   animate={{ opacity: 1, y: 0 }}
                   className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1"
                 >
-                  R$ {animatedValues.costPerResponse.toFixed(2)}
+                  {Math.round(metrics.aiPerformance?.autoApprovalRate || 0)}%
                 </motion.p>
-                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Por resposta</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Auto-aprovação</p>
                 <div className="flex items-center gap-1 mt-1 sm:mt-2">
-                  <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
                   <span className="text-[9px] sm:text-xs text-gray-400 truncate">
-                    {metrics.roi?.daysSinceLastBilling || 0}d desde billing
+                    R$ {((metrics.roi?.currentPeriodCost || 500) / 30).toFixed(0)}/dia
                   </span>
                 </div>
               </div>
@@ -329,9 +355,14 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
             {/* Activity Chart - Mobile Optimized */}
             <div className="lg:col-span-2 rounded-lg sm:rounded-xl bg-black/50 border border-white/5 p-3 sm:p-4 lg:p-5">
-              <h4 className="text-xs sm:text-sm font-semibold text-gold mb-2 sm:mb-3 lg:mb-4">
-                Atividade - {selectedPeriod === "24h" ? "Últimas 24h" : selectedPeriod === "7d" ? "Últimos 7 dias" : "Últimos 30 dias"}
-              </h4>
+              <div className="flex items-center justify-between mb-2 sm:mb-3 lg:mb-4">
+                <h4 className="text-xs sm:text-sm font-semibold text-gold">
+                  Atividade - {selectedPeriod === "24h" ? "Últimas 24h" : selectedPeriod === "7d" ? "Últimos 7 dias" : "Últimos 30 dias"}
+                </h4>
+                <span className="text-[10px] sm:text-xs text-gray-500 font-medium">
+                  {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
               <div className="h-32 sm:h-40 lg:h-48">
                 <Line data={chartDataFormatted} options={chartOptions} />
               </div>

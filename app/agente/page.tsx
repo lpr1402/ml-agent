@@ -10,7 +10,7 @@ import { MLAccountSwitcher } from '@/components/ml-account-switcher'
 import { MLAgentDashboardModern } from '@/components/dashboard/ml-agent-dashboard-modern'
 import { MultiAccountQuestions } from '@/components/agent/multi-account-questions'
 import { MetricsROIModern } from '@/components/agent/metrics-roi-modern'
-import { MLAccountsPodium } from '@/components/agent/ml-accounts-podium'
+// import { MLAccountsPodium } from '@/components/agent/ml-accounts-podium' // Temporariamente removido
 import { PremiumLoader } from '@/components/ui/premium-loader'
 import { AddAccountModal } from '@/components/add-account-modal'
 import { ProActivationModal } from '@/components/pro-activation-modal'
@@ -337,10 +337,12 @@ export default function AgenteMultiConta() {
                     accountId={selectedAccountId}
                     organizationId={organizationData?.organizationId || ""}
                   />
+                  {/* Temporariamente removido - Pódio de Contas
                   <MLAccountsPodium
                     organizationId={organizationData?.organizationId || ""}
                     onAddAccount={() => setIsAddAccountModalOpen(true)}
                   />
+                  */}
                 </div>
               </TabsContent>
 

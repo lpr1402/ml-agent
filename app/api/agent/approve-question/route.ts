@@ -83,7 +83,8 @@ async function postAnswerToML(
       if (response.status === 429) {
         isRateLimitError = true
         const retryAfter = response.headers.get('retry-after')
-        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 60000 // Default 60s
+        // ML recomenda aguardar no mínimo 60s
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 90000 // Default 90 segundos
 
         logger.warn(`[ML API] 🚫 Rate Limit 429 - attempt ${attempt}/${maxRetries}`, {
           questionId,
@@ -92,17 +93,21 @@ async function postAnswerToML(
           willRetry: attempt < maxRetries
         })
 
-        lastError = `Rate limit excedido. Aguardando ${delay/1000}s...`
+        lastError = "Rate limit do Mercado Livre atingido."
 
+        // 🎯 CORREÇÃO: FAZER RETRY com delay adequado
         if (attempt < maxRetries) {
-          logger.info(`[ML API] ⏳ Waiting ${delay}ms due to rate limit`)
+          logger.info(`[ML API] ⏳ Aguardando ${delay}ms antes de retry do rate limit...`, {
+            attempt,
+            nextAttempt: attempt + 1,
+            maxRetries,
+            delaySeconds: Math.round(delay / 1000)
+          })
           await new Promise(resolve => setTimeout(resolve, delay))
-          continue
-        } else {
-          // Último retry falhou por rate limit
-          lastError = "Rate limit do Mercado Livre. Tente novamente em alguns minutos."
-          break
+          continue // Tentar novamente
         }
+        // Se chegou ao max de tentativas, sair do loop
+        break
       }
 
       // Check for "already answered"
@@ -378,13 +383,25 @@ export async function POST(request: NextRequest) {
         // Capturar answer_id do ML (pode vir como answer_id ou id na resposta)
         const mlAnswerId = mlResult.data?.answer_id || mlResult.data?.id || null
 
+        // 🔒 FIX: Sanitizar mlResponseData para evitar JSON inválido
+        let sanitizedMLData = {}
+        try {
+          sanitizedMLData = mlResult.data ? JSON.parse(JSON.stringify(mlResult.data)) : {}
+        } catch {
+          logger.warn('[Approve] Could not serialize ML response data, using empty object', {
+            questionId,
+            dataType: typeof mlResult.data
+          })
+          sanitizedMLData = { raw: String(mlResult.data || '') }
+        }
+
         await prisma.question.update({
           where: { id: questionId },
           data: {
             status: "RESPONDED", // Pergunta respondida com sucesso
             sentToMLAt: new Date(),
             mlResponseCode: mlResult.status || 200,
-            mlResponseData: mlResult.data || {},
+            mlResponseData: sanitizedMLData,
             retryCount: 0 // Reset retry count on success
           }
         })
@@ -408,11 +425,42 @@ export async function POST(request: NextRequest) {
           },
           question.mlAccount.organizationId
         )
-      } catch (prismaError) {
+      } catch (prismaError: unknown) {
+        // 🔒 FIX: Error handling robusto com diagnóstico completo
+        const error = prismaError as any
         logger.error("[Approve] Prisma update error after ML success", {
           questionId,
-          error: prismaError
+          mlQuestionId: question.mlQuestionId,
+          errorType: error?.name || 'Unknown',
+          errorCode: error?.code || 'UNKNOWN', // P2025 (not found), P2002 (unique), etc
+          errorMessage: error?.message || String(error),
+          errorMeta: error?.meta || null,
+          stackTrace: error?.stack?.split('\n').slice(0, 3).join('\n') || 'No stack'
         })
+
+        // ⚠️ CRITICAL: ML API já recebeu com sucesso
+        // Tentativa de recuperação: criar registro de auditoria
+        try {
+          await prisma.auditLog.create({
+            data: {
+              action: 'question.db_update_failed_after_ml_success',
+              entityType: 'question',
+              entityId: questionId,
+              organizationId: question.mlAccount.organizationId,
+              mlAccountId: question.mlAccount.id,
+              metadata: {
+                mlQuestionId: question.mlQuestionId,
+                mlAnswerId: mlResult.data?.answer_id || mlResult.data?.id || null,
+                errorCode: error?.code || 'UNKNOWN',
+                errorMessage: error?.message || String(error),
+                note: 'Answer was successfully posted to ML but DB update failed'
+              }
+            }
+          })
+          logger.info('[Approve] 📝 Audit log created for failed DB update (ML success preserved)')
+        } catch (auditError) {
+          logger.error('[Approve] Failed to create audit log', { error: auditError })
+        }
         // Don't throw - the ML API call was successful
         // Return success but log the database error
       }
@@ -530,8 +578,12 @@ export async function POST(request: NextRequest) {
       // Se é rate limit (429), manter como APPROVED para retry automático
       // Se é outro erro, marcar como FAILED para análise manual
 
-      const newStatus = mlResult.isRateLimit ? 'APPROVED' : 'FAILED'
-      const failedAt = mlResult.isRateLimit ? null : new Date()
+      // Verificar se já tentou muitas vezes (evitar loop infinito)
+      const currentRetryCount = question.retryCount || 0
+      const maxRetryCount = 10 // Máximo de 10 tentativas no total
+
+      const newStatus = mlResult.isRateLimit && currentRetryCount < maxRetryCount ? 'APPROVED' : 'FAILED'
+      const failedAt = (mlResult.isRateLimit && currentRetryCount < maxRetryCount) ? null : new Date()
 
       await prisma.question.update({
         where: { id: questionId },
@@ -541,7 +593,9 @@ export async function POST(request: NextRequest) {
           mlResponseData: { error: mlResult.error || "Unknown error" },
           retryCount: { increment: 1 },
           failedAt: failedAt,
-          failureReason: mlResult.error || "Erro ao enviar para o Mercado Livre"
+          failureReason: currentRetryCount >= maxRetryCount
+            ? "Máximo de tentativas excedido. Verifique os limites da API do Mercado Livre."
+            : (mlResult.error || "Erro ao enviar para o Mercado Livre")
         }
       })
 
@@ -584,13 +638,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         message: mlResult.isRateLimit
-          ? "Rate limit do Mercado Livre. A pergunta será reenviada automaticamente."
-          : "Falha ao enviar para o Mercado Livre após 3 tentativas",
+          ? (currentRetryCount >= maxRetryCount
+              ? "Limite máximo de tentativas atingido. Aguarde alguns minutos e tente manualmente."
+              : "Rate limit do Mercado Livre atingido. Aguarde alguns minutos antes de tentar novamente.")
+          : "Falha ao enviar para o Mercado Livre",
         error: mlResult.error,
         status: mlResult.status || 500,
-        canRetry: true,
+        canRetry: currentRetryCount < maxRetryCount,
         isRateLimit: mlResult.isRateLimit,
-        retryDelay: mlResult.isRateLimit ? 60 : 0
+        retryDelay: mlResult.isRateLimit ? 120 : 0, // 2 minutos
+        retryCount: currentRetryCount + 1,
+        maxRetries: maxRetryCount
       }, { status: mlResult.isRateLimit ? 429 : 500 })
     }
     

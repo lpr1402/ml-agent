@@ -237,6 +237,28 @@ module.exports = {
       wait_ready: true,
       listen_timeout: 10000, // 10 segundos para aguardar o ready signal
       instance_var: 'INSTANCE_ID'
+    },
+    {
+      name: 'ml-agent-avatar-updater',
+      script: 'workers/avatar-updater.ts',
+      interpreter: 'npx',
+      interpreter_args: 'tsx',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: false, // Não reiniciar automaticamente (é cron job)
+      cron_restart: '0 3 * * *', // Executar todo dia às 3h da manhã
+      watch: false,
+      env_production: {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
+        ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
+        LOG_LEVEL: 'info'
+      },
+      error_file: './logs/avatar-updater-err.log',
+      out_file: './logs/avatar-updater-out.log',
+      log_file: './logs/avatar-updater-combined.log',
+      time: true,
+      merge_logs: true
     }
   ],
 

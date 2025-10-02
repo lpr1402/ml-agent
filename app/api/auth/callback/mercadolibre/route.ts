@@ -9,12 +9,21 @@ import { prisma } from "@/lib/prisma"
 import { MLCache } from "@/lib/cache/ml-cache"
 import crypto from 'crypto'
 const REDIRECT_URI = process.env['ML_REDIRECT_URI']!
+const PRODUCTION_URL = 'https://gugaleo.axnexlabs.com.br'
 
 /**
  * 🎯 iOS PWA FIX: Criar URL de redirect mantendo contexto standalone
- * Usa clone() do nextUrl para preservar scheme/host/port exatamente iguais
+ * Em produção, SEMPRE usa o domínio de produção
  */
 function createRedirectUrl(request: NextRequest, pathname: string, searchParams?: string): NextResponse {
+  // Se está em produção, usar domínio de produção fixo
+  if (process.env.NODE_ENV === 'production') {
+    const url = new URL(pathname, PRODUCTION_URL)
+    url.search = searchParams || ''
+    return NextResponse.redirect(url)
+  }
+
+  // Em desenvolvimento, usar nextUrl.clone()
   const url = request.nextUrl.clone()
   url.pathname = pathname
   url.search = searchParams || ''
@@ -43,20 +52,13 @@ export async function GET(request: NextRequest) {
   // 1. Tratar erros do Mercado Livre
   if (error) {
     logger.warn("[OAuth Callback] OAuth error from ML", { error })
-    // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
-    const errorUrl = request.nextUrl.clone()
-    errorUrl.pathname = '/auth/error'
-    errorUrl.search = `?error=${error}`
-    return NextResponse.redirect(errorUrl)
+    return createRedirectUrl(request, '/auth/error', `?error=${error}`)
   }
 
   // 2. Validar presença do código
   if (!code) {
     logger.error("[OAuth Callback] No authorization code received")
-    const errorUrl = request.nextUrl.clone()
-    errorUrl.pathname = '/auth/error'
-    errorUrl.search = '?error=NoCode'
-    return NextResponse.redirect(errorUrl)
+    return createRedirectUrl(request, '/auth/error', '?error=NoCode')
   }
 
   // 3. Validar state (PKCE + CSRF protection)
@@ -73,10 +75,7 @@ export async function GET(request: NextRequest) {
     if (!oauthState) {
       logger.error("[OAuth Callback] Invalid or expired state", { state })
       await auditSecurityEvent('oauth_invalid_state', { state }, undefined)
-      const errorUrl = request.nextUrl.clone()
-      errorUrl.pathname = '/auth/error'
-      errorUrl.search = '?error=InvalidState'
-      return NextResponse.redirect(errorUrl)
+      return createRedirectUrl(request, '/auth/error', '?error=InvalidState')
     }
 
     const { codeVerifier, organizationId, isPrimaryLogin } = oauthState
@@ -323,11 +322,8 @@ export async function GET(request: NextRequest) {
           sessionToken: existingSessionToken ? 'existing' : 'new session created'
         })
 
-        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
-        const successUrl = request.nextUrl.clone()
-        successUrl.pathname = '/agente'
-        successUrl.search = ''
-        return NextResponse.redirect(successUrl)
+        // 🎯 iOS PWA FIX: Redirect para success page que faz client-side navigation
+        return createRedirectUrl(request, '/auth/success/account-added', `?nickname=${encodeURIComponent(fullUser.nickname)}`)
       } catch (error) {
         logger.error("[OAuth Callback] Failed to connect ML account to organization", { error })
         return createRedirectUrl(request, '/auth/error', `?error=MLConnection&message=${encodeURIComponent('Failed to connect ML account')}`)
@@ -377,11 +373,8 @@ export async function GET(request: NextRequest) {
           nickname: fullUser.nickname
         })
 
-        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
-        const successUrl = request.nextUrl.clone()
-        successUrl.pathname = '/agente'
-        successUrl.search = ''
-        return NextResponse.redirect(successUrl)
+        // 🎯 Redirect para /agente usando domínio de produção
+        return createRedirectUrl(request, '/agente', '')
 
       } catch (sessionError) {
         logger.error("[OAuth Callback] Failed to create session", { error: sessionError })
@@ -412,11 +405,8 @@ export async function GET(request: NextRequest) {
           nickname: user.nickname
         })
 
-        // 🎯 iOS PWA FIX: Usar clone() para manter contexto standalone
-        const successUrl = request.nextUrl.clone()
-        successUrl.pathname = '/agente'
-        successUrl.search = ''
-        return NextResponse.redirect(successUrl)
+        // 🎯 iOS PWA FIX: Redirect para success page que faz client-side navigation
+        return createRedirectUrl(request, '/auth/success/account-added', `?nickname=${encodeURIComponent(fullUser.nickname)}`)
 
       } catch (addError: any) {
         logger.error("[OAuth Callback] Failed to add ML account", { error: addError })

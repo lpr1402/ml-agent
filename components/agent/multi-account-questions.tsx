@@ -647,11 +647,11 @@ export function MultiAccountQuestions({
   // Componente de Filtros - Design Padronizado com ROI e Análise
   const FiltersComponent = () => (
     <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-      {/* Filtros de Status - Mesmo Design de ROI */}
-      <div className="flex gap-2 bg-black/50 p-1 rounded-xl">
+      {/* Filtros de Status - Apenas Pendentes e Respondidas */}
+      <div className="flex gap-1.5 sm:gap-2 bg-black/50 p-1 rounded-lg sm:rounded-xl">
         <button
           onClick={() => setStatusFilter('pending')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+          className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 ${
             statusFilter === 'pending'
               ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
               : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -661,7 +661,7 @@ export function MultiAccountQuestions({
         </button>
         <button
           onClick={() => setStatusFilter('completed')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+          className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 ${
             statusFilter === 'completed'
               ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
               : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -669,70 +669,74 @@ export function MultiAccountQuestions({
         >
           Respondidas
         </button>
-        <button
-          onClick={() => setStatusFilter('all')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
-            statusFilter === 'all'
-              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
-              : 'text-gray-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          Todas
-        </button>
       </div>
 
-      {/* Account Filter - Design Padronizado */}
+      {/* Account Filter - Design Aprimorado e Responsivo */}
       {accountSummary.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative rounded-lg bg-black/50 hover:bg-white/5 text-gray-400 hover:text-white transition-all duration-300 gap-2 px-4 py-2 h-auto group">
-              <Users2 className="h-4 w-4 text-gold/60 group-hover:text-gold" />
-              <span className="text-sm font-semibold">
-                {accountFilter === 'all' ? `Todas (${accountSummary.length})` :
-                  accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 15) || 'Conta'}
+            <Button variant="ghost" className="relative rounded-lg bg-black/50 hover:bg-white/5 text-gray-400 hover:text-white transition-all duration-300 gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 h-auto group">
+              <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold/60 group-hover:text-gold flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-semibold truncate max-w-[100px] sm:max-w-none">
+                {accountFilter === 'all' ? (
+                  <>
+                    {/* Mobile: apenas número */}
+                    <span className="sm:hidden">Todas ({accountSummary.length})</span>
+                    {/* Desktop: texto completo */}
+                    <span className="hidden sm:inline">Todas ({accountSummary.length})</span>
+                  </>
+                ) : (
+                  <>
+                    {/* Mobile: nome curto */}
+                    <span className="sm:hidden">{accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 8) || 'Conta'}</span>
+                    {/* Desktop: nome completo */}
+                    <span className="hidden sm:inline">{accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 15) || 'Conta'}</span>
+                  </>
+                )}
               </span>
               {accountFilter !== 'all' && (
-                <span className="absolute -top-1 -right-1 bg-gold text-black text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-gold text-black text-[9px] sm:text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shadow-lg">
                   {accountSummary.find(a => a.accountId === accountFilter)?.pendingQuestions || 0}
                 </span>
               )}
-              <ChevronDown className="h-3 w-3 opacity-60" />
+              <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-60 flex-shrink-0" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[320px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10"
+            className="w-[280px] sm:w-[320px] lg:w-[360px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10 max-h-[70vh] sm:max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 shadow-2xl"
           >
-            <DropdownMenuLabel className="text-gold font-semibold flex items-center gap-2">
-              <Users2 className="h-4 w-4" />
-              Filtrar por Conta ML
+            <DropdownMenuLabel className="text-gold font-semibold flex items-center gap-2 text-sm sm:text-base py-2 sm:py-3 sticky top-0 bg-gray-900/95 backdrop-blur-lg z-10">
+              <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Filtrar por Conta ML</span>
+              <span className="sm:hidden">Filtrar Conta</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-white/10" />
 
-            {/* Opção Todas */}
+            {/* Opção Todas - Mobile Optimized */}
             <DropdownMenuItem
               onClick={() => setAccountFilter('all')}
-              className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-3"
+              className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-2.5 sm:py-3 mx-1"
             >
-              <div className="flex items-center gap-3 w-full">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-gold/20 to-yellow-500/20 flex items-center justify-center">
-                  <Users2 className="h-4 w-4 text-gold" />
+              <div className="flex items-center gap-2 sm:gap-3 w-full">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-r from-gold/20 to-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                  <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" />
                 </div>
-                <div className="flex-1">
-                  <span className="text-white font-medium">Todas as Contas</span>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-[10px] text-gray-400">
-                      {accountSummary.reduce((acc, a) => acc + a.pendingQuestions, 0)} pendentes total
+                <div className="flex-1 min-w-0">
+                  <span className="text-white font-medium text-sm sm:text-base block">Todas as Contas</span>
+                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                    <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
+                      {accountSummary.reduce((acc, a) => acc + a.pendingQuestions, 0)} pendentes
                     </span>
-                    <span className="text-[10px] text-gray-600">|</span>
-                    <span className="text-[10px] text-gray-400">
-                      {accountSummary.length} contas ativas
+                    <span className="text-[10px] text-gray-600 hidden sm:inline">|</span>
+                    <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
+                      {accountSummary.length} {accountSummary.length === 1 ? 'conta' : 'contas'}
                     </span>
                   </div>
                 </div>
                 {accountFilter === 'all' && (
-                  <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center">
-                    <CheckCircle className="h-3 w-3 text-gold" />
+                  <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-gold" />
                   </div>
                 )}
               </div>
@@ -740,43 +744,42 @@ export function MultiAccountQuestions({
 
             <DropdownMenuSeparator className="bg-white/5 my-1" />
 
-            {/* Contas Individuais */}
+            {/* Contas Individuais - Mobile Optimized */}
             {accountSummary.map((account) => (
               <DropdownMenuItem
                 key={account.accountId}
                 onClick={() => setAccountFilter(account.accountId)}
-                className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-3"
+                className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-2.5 sm:py-3 mx-1"
               >
-                <div className="flex items-center gap-3 w-full">
-                  <Avatar className="h-8 w-8 border border-gold/20">
+                <div className="flex items-center gap-2 sm:gap-3 w-full">
+                  <Avatar className="h-7 w-7 sm:h-8 sm:w-8 border border-gold/20 flex-shrink-0">
                     {account.thumbnail ? (
                       <AvatarImage src={account.thumbnail} alt={account.nickname} />
                     ) : (
-                      <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900 text-gold text-xs font-bold">
+                      <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900 text-gold text-[10px] sm:text-xs font-bold">
                         {account.nickname.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
                     )}
                   </Avatar>
-                  <div className="flex-1">
-                    <span className="text-white text-sm font-medium">{account.nickname}</span>
-                    <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-white text-xs sm:text-sm font-medium block truncate">{account.nickname}</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
                       {account.pendingQuestions > 0 ? (
-                        <>
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
-                            <span className="text-[10px] text-yellow-500 font-bold">
-                              {account.pendingQuestions}
-                            </span>
-                            <span className="text-[10px] text-yellow-500/70">pendente{account.pendingQuestions > 1 ? 's' : ''}</span>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                          <span className="text-[9px] sm:text-[10px] text-yellow-500 font-bold">
+                            {account.pendingQuestions}
                           </span>
-                        </>
+                          <span className="text-[9px] sm:text-[10px] text-yellow-500/70 hidden sm:inline">pendente{account.pendingQuestions > 1 ? 's' : ''}</span>
+                          <span className="text-[9px] sm:hidden text-yellow-500/70">pend.</span>
+                        </span>
                       ) : (
-                        <span className="text-[10px] text-gray-500">Sem pendentes</span>
+                        <span className="text-[9px] sm:text-[10px] text-gray-500">Sem pendentes</span>
                       )}
                     </div>
                   </div>
                   {accountFilter === account.accountId && (
-                    <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center">
-                      <CheckCircle className="h-3 w-3 text-gold" />
+                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-gold" />
                     </div>
                   )}
                 </div>

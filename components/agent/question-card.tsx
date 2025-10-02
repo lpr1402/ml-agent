@@ -85,6 +85,36 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
   const [isRetrying, setIsRetrying] = useState(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  // 🔊 Helper: Reproduzir som de notificação
+  const playNotificationSound = (type: 'success' | 'error' = 'error') => {
+    try {
+      const soundFile = type === 'success' ? '/notification-new.mp3' : '/notification.mp3'
+      const audio = new Audio(soundFile)
+      audio.volume = 0.4
+      audio.play().catch(() => {
+        // Silenciosamente falhar se não conseguir reproduzir (browser pode bloquear)
+      })
+    } catch (_error) {
+      // Silenciosamente falhar
+    }
+  }
+
+  // 📳 Helper: Vibração iOS (haptic feedback)
+  const triggerHapticFeedback = (pattern: 'success' | 'error' | 'warning' = 'error') => {
+    try {
+      if (navigator.vibrate) {
+        const patterns = {
+          success: [50, 30, 50], // Padrão de sucesso
+          error: [100, 50, 100, 50, 100], // Padrão de erro (mais intenso)
+          warning: [80, 40, 80] // Padrão de aviso
+        }
+        navigator.vibrate(patterns[pattern])
+      }
+    } catch (_error) {
+      // Silenciosamente falhar
+    }
+  }
+
   // Inject shimmer styles with proper cleanup
   useEffect(() => {
     const style = injectShimmerStyles()
@@ -108,6 +138,10 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         setIsProcessing(false)
         setShowRevisionInput(false) // Fechar input de revisão ao receber erro
         setRevisionFeedback('') // Limpar feedback
+
+        // 🔊 Feedback sensorial de erro
+        playNotificationSound('error')
+        triggerHapticFeedback('error')
 
         // Hide revision error after 10 seconds
         setTimeout(() => {
@@ -155,6 +189,10 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         setCanRetryNow(canRetryNow !== false && !isRateLimit) // Pode retry imediato se não for rate limit
         setIsProcessing(false)
         setIsRetrying(false)
+
+        // 🔊 Feedback sensorial de erro
+        playNotificationSound('error')
+        triggerHapticFeedback(isRateLimit ? 'warning' : 'error')
 
         // Se é rate limit, ocultar erro após 15 segundos
         // Se é outro erro, manter visível até usuário clicar retry
@@ -209,17 +247,41 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         setRevisionFeedback('')
         setIsProcessing(false)
 
-        // Removido toast - apenas notificações do dispositivo
+        // 🔊 Feedback sensorial de sucesso na revisão
+        playNotificationSound('success')
+        triggerHapticFeedback('success')
+
         console.log('[Question] Revision completed successfully')
+      }
+    }
+
+    // 🎯 NOVO: Listen for question answered successfully (enviada ao ML com sucesso)
+    const handleQuestionAnswered = (event: CustomEvent) => {
+      const { questionId, mlQuestionId, status } = event.detail
+
+      if (question.mlQuestionId === mlQuestionId || question.id === questionId) {
+        if (status === 'RESPONDED' || status === 'COMPLETED') {
+          // 🔊 Feedback sensorial de SUCESSO ao enviar ao ML
+          playNotificationSound('success')
+          triggerHapticFeedback('success')
+
+          // Ocultar qualquer erro de aprovação que estava mostrando
+          setShowApprovalError(false)
+          setApprovalError(null)
+
+          console.log('[Question] ✅ Resposta enviada ao ML com sucesso!')
+        }
       }
     }
 
     window.addEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
     window.addEventListener('websocket:question:revision-success' as any, handleRevisionSuccess)
+    window.addEventListener('websocket:question:updated' as any, handleQuestionAnswered)
 
     return () => {
       window.removeEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
       window.removeEventListener('websocket:question:revision-success' as any, handleRevisionSuccess)
+      window.removeEventListener('websocket:question:updated' as any, handleQuestionAnswered)
     }
   }, [question.mlQuestionId, question.id, question, isEditing])
 
@@ -467,13 +529,37 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         if (response.ok) {
           // Animação de sucesso movida para multi-account-questions.tsx para evitar duplicação
 
+          // 🔊 Feedback sensorial de sucesso
+          playNotificationSound('success')
+          triggerHapticFeedback('success')
+
           console.log('✅ Resposta Enviada ao Mercado Livre')
         } else {
           const error = await response.json()
-          console.error('❌ Erro ao aprovar:', error.error || 'Erro ao enviar resposta')
+          const errorMsg = error.error || 'Erro ao enviar resposta'
+
+          // 🔊 Feedback sensorial de erro
+          playNotificationSound('error')
+          triggerHapticFeedback('error')
+
+          // Mostrar erro na UI
+          setApprovalError(errorMsg)
+          setShowApprovalError(true)
+          setCanRetryNow(!error.isRateLimit)
+
+          console.error('❌ Erro ao aprovar:', errorMsg)
         }
       }
     } catch (_error) {
+      // 🔊 Feedback sensorial de erro de network
+      playNotificationSound('error')
+      triggerHapticFeedback('error')
+
+      // Mostrar erro de conexão na UI
+      setApprovalError('❌ Erro de conexão. Verifique sua internet e tente novamente.')
+      setShowApprovalError(true)
+      setCanRetryNow(true)
+
       console.error('❌ Erro ao processar aprovação')
     } finally {
       setIsProcessing(false)
@@ -504,17 +590,31 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
       const result = await response.json()
 
       if (response.ok) {
+        // 🔊 Feedback sensorial de sucesso
+        playNotificationSound('success')
+        triggerHapticFeedback('success')
+
         console.log('✅ Retry enviado com sucesso')
         // WebSocket vai atualizar o status em tempo real
       } else {
-        console.error('❌ Erro no retry:', result.error)
+        // 🔊 Feedback sensorial de erro
+        playNotificationSound('error')
+        triggerHapticFeedback('error')
+
         setApprovalError(result.error || 'Erro ao tentar novamente')
         setShowApprovalError(true)
+
+        console.error('❌ Erro no retry:', result.error)
       }
     } catch (_error) {
-      console.error('❌ Erro ao processar retry')
+      // 🔊 Feedback sensorial de erro de network
+      playNotificationSound('error')
+      triggerHapticFeedback('error')
+
       setApprovalError('Erro de conexão. Tente novamente.')
       setShowApprovalError(true)
+
+      console.error('❌ Erro ao processar retry')
     } finally {
       setIsRetrying(false)
     }
@@ -524,12 +624,26 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
   const handleSaveEdit = async () => {
     if (isProcessing) return // Previne cliques múltiplos
     if (!editedResponse.trim()) {
+      // 🔊 Feedback sensorial de validação
+      triggerHapticFeedback('warning')
+
+      setApprovalError('⚠️ A resposta não pode estar vazia')
+      setShowApprovalError(true)
+      setTimeout(() => setShowApprovalError(false), 3000)
+
       console.warn('⚠️ Campo vazio: A resposta não pode estar vazia')
       return
     }
 
     // Validar tamanho da resposta (limite ML: 2000 caracteres)
     if (editedResponse.length > 2000) {
+      // 🔊 Feedback sensorial de validação
+      triggerHapticFeedback('warning')
+
+      setApprovalError(`⚠️ Resposta muito longa: ${editedResponse.length}/2000 caracteres`)
+      setShowApprovalError(true)
+      setTimeout(() => setShowApprovalError(false), 3000)
+
       console.warn(`⚠️ Resposta muito longa: ${editedResponse.length} caracteres. Máximo permitido: 2000`)
       return
     }
@@ -568,16 +682,37 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           // Fecha o modo de edição
           setIsEditing(false)
 
+          // 🔊 Feedback sensorial de sucesso
+          playNotificationSound('success')
+          triggerHapticFeedback('success')
+
           console.log('✅ Resposta Salva com Sucesso no banco de dados')
 
           // A atualização em tempo real será feita via WebSocket automaticamente
           // pelo evento emitido no backend
         } else {
           const errorData = await response.json()
+
+          // 🔊 Feedback sensorial de erro
+          playNotificationSound('error')
+          triggerHapticFeedback('error')
+
+          // Mostrar erro na UI
+          setApprovalError(errorData.error || 'Não foi possível salvar a edição')
+          setShowApprovalError(true)
+
           console.error('❌ Erro ao salvar:', errorData.error || 'Não foi possível salvar a edição')
         }
       }
     } catch (_error) {
+      // 🔊 Feedback sensorial de erro de network
+      playNotificationSound('error')
+      triggerHapticFeedback('error')
+
+      // Mostrar erro de conexão na UI
+      setApprovalError('❌ Erro de conexão ao salvar edição.')
+      setShowApprovalError(true)
+
       console.error('❌ Erro ao salvar edição')
     } finally {
       setIsProcessing(false)
@@ -588,6 +723,13 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
   const handleRevise = async (feedback?: string) => {
     const feedbackToUse = feedback || revisionFeedback
     if (!feedbackToUse.trim()) {
+      // 🔊 Feedback sensorial de validação
+      triggerHapticFeedback('warning')
+
+      setRevisionError('⚠️ Por favor, descreva como gostaria de melhorar a resposta')
+      setShowRevisionError(true)
+      setTimeout(() => setShowRevisionError(false), 3000)
+
       console.warn('⚠️ Feedback necessário para revisão da IA')
       return
     }
@@ -611,14 +753,35 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         })
 
         if (response.ok) {
+          // 🔊 Feedback sensorial leve (é só solicitação, não resultado final)
+          triggerHapticFeedback('success')
+
           console.log('🤖 Revisão Solicitada - A IA está revisando a resposta')
           setShowRevisionInput(false)
           setRevisionFeedback('')
         } else {
-          console.error('❌ Erro ao solicitar revisão')
+          const errorData = await response.json()
+
+          // 🔊 Feedback sensorial de erro
+          playNotificationSound('error')
+          triggerHapticFeedback('error')
+
+          // Mostrar erro na UI
+          setRevisionError(errorData.error || 'Erro ao solicitar revisão')
+          setShowRevisionError(true)
+
+          console.error('❌ Erro ao solicitar revisão:', errorData.error)
         }
       }
     } catch (_error) {
+      // 🔊 Feedback sensorial de erro de network
+      playNotificationSound('error')
+      triggerHapticFeedback('error')
+
+      // Mostrar erro na UI
+      setRevisionError('❌ Erro de conexão ao solicitar revisão.')
+      setShowRevisionError(true)
+
       console.error('❌ Erro ao processar revisão')
     } finally {
       setIsProcessing(false)
@@ -651,6 +814,9 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
       })
 
       if (response.ok) {
+        // 🔊 Feedback sensorial leve (solicitação aceita)
+        triggerHapticFeedback('success')
+
         console.log('🔄 Reprocessando com IA - Aguarde enquanto o ML Agent processa')
 
         // Inicia polling mais agressivo durante o reprocessamento
@@ -681,6 +847,10 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
               console.error('Erro ao atualizar status após timeout:', error)
             }
           }
+
+          // 🔊 Feedback sensorial de timeout
+          playNotificationSound('error')
+          triggerHapticFeedback('warning')
 
           console.warn('⏱️ Tempo Esgotado - O processamento excedeu o limite de 1 minuto')
         }, 60000) // 60 segundos
@@ -713,10 +883,26 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           errorMessage = 'Nenhuma conta ativa na organização. Adicione ou ative uma conta.'
         }
 
+        // 🔊 Feedback sensorial de erro
+        playNotificationSound('error')
+        triggerHapticFeedback('error')
+
+        // Mostrar erro na UI
+        setApprovalError(errorMessage)
+        setShowApprovalError(true)
+
         console.error('❌ Erro ao Reprocessar:', errorMessage)
         setIsReprocessing(false)
       }
     } catch (_error) {
+      // 🔊 Feedback sensorial de erro de network
+      playNotificationSound('error')
+      triggerHapticFeedback('error')
+
+      // Mostrar erro na UI
+      setApprovalError('❌ Erro de conexão: Não foi possível conectar ao servidor')
+      setShowApprovalError(true)
+
       console.error('Erro ao reprocessar:', _error)
       console.error('❌ Erro de Conexão: Não foi possível conectar ao servidor')
       setIsReprocessing(false)
@@ -796,129 +982,127 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
       {/* Main Content - Mobile Optimized */}
       <div className="relative p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4">
         {/* Premium Header Section - Mobile Responsive */}
-        <div className="flex items-start justify-between gap-2 sm:gap-4">
-          <div className="flex-1 space-y-4">
-            {/* Top Info Bar - Seller & Date */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
-              {/* Seller Info with Date */}
-              <div className="flex items-center gap-3">
-                {question.mlAccount && (
-                  <div className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-black/40 to-black/20 border border-white/5">
-                    {/* Seller Profile Photo - Smaller on Mobile */}
-                    <div className="relative flex-shrink-0">
-                      <div className="absolute inset-0 bg-gradient-to-br from-gold/30 to-gold/10 blur-sm rounded-full" />
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={question.mlAccount.thumbnail || '/mlagent-logo-3d.svg'}
-                        alt={question.mlAccount.nickname}
-                        className="relative w-7 h-7 sm:w-8 sm:h-8 lg:w-9 lg:h-9 rounded-full border border-gold/40 ring-1 ring-gold/20 object-cover shadow-lg shadow-gold/10"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = '/mlagent-logo-3d.svg'
-                        }}
-                      />
-                    </div>
-
-                    {/* Seller Name with Time - Mobile Text Sizes */}
-                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent truncate max-w-[100px] sm:max-w-none">
-                        {question.mlAccount.nickname}
-                      </span>
-                      <span className="text-xs text-gray-400 hidden sm:inline">•</span>
-                      <span className="text-xs font-medium text-gold/80 hidden sm:inline">
-                        {formatDate((question as any).dateCreated || (question as any).receivedAt || (question as any).createdAt)}
-                      </span>
-                    </div>
+        <div className="space-y-4">
+          {/* Top Info Bar - Seller, Date & Status Badges */}
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
+            {/* Seller Info with Date */}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {question.mlAccount && (
+                <div className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-black/40 to-black/20 border border-white/5">
+                  {/* Seller Profile Photo - Smaller on Mobile */}
+                  <div className="relative flex-shrink-0">
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/30 to-gold/10 blur-sm rounded-full" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={question.mlAccount.thumbnail || '/mlagent-logo-3d.svg'}
+                      alt={question.mlAccount.nickname}
+                      className="relative w-7 h-7 sm:w-8 sm:h-8 lg:w-9 lg:h-9 rounded-full border border-gold/40 ring-1 ring-gold/20 object-cover shadow-lg shadow-gold/10"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/mlagent-logo-3d.svg'
+                      }}
+                    />
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Premium Product Title with Price - Mobile Optimized - Full Width */}
-            <div className="relative w-full p-3 sm:p-3 rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/10 transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-lg sm:rounded-xl" />
-              <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
-                <div className="flex items-start gap-2 sm:gap-2.5 flex-1 min-w-0">
-                  <div className="relative mt-0.5 flex-shrink-0">
-                    <div className="absolute inset-0 bg-gold/20 blur-sm" />
-                    <Package className="relative w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-2">
-                    {question.itemTitle || 'Produto'}
-                  </h3>
-                </div>
-
-                {/* Price - Mobile Optimized */}
-                {question.itemPrice && (
-                  <div className="relative self-start sm:self-auto rounded-md sm:rounded-lg bg-gradient-to-br from-black/60 to-black/40 backdrop-blur-xl border border-gold/20 overflow-hidden px-2 py-1 sm:px-3 sm:py-1.5 group/price hover:border-gold/30 transition-all duration-300 shadow-lg shadow-gold/5 flex-shrink-0">
-                    <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 opacity-50 pointer-events-none" />
-                    <div className="relative flex items-center gap-0.5 sm:gap-1">
-                      <span className="text-[10px] sm:text-[11px] text-gold/70 font-semibold">R$</span>
-                      <span className="text-sm sm:text-base font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">
-                        {question.itemPrice.toFixed(2).replace('.', ',')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Premium Question Box - Mobile Optimized - Full Width - Mesmo padding da resposta */}
-            <div className="relative w-full p-3 sm:p-3 lg:p-4 rounded-lg sm:rounded-xl bg-gradient-to-br from-gray-900/50 via-black/50 to-gray-900/50 border border-white/5">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="relative flex-shrink-0">
-                  <div className="absolute inset-0 bg-gold/10 blur-md" />
-                  <div className="relative w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gradient-to-br from-gold/20 to-gold/10 flex items-center justify-center border border-gold/30">
-                    <span className="text-[10px] sm:text-xs font-bold text-gold">?</span>
+                  {/* Seller Name with Time - Mobile Text Sizes */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                    <span className="text-xs sm:text-sm font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent truncate max-w-[100px] sm:max-w-none">
+                      {question.mlAccount.nickname}
+                    </span>
+                    <span className="text-xs text-gray-400 hidden sm:inline">•</span>
+                    <span className="text-xs font-medium text-gold/80 hidden sm:inline">
+                      {formatDate((question as any).dateCreated || (question as any).receivedAt || (question as any).createdAt)}
+                    </span>
                   </div>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-200 leading-relaxed font-medium flex-1 min-w-0">
-                  {question.text}
-                </p>
+              )}
+            </div>
+
+            {/* Premium Status Badges - Compact on Mobile */}
+            <div className="flex flex-col gap-2 items-end flex-shrink-0">
+              <div className={`
+                flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl
+                bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90
+                backdrop-blur-xl border ${statusConfig.border}
+                ${statusConfig.pulse ? 'animate-pulse' : ''}
+                shadow-lg min-w-[100px] sm:min-w-[140px] justify-center
+              `}>
+                <StatusIcon className={`
+                  w-3.5 h-3.5 sm:w-4 sm:h-4 ${statusConfig.text}
+                  ${statusConfig.spin ? 'animate-spin' : ''}
+                  drop-shadow-lg
+                `} />
+                <span className={`text-[10px] sm:text-xs font-semibold ${statusConfig.text} uppercase tracking-wide sm:tracking-wider`}>
+                  {statusConfig.label}
+                </span>
               </div>
+
+              {/* Badge de Confirmação quando enviado ao ML com sucesso */}
+              {question.status === 'RESPONDED' && question.mlAnswerId && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: -5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                  className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gradient-to-br from-emerald-900/40 to-green-900/40 border border-emerald-500/30 backdrop-blur-sm"
+                >
+                  <div className="flex items-center gap-1 sm:gap-1.5">
+                    <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400 flex-shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="text-[8px] sm:text-[9px] text-emerald-400/70 font-medium leading-tight">
+                        ML ID
+                      </span>
+                      <span className="text-[9px] sm:text-[10px] text-emerald-300 font-mono font-semibold leading-tight">
+                        {question.mlAnswerId}
+                      </span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </div>
 
-          {/* Premium Status Badge - Mobile Optimized */}
-          <div className="flex flex-col gap-2 items-end">
-            <div className={`
-              flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl
-              bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90
-              backdrop-blur-xl border ${statusConfig.border}
-              ${statusConfig.pulse ? 'animate-pulse' : ''}
-              shadow-lg min-w-[100px] sm:min-w-[140px] justify-center
-            `}>
-              <StatusIcon className={`
-                w-3.5 h-3.5 sm:w-4 sm:h-4 ${statusConfig.text}
-                ${statusConfig.spin ? 'animate-spin' : ''}
-                drop-shadow-lg
-              `} />
-              <span className={`text-[10px] sm:text-xs font-semibold ${statusConfig.text} uppercase tracking-wide sm:tracking-wider`}>
-                {statusConfig.label}
-              </span>
-            </div>
+          {/* Premium Product Title with Price - Mobile Optimized - Full Width */}
+          <div className="relative w-full p-3 sm:p-4 rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/10 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-lg sm:rounded-xl" />
+            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
+              <div className="flex items-start gap-2 sm:gap-2.5 flex-1 min-w-0">
+                <div className="relative mt-0.5 flex-shrink-0">
+                  <div className="absolute inset-0 bg-gold/20 blur-sm" />
+                  <Package className="relative w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
+                </div>
+                <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-2">
+                  {question.itemTitle || 'Produto'}
+                </h3>
+              </div>
 
-            {/* Badge de Confirmação quando enviado ao ML com sucesso */}
-            {question.status === 'RESPONDED' && question.mlAnswerId && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: -5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.2 }}
-                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gradient-to-br from-emerald-900/40 to-green-900/40 border border-emerald-500/30 backdrop-blur-sm"
-              >
-                <div className="flex items-center gap-1 sm:gap-1.5">
-                  <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400 flex-shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-[8px] sm:text-[9px] text-emerald-400/70 font-medium leading-tight">
-                      ML ID
-                    </span>
-                    <span className="text-[9px] sm:text-[10px] text-emerald-300 font-mono font-semibold leading-tight">
-                      {question.mlAnswerId}
+              {/* Price - Mobile Optimized */}
+              {question.itemPrice && (
+                <div className="relative self-start sm:self-auto rounded-md sm:rounded-lg bg-gradient-to-br from-black/60 to-black/40 backdrop-blur-xl border border-gold/20 overflow-hidden px-2 py-1 sm:px-3 sm:py-1.5 group/price hover:border-gold/30 transition-all duration-300 shadow-lg shadow-gold/5 flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 opacity-50 pointer-events-none" />
+                  <div className="relative flex items-center gap-0.5 sm:gap-1">
+                    <span className="text-[10px] sm:text-[11px] text-gold/70 font-semibold">R$</span>
+                    <span className="text-sm sm:text-base font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">
+                      {question.itemPrice.toFixed(2).replace('.', ',')}
                     </span>
                   </div>
                 </div>
-              </motion.div>
-            )}
+              )}
+            </div>
+          </div>
+
+          {/* Premium Question Box - Mobile Optimized - Full Width - Mesmo padding da resposta */}
+          <div className="relative w-full p-3 sm:p-4 rounded-lg sm:rounded-xl bg-gradient-to-br from-gray-900/50 via-black/50 to-gray-900/50 border border-white/5">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-gold/10 blur-md" />
+                <div className="relative w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gradient-to-br from-gold/20 to-gold/10 flex items-center justify-center border border-gold/30">
+                  <span className="text-[10px] sm:text-xs font-bold text-gold">?</span>
+                </div>
+              </div>
+              <p className="text-xs sm:text-sm text-gray-200 leading-relaxed font-medium flex-1 min-w-0">
+                {question.text}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1109,11 +1293,8 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-emerald-400 mb-1">
-                    ✅ Resposta Publicada no Mercado Livre
-                  </p>
-                  <p className="text-sm text-emerald-300/90 mb-2">
-                    O cliente recebeu a resposta com sucesso
+                  <p className="text-sm font-semibold text-emerald-400 mb-2">
+                    Resposta Publicada no Mercado Livre
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2 text-xs text-emerald-300/70">
                     <span>

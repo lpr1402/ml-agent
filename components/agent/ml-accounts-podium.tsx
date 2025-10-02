@@ -160,11 +160,11 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-gold/10 via-transparent to-gold/10",
           ringColor: "ring-gold/40",
           badgeTextColor: "text-black",
-          height: 280,
-          badgeSize: "w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16",
-          fontSize: "text-base sm:text-lg lg:text-xl",
-          avatarSize: "w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20",
-          nameSize: "text-xs sm:text-base lg:text-lg",
+          height: 320,
+          badgeSize: "w-9 h-9 sm:w-12 sm:h-12 lg:w-14 lg:h-14",
+          fontSize: "text-xs sm:text-base lg:text-lg",
+          avatarSize: "w-12 h-12 sm:w-16 sm:h-16 lg:w-18 lg:h-18",
+          nameSize: "text-[11px] sm:text-sm lg:text-base",
           position: "1º"
         }
       case 2:  // 2nd place - SILVER (harmonized with gold)
@@ -176,11 +176,11 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-gray-400/10 via-transparent to-gray-400/10",
           ringColor: "ring-gray-400/30",
           badgeTextColor: "text-gray-800",
-          height: 240,
-          badgeSize: "w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14",
-          fontSize: "text-sm sm:text-base lg:text-lg",
-          avatarSize: "w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16",
-          nameSize: "text-xs sm:text-sm lg:text-base",
+          height: 280,
+          badgeSize: "w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12",
+          fontSize: "text-xs sm:text-base lg:text-lg",
+          avatarSize: "w-11 h-11 sm:w-14 sm:h-14 lg:w-15 lg:h-15",
+          nameSize: "text-[10px] sm:text-sm lg:text-base",
           position: "2º"
         }
       case 3:  // 3rd place - BRONZE (harmonized with gold)
@@ -192,9 +192,9 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
           bgGlow: "from-amber-700/10 via-transparent to-amber-700/10",
           ringColor: "ring-amber-700/30",
           badgeTextColor: "text-amber-900",
-          height: 200,
-          badgeSize: "w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12",
-          fontSize: "text-xs sm:text-sm lg:text-base",
+          height: 240,
+          badgeSize: "w-7 h-7 sm:w-9 sm:h-9 lg:w-11 lg:h-11",
+          fontSize: "text-[10px] sm:text-sm lg:text-base",
           avatarSize: "w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14",
           nameSize: "text-[10px] sm:text-xs lg:text-sm",
           position: "3º"
@@ -312,8 +312,8 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
             </div>
           ) : (
             <>
-              {/* Podium Section - Premium Layout Mobile Optimized */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2 lg:gap-4 mb-4 sm:mb-6 sm:items-end">
+              {/* Podium Section - Mobile: Sequencial (1º,2º,3º) | Desktop: Pódio (2º,1º,3º) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-2 lg:gap-4 mb-4 sm:mb-6 sm:items-stretch">
                 {podiumSlots.map((slot) => {
                   const { account, position, visualIndex } = slot
                   const style = getPodiumStyle(position)
@@ -321,12 +321,17 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                   const isSecond = position === 2
 
                   // Different heights for desktop based on position
-                  // Mobile: all same height
+                  // Mobile: altura compacta otimizada | Desktop: altura maior com espaço adequado
                   const heightClass = position === 1
-                    ? "h-[180px] sm:h-[280px]"
+                    ? "min-h-[220px] sm:min-h-[360px]"
                     : position === 2
-                    ? "h-[180px] sm:h-[240px]"
-                    : "h-[180px] sm:h-[200px]"
+                    ? "min-h-[220px] sm:min-h-[320px]"
+                    : "min-h-[220px] sm:min-h-[280px]"
+
+                  // Mobile: ordem sequencial (1º, 2º, 3º)
+                  // Desktop: ordem de pódio (2º à esquerda, 1º centro, 3º direita)
+                  const mobileOrder = position === 1 ? 'order-1' : position === 2 ? 'order-2' : 'order-3'
+                  const desktopOrder = 'sm:order-none' // Desktop usa ordem natural do grid
 
                   return (
                     <motion.div
@@ -334,33 +339,33 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: visualIndex * 0.1 }}
-                      className={`relative block w-full ${heightClass}`}
+                      className={`relative block w-full ${heightClass} ${mobileOrder} ${desktopOrder}`}
                     >
                       {account ? (
                         // Premium Card - Modal Inspired Style
                         <motion.div
                           whileHover={{ scale: 1.01, y: -2 }}
                           transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                          className={`relative h-full rounded-2xl bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 overflow-hidden group hover:border-${isFirst ? 'gold' : isSecond ? 'gray-400' : 'amber-600'}/20 transition-all duration-300`}
+                          className={`relative w-full h-full rounded-2xl bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 group hover:border-${isFirst ? 'gold' : isSecond ? 'gray-400' : 'amber-600'}/20 transition-all duration-300 flex flex-col`}
                         >
                           {/* Premium Background Glow */}
                           <div className={`absolute inset-0 bg-gradient-to-br ${style.bgGlow} opacity-30 pointer-events-none`} />
                           {/* Position Badge - Premium Clean */}
-                          <div className="absolute top-3 right-3 z-20">
+                          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-20">
                             <div className="relative">
                               <div className={`absolute inset-0 bg-${isFirst ? 'gold' : isSecond ? 'gray-400' : 'amber-600'}/20 blur-xl`} />
                               <div className={`relative ${style.badgeSize} rounded-full bg-gradient-to-br ${style.medalColor} shadow-lg flex items-center justify-center`}>
-                                <span className={`${style.fontSize} font-bold ${style.badgeTextColor}`}>{style.position}</span>
+                                <span className={`${style.fontSize} font-bold ${style.badgeTextColor} leading-none`}>{style.position}</span>
                               </div>
                             </div>
                           </div>
 
                           {/* Content - Mobile Optimized */}
-                          <div className="relative z-10 h-full flex flex-col p-2 sm:p-3 lg:p-4">
-                            {/* Account Header - Ultra Clean with more top spacing */}
-                            <div className="text-center mb-3 mt-8">
+                          <div className="relative z-10 h-full flex flex-col p-3 sm:p-5 lg:p-6">
+                            {/* Account Header - Ultra Clean */}
+                            <div className="text-center mb-3 sm:mb-4 mt-6 sm:mt-8">
                               {/* Avatar - Clean Minimal Style */}
-                              <div className="mb-3 flex justify-center">
+                              <div className="mb-2 sm:mb-3 flex justify-center">
                                 {account.thumbnail ? (
                                   <div className="relative">
                                     <div className={`absolute inset-0 bg-${isFirst ? 'gold' : isSecond ? 'gray-400' : 'amber-600'}/10 blur-xl`} />
@@ -384,56 +389,55 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                               </div>
 
                               {/* Name - Clean Typography */}
-                              <h4 className={`font-semibold text-white ${style.nameSize} truncate px-2`}>
+                              <h4 className={`font-semibold text-white ${style.nameSize} px-2 sm:px-4 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-[3rem] flex items-center justify-center`}>
                                 {account.nickname}
                               </h4>
                             </div>
 
-                            {/* Primary Metric - Modal Style Mobile Optimized */}
-                            <div className="flex-1 flex flex-col justify-center mb-2 sm:mb-3 lg:mb-4 px-1 sm:px-2">
-                              <div className="p-2 sm:p-3 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5">
+                            {/* Primary Metric - Compacto Mobile */}
+                            <div className="flex-1 flex flex-col justify-center mb-3 sm:mb-4 px-1 sm:px-2">
+                              <div className="p-2.5 sm:p-3 lg:p-4 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5">
                                 <p className={`${
-                                  isFirst ? 'text-lg sm:text-2xl lg:text-3xl' : isSecond ? 'text-base sm:text-xl lg:text-2xl' : 'text-sm sm:text-lg lg:text-xl'
-                                } font-bold ${style.textColor}`}>
+                                  isFirst ? 'text-sm sm:text-2xl lg:text-3xl' : isSecond ? 'text-xs sm:text-xl lg:text-2xl' : 'text-[11px] sm:text-lg lg:text-xl'
+                                } font-bold ${style.textColor} leading-none`}>
                                   {sortBy === "revenue"
                                     ? formatCurrency(account.totalRevenue)
                                     : account.totalQuestions.toLocaleString()
                                   }
                                 </p>
-                                <p className={`text-[8px] sm:text-[9px] lg:text-[10px] text-gray-400 opacity-80 uppercase tracking-widest mt-1 font-medium`}>
+                                <p className={`text-[8px] sm:text-[10px] lg:text-[11px] text-gray-400 opacity-80 uppercase tracking-widest mt-1 sm:mt-1.5 font-medium leading-none`}>
                                   {sortBy === "revenue" ? "Faturamento" : "Perguntas"}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Metrics Row - Modal Style Cards Mobile Optimized */}
-                            <div className="grid grid-cols-3 gap-1 sm:gap-2 px-1 sm:px-2">
-                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                            {/* Metrics Row - Compacto Mobile com padding inferior adequado */}
+                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 lg:gap-2.5 px-1 sm:px-2 pb-1 sm:pb-2">
+                              <div className="text-center p-2 sm:p-2.5 lg:p-3 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
-                                } font-semibold ${style.textColor}`}>
+                                  isFirst ? 'text-[11px] sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
+                                } font-semibold ${style.textColor} leading-none`}>
                                   {account.answeredQuestions || 0}
                                 </p>
-                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium">Respostas</p>
+                                <p className="text-[7px] sm:text-[9px] lg:text-[10px] text-gray-400 uppercase tracking-wider font-medium leading-none mt-1.5 sm:mt-1">Resp</p>
                               </div>
-                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                              <div className="text-center p-2 sm:p-2.5 lg:p-3 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
-                                } font-semibold ${style.textColor}`}>
+                                  isFirst ? 'text-[11px] sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
+                                } font-semibold ${style.textColor} leading-none`}>
                                   {formatTime(account.avgResponseTime)}
                                 </p>
-                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium hidden sm:block">Tempo</p>
-                                <p className="text-[7px] text-gray-400 uppercase tracking-wider font-medium sm:hidden">Tempo</p>
+                                <p className="text-[7px] sm:text-[9px] lg:text-[10px] text-gray-400 uppercase tracking-wider font-medium leading-none mt-1.5 sm:mt-1">Tempo</p>
                               </div>
-                              <div className="text-center p-1 sm:p-2 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
+                              <div className="text-center p-2 sm:p-2.5 lg:p-3 rounded-md sm:rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-white/10 transition-all">
                                 <p className={`${
-                                  isFirst ? 'text-xs sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
+                                  isFirst ? 'text-[11px] sm:text-sm lg:text-base' : 'text-[10px] sm:text-xs lg:text-sm'
                                 } font-semibold ${
                                   (account.realProfit || 0) > 0 ? 'text-green-400' : 'text-gray-400'
-                                }`}>
+                                } leading-none`}>
                                   {formatCurrency(account.realProfit || 0)}
                                 </p>
-                                <p className="text-[7px] sm:text-[8px] lg:text-[9px] text-gray-400 uppercase tracking-wider font-medium">Lucro</p>
+                                <p className="text-[7px] sm:text-[9px] lg:text-[10px] text-gray-400 uppercase tracking-wider font-medium leading-none mt-1.5 sm:mt-1">Lucro</p>
                               </div>
                             </div>
 
@@ -443,17 +447,17 @@ export function MLAccountsPodium({ organizationId, onAddAccount }: MLAccountsPod
                         // Empty position - Modal Style
                         <div className="relative h-full rounded-2xl bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 overflow-hidden">
                           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-white/[0.02] opacity-50 pointer-events-none" />
-                          <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
+                          <div className="flex flex-col items-center justify-center h-full gap-3 sm:gap-4 p-4 sm:p-5">
                             <div className={`${style.badgeSize} rounded-full bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 flex items-center justify-center`}>
-                              <span className={`${style.fontSize} font-medium text-gray-600`}>{style.position}</span>
+                              <span className={`${style.fontSize} font-medium text-gray-600 leading-none`}>{style.position}</span>
                             </div>
-                            <p className="text-[10px] text-gray-500 font-medium">Vazio</p>
+                            <p className="text-[11px] sm:text-xs text-gray-500 font-medium">Vazio</p>
                             {onAddAccount && (
                               <motion.button
                                 whileTap={{ scale: 0.95 }}
                                 onClick={onAddAccount}
-                                className="w-8 h-8 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 hover:border-gold/30 transition-all flex items-center justify-center group">
-                                <Plus className="w-4 h-4 text-gold/50 group-hover:text-gold transition-colors" />
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 hover:border-gold/30 transition-all flex items-center justify-center group">
+                                <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-gold/50 group-hover:text-gold transition-colors" />
                               </motion.button>
                             )}
                           </div>
