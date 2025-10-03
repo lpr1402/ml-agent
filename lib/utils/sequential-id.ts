@@ -1,53 +1,87 @@
 /**
  * Generate sequential ID in format XX/DDMM
- * Where XX is a sequential number and DDMM is day+month
+ * Where XX is the DAILY sequential number (01, 02, 03...) and DDMM is day+month
+ *
+ * IMPORTANTE: Deve ser calculado ao RECEBER a pergunta com base em quantas
+ * perguntas a organização já recebeu HOJE
  */
 
 import { logger } from '@/lib/logger'
+import { prisma } from '@/lib/prisma'
 
 /**
- * Generate sequential ID from question ID or ML Question ID
- * Format: XX/DDMM where XX is sequential and DDMM is current day+month
+ * Generate REAL sequential ID for today
+ * Busca quantas perguntas a organização recebeu hoje e incrementa
+ * Format: XX/DDMM onde XX é sequencial do dia
+ *
+ * @param organizationId - ID da organização
+ * @param questionReceivedAt - Data de recebimento da pergunta (default: agora)
+ * @returns Sequential ID no formato XX/DDMM (ex: 01/0310, 02/0310)
  */
-export function generateSequentialId(questionId: string): string {
+export async function generateSequentialId(
+  organizationId: string,
+  questionReceivedAt: Date = new Date()
+): Promise<string> {
   try {
-    const now = new Date()
+    const now = questionReceivedAt
     const day = now.getDate().toString().padStart(2, '0')
     const month = (now.getMonth() + 1).toString().padStart(2, '0')
 
-    // Extract sequential number from question ID
-    // Use last 2-4 digits of the hash to generate a number
-    const hash = questionId.replace(/[^0-9]/g, '')
-    let sequential = 0
+    // Início do dia (00:00:00)
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
 
-    if (hash.length >= 2) {
-      // Take last 2 digits
-      sequential = parseInt(hash.slice(-2), 10)
-    } else if (questionId.length >= 4) {
-      // Fallback: generate from questionId characters
-      const charSum = questionId
-        .slice(0, 4)
-        .split('')
-        .reduce((sum, char) => sum + char.charCodeAt(0), 0)
-      sequential = charSum % 100
-    } else {
-      // Last resort: random
-      sequential = Math.floor(Math.random() * 100)
-    }
+    // Contar quantas perguntas a organização JÁ recebeu HOJE (incluindo esta)
+    const todayQuestionsCount = await prisma.question.count({
+      where: {
+        mlAccount: {
+          organizationId
+        },
+        receivedAt: {
+          gte: startOfDay,
+          lte: now // Até o momento atual
+        }
+      }
+    })
+
+    // Próximo número sequencial (se tem 5, esta é a 6ª)
+    const sequential = todayQuestionsCount + 1
 
     // Format as XX/DDMM
     const seqStr = sequential.toString().padStart(2, '0')
-    return `${seqStr}/${day}${month}`
+    const result = `${seqStr}/${day}${month}`
+
+    logger.info('[SequentialID] Generated sequential ID', {
+      organizationId,
+      todayCount: todayQuestionsCount,
+      sequential,
+      result
+    })
+
+    return result
 
   } catch (error) {
-    logger.error('[SequentialID] Error generating ID', { error, questionId })
-    // Fallback format
-    const now = new Date()
+    logger.error('[SequentialID] Error generating sequential ID', { error, organizationId })
+
+    // Fallback: usar timestamp para garantir unicidade
+    const now = questionReceivedAt
     const day = now.getDate().toString().padStart(2, '0')
     const month = (now.getMonth() + 1).toString().padStart(2, '0')
-    const random = Math.floor(Math.random() * 100).toString().padStart(2, '0')
-    return `${random}/${day}${month}`
+    const timestamp = Date.now().toString().slice(-2) // últimos 2 dígitos do timestamp
+    return `${timestamp}/${day}${month}`
   }
+}
+
+/**
+ * DEPRECATED: Função antiga que gerava ID aleatório
+ * Mantida para compatibilidade, mas NÃO DEVE SER USADA
+ */
+export function generateSequentialIdOld(_questionId: string): string {
+  logger.warn('[SequentialID] Using OLD deprecated function - should use async version')
+  const now = new Date()
+  const day = now.getDate().toString().padStart(2, '0')
+  const month = (now.getMonth() + 1).toString().padStart(2, '0')
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0')
+  return `${random}/${day}${month}`
 }
 
 /**

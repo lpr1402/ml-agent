@@ -173,6 +173,48 @@ async function startWebSocketServer() {
         timestamp: Date.now()
       })
 
+      // JWT Auto-Refresh: Enviar novo token antes de expirar (UX perfeita)
+      const decoded = jwt.decode(socket.data.auth.sessionToken)
+      if (decoded && decoded.exp) {
+        const expiresIn = (decoded.exp * 1000) - Date.now()
+        const refreshTime = Math.max(expiresIn - (5 * 60 * 1000), 60000) // 5 min antes ou 1 min
+
+        const refreshTimer = setTimeout(() => {
+          try {
+            // Gerar novo token com mesmos dados
+            const newToken = jwt.sign(
+              {
+                type: 'websocket',
+                organizationId,
+                mlAccountId,
+                mlUserId: socket.data.auth.mlUserId,
+                nickname
+              },
+              SESSION_SECRET,
+              { expiresIn: '7d' } // 7 dias de validade
+            )
+
+            // Enviar novo token ao cliente
+            socket.emit('token:refresh', {
+              token: newToken,
+              expiresIn: 7 * 24 * 60 * 60 * 1000, // 7 dias em ms
+              refreshedAt: Date.now()
+            })
+
+            logger.info(`JWT auto-refreshed for ${nickname} (${socket.id})`)
+          } catch (error) {
+            logger.error(`JWT auto-refresh failed for ${socket.id}:`, error)
+          }
+        }, refreshTime)
+
+        // Limpar timer ao desconectar
+        socket.on('disconnect', () => {
+          clearTimeout(refreshTimer)
+        })
+
+        logger.debug(`JWT auto-refresh scheduled in ${Math.round(refreshTime / 60000)} minutes for ${nickname}`)
+      }
+
       // Handle account switching
       socket.on('switch-account', (accountId) => {
         logger.info(`Account switch requested`, {

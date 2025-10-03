@@ -1,21 +1,26 @@
 {
   "applinks": {
-    "apps": [],
     "details": [
       {
-        "appID": "TEAM_ID.com.axnexlabs.mlagent",
-        "paths": [
-          "/agente",
-          "/agente/*",
-          "/login"
+        "appIDs": ["*.com.br.axnexlabs.gugaleo"],
+        "components": [
+          {
+            "/": "/agente/*",
+            "comment": "Matches all agent routes"
+          },
+          {
+            "/": "/agente",
+            "comment": "Main agent page"
+          },
+          {
+            "/": "/",
+            "comment": "Homepage"
+          }
         ]
       }
     ]
   },
   "webcredentials": {
-    "apps": ["TEAM_ID.com.axnexlabs.mlagent"]
-  },
-  "activitycontinuation": {
-    "apps": ["TEAM_ID.com.axnexlabs.mlagent"]
+    "apps": ["*.com.br.axnexlabs.gugaleo"]
   }
 }

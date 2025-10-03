@@ -11,10 +11,11 @@ import { getTokenRefreshManager } from './lib/ml-api/token-refresh-manager'
 import { mlAccountsUpdater } from './lib/jobs/update-ml-accounts'
 import Redis from 'ioredis'
 
-// Configuração
+// Configuração seguindo ML Best Practices
 const MAX_RETRIES = 3
 const BATCH_SIZE = 10
 const INSTANT_PROCESS_DELAY = 100 // 100ms para evitar race conditions
+const DELAY_BETWEEN_REQUESTS_MS = 500 // 500ms entre requisições (evita burst e 429)
 
 // Redis para receber notificações em tempo real
 const redisConfig: any = {
@@ -136,10 +137,9 @@ async function processQuestions(filterQuestionId?: string): Promise<boolean> {
           logger.error(`[Worker] Question ${question.id} failed: ${response.status}`)
         }
         
-        // Delay menor para processamento mais rápido (apenas se múltiplas perguntas)
-        if (questions.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 500))
-        }
+        // Delay entre requisições para evitar burst (ML best practice)
+        // SEMPRE aplicar delay para distribuir requisições ao longo do tempo
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS_MS))
         
       } catch (error) {
         logger.error(`[Worker] Error processing question ${question.id}:`, { error })

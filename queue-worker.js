@@ -93,9 +93,12 @@ console.log(`📊 Configuration:
 `)
 
 // Tracking de processamento por conta ML para evitar rate limit
+// ESTRATÉGIA ML BEST PRACTICES: 2 req simultâneas + 1s delay entre batches por conta
 const activeProcessingByAccount = new Map()
-const MAX_CONCURRENT_PER_ACCOUNT = 5 // Máximo 5 requisições simultâneas por conta ML
-const GLOBAL_MAX_CONCURRENT = 30 // Máximo global de 30 para processar mais rápido
+const lastBatchTimeByAccount = new Map() // Timestamp do último batch por conta ML
+const MAX_CONCURRENT_PER_ACCOUNT = 2 // 2 requisições simultâneas por conta ML (evita 429)
+const BATCH_DELAY_MS = 1000 // 1 segundo entre batches por conta ML (best practice)
+const GLOBAL_MAX_CONCURRENT = 20 // Máximo global balanceado para múltiplas contas
 
 /**
  * PROCESSADOR ÚNICO DE PERGUNTAS - Tempo Real
@@ -103,7 +106,7 @@ const GLOBAL_MAX_CONCURRENT = 30 // Máximo global de 30 para processar mais rá
  * Otimizado para experiência em tempo real
  * COM LIMITE POR CONTA ML para evitar 429
  */
-questionQueue.process(GLOBAL_MAX_CONCURRENT, async (job) => { // Aumentado para 30
+questionQueue.process(GLOBAL_MAX_CONCURRENT, async (job) => { // Otimizado para 20
   const startTime = Date.now()
   const { mlQuestionId, mlAccountId, organizationId, questionText, itemTitle } = job.data
 
@@ -116,17 +119,28 @@ questionQueue.process(GLOBAL_MAX_CONCURRENT, async (job) => { // Aumentado para 
     return { success: false, reason: 'circuit_breaker_open', waitTime }
   }
 
-  // Verificar limite de concorrência por conta ML
+  // Verificar limite de concorrência por conta ML (2 por vez)
   const currentProcessing = activeProcessingByAccount.get(mlAccountId) || 0
   if (currentProcessing >= MAX_CONCURRENT_PER_ACCOUNT) {
     // Requeue com delay para não ultrapassar limite da conta
     console.log(`⏳ Account ${mlAccountId} at limit (${currentProcessing}/${MAX_CONCURRENT_PER_ACCOUNT}), delaying...`)
-    await job.moveToDelayed(Date.now() + 2000, { skipAttempt: true })
+    await job.moveToDelayed(Date.now() + BATCH_DELAY_MS, { skipAttempt: true })
     return { success: false, reason: 'account_rate_limited', delayed: true }
   }
 
-  // Incrementar contador da conta
+  // Garantir intervalo de 1 segundo entre batches da mesma conta ML (BEST PRACTICE)
+  const lastBatchTime = lastBatchTimeByAccount.get(mlAccountId) || 0
+  const timeSinceLastBatch = Date.now() - lastBatchTime
+  if (timeSinceLastBatch < BATCH_DELAY_MS && lastBatchTime > 0) {
+    const waitTime = BATCH_DELAY_MS - timeSinceLastBatch
+    console.log(`⏱️ Account ${mlAccountId} needs ${waitTime}ms delay between batches (best practice)`)
+    await job.moveToDelayed(Date.now() + waitTime, { skipAttempt: true })
+    return { success: false, reason: 'batch_delay_required', delayed: true, waitTime }
+  }
+
+  // Incrementar contador da conta e atualizar timestamp do batch
   activeProcessingByAccount.set(mlAccountId, currentProcessing + 1)
+  lastBatchTimeByAccount.set(mlAccountId, Date.now())
 
   try {
     // Buscar pergunta no banco

@@ -335,6 +335,26 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       socket.emit('pong')
     })
 
+    // 🎯 JWT Auto-Refresh: Receber novo token antes de expirar (UX perfeita)
+    socket.on('token:refresh', (data) => {
+      logger.info('[WebSocket] 🔑 JWT token auto-refreshed by server')
+
+      // Atualizar token na socket atual (com type assertion seguro)
+      if (socket.auth && typeof socket.auth === 'object' && 'token' in socket.auth) {
+        (socket.auth as { token: string }).token = data.token
+      }
+
+      // Salvar novo token no sessionStorage para próximas conexões (opcional)
+      try {
+        sessionStorage.setItem('ws_token_refreshed_at', new Date().toISOString())
+        logger.debug('[WebSocket] Token refresh timestamp saved')
+      } catch (error) {
+        // Silently fail if storage not available
+      }
+
+      logger.info(`[WebSocket] 🔄 New token valid for ${Math.round(data.expiresIn / (1000 * 60 * 60 * 24))} days`)
+    })
+
     socketRef.current = socket
   }, [getSessionToken, reconnectAttempts, reconnectDelay])
 

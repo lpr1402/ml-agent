@@ -428,6 +428,17 @@ export async function POST(request: NextRequest) {
       } catch (prismaError: unknown) {
         // 🔒 FIX: Error handling robusto com diagnóstico completo
         const error = prismaError as any
+
+        // Sanitizar stack trace com segurança
+        let stackTrace = 'No stack'
+        if (error?.stack && typeof error.stack === 'string') {
+          try {
+            stackTrace = error.stack.split('\n').slice(0, 3).join('\n')
+          } catch {
+            stackTrace = String(error.stack).substring(0, 200)
+          }
+        }
+
         logger.error("[Approve] Prisma update error after ML success", {
           questionId,
           mlQuestionId: question.mlQuestionId,
@@ -435,7 +446,7 @@ export async function POST(request: NextRequest) {
           errorCode: error?.code || 'UNKNOWN', // P2025 (not found), P2002 (unique), etc
           errorMessage: error?.message || String(error),
           errorMeta: error?.meta || null,
-          stackTrace: error?.stack?.split('\n').slice(0, 3).join('\n') || 'No stack'
+          stackTrace
         })
 
         // ⚠️ CRITICAL: ML API já recebeu com sucesso
@@ -474,31 +485,18 @@ export async function POST(request: NextRequest) {
         logger.info('[✅ Zapster] Iniciando envio de confirmação ao WhatsApp', {
           questionId: question.mlQuestionId,
           seller: question.mlAccount.nickname,
-          action
+          action,
+          sequentialId: question.sequentialId
         })
 
-        // Gerar ID sequencial correto no formato XX/DDMM
-        const now = new Date()
-        const day = String(now.getDate()).padStart(2, '0')
-        const month = String(now.getMonth() + 1).padStart(2, '0')
+        // 🎯 USAR O MESMO sequentialId que foi gerado ao receber a pergunta
+        // NUNCA gerar novo - deve ser o mesmo nas 2 notificações
+        const sequentialId = question.sequentialId || '00/0000'
 
-        // Buscar número sequencial da pergunta no dia
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-
-        const dailyCount = await prisma.question.count({
-          where: {
-            mlAccount: {
-              organizationId: session.organizationId
-            },
-            receivedAt: {
-              gte: startOfDay,
-              lt: question.receivedAt || new Date()
-            }
-          }
+        logger.info('[✅ Zapster] Using SAME sequential ID from question', {
+          sequentialId,
+          questionId: question.id
         })
-
-        const sequenceNumber = String(dailyCount + 1).padStart(2, '0')
-        const sequentialId = `${sequenceNumber}/${day}${month}`
 
         const zapsterConfirmResult = await zapsterService.sendApprovalConfirmation({
           sequentialId: sequentialId,

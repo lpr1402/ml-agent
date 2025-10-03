@@ -141,9 +141,9 @@ class ZapsterWhatsAppService {
    */
   async sendQuestionNotification(data: QuestionNotification): Promise<boolean> {
     try {
-      // Link direto para /agente (abre no PWA instalado no iOS)
+      // 🎯 iOS Deep Linking: Link com query param para garantir abertura no PWA
       const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
-      const directLink = `${baseUrl}/agente`
+      const directLink = `${baseUrl}/agente?source=whatsapp&utm_medium=notification`
 
       // Usar o ID sequencial já salvo no banco (NUNCA gerar novo)
       const sequentialId = String(data.sequentialId || '00/0000')

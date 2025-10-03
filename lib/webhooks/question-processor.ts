@@ -211,8 +211,9 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
     }
 
     // ATUALIZAR PERGUNTA COM DADOS COMPLETOS
-    // Gerar ID sequencial ÚNICO para rastreio permanente
-    const sequentialId = generateSequentialId(questionId)
+    // Gerar ID sequencial ÚNICO baseado em quantas perguntas a organização recebeu HOJE
+    const receivedAt = questionDetails?.date_created ? new Date(questionDetails.date_created) : new Date()
+    const sequentialId = await generateSequentialId(mlAccount.organizationId, receivedAt)
 
     // Buscar pergunta existente para verificar seu status atual
     const existingQuestion = await prisma.question.findUnique({
