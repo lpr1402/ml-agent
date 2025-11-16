@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-export async function middleware(request: NextRequest) {
+// Next.js 16: middleware foi renomeado para proxy
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
 
@@ -19,7 +20,6 @@ export async function middleware(request: NextRequest) {
     const hasOAuthParams = searchParams.has('code') || searchParams.has('state')
 
     if (hasOAuthParams) {
-      console.log('[iOS PWA Protection] Detected stale OAuth params, cleaning URL:', pathname)
       // Redirecionar para URL limpa sem params
       const cleanUrl = new URL(pathname, request.url)
       return NextResponse.redirect(cleanUrl, 307) // 307 = Temporary Redirect mantém POST/GET
@@ -40,26 +40,28 @@ export async function middleware(request: NextRequest) {
     response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
   }
 
-  // Content Security Policy com suporte para Google Fonts, SSE e WebSocket
-  // Removido 'unsafe-eval' que não é necessário e causa avisos de segurança
+  // Content Security Policy SECURE - NO unsafe-eval!
+  // Production-ready with all ML domains and WebSocket support
   response.headers.set(
     "Content-Security-Policy",
-    "default-src 'self' https://api.mercadolibre.com https://mla-s1-p.mlstatic.com https://*.mlstatic.com; " +
-    "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; " +
+    "default-src 'self' https://gugaleo.axnexlabs.com.br; " +
+    "script-src 'self' 'unsafe-inline' https://gugaleo.axnexlabs.com.br; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "script-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data: blob: https://*.mlstatic.com https://mla-s1-p.mlstatic.com; " +
-    "connect-src 'self' https://api.mercadolibre.com https://gugaleo.axnexlabs.com.br wss://gugaleo.axnexlabs.com.br:3008 ws://gugaleo.axnexlabs.com.br:3008 ws://localhost:* wss://localhost:* http://localhost:* https://localhost:*"
+    "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; " +
+    "img-src 'self' data: blob: https: http2.mlstatic.com *.mlstatic.com; " +
+    "connect-src 'self' https://api.mercadolibre.com https://gugaleo.axnexlabs.com.br wss://gugaleo.axnexlabs.com.br wss://gugaleo.axnexlabs.com.br:3008 ws://localhost:* wss://localhost:*; " +
+    "frame-src 'none'; " +
+    "object-src 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'; " +
+    "upgrade-insecure-requests"
   )
 
   // Headers especiais para SSE - CRÍTICO para funcionamento correto
   if (pathname.startsWith('/api/agent/events')) {
-    console.log('[Middleware] 🎯 SSE route detected, applying special headers:', pathname)
-
     // SSE com token query param não precisa de cookie check
     const searchParams = request.nextUrl.searchParams
     if (searchParams.has('token')) {
-      console.log('[Middleware] SSE with token query param, bypassing cookie auth')
       // Não fazer nada com auth, deixar o endpoint validar o token
     }
 
@@ -104,18 +106,13 @@ export async function middleware(request: NextRequest) {
       '18.206.34.84',    // IP ativo do ML
       '18.213.114.129'   // IP ativo do ML
     ]
-    
-    console.log(`[Webhook] Checking IP: ${realIp} from x-real-ip: ${realIpHeader}, x-forwarded-for: ${forwardedFor}`)
-    
+
     if (!allowedIPs.includes(realIp) && !realIp.startsWith('127.') && !realIp.startsWith('::1')) {
-      console.warn(`[Webhook] Blocked request from IP: ${realIp}`)
       return NextResponse.json(
         { error: "Forbidden - Invalid source IP" },
         { status: 403 }
       )
     }
-    
-    console.log(`[Webhook] Allowed IP: ${realIp}`)
   }
   
   // Rate limiting DESATIVADO - conforme solicitação do usuário
@@ -239,39 +236,60 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(url)
       }
 
-      // Se tem sessão, estender a validade do cookie (sessão persistente)
+      // 🚀 OTIMIZAÇÃO CRÍTICA: Renovar cookies apenas 1x por hora (não em toda requisição!)
       if (sessionToken && orgId) {
-        // Renovar cookies para manter sessão por mais 30 dias
-        response.cookies.set('ml-agent-session', sessionToken, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'lax',
-          maxAge: 30 * 24 * 60 * 60, // 30 dias
-          path: '/'
-        })
+        // Verificar se já renovamos recentemente (cookie extra de controle)
+        const lastRenewal = request.cookies.get('ml-agent-renewal')?.value
+        const shouldRenew = !lastRenewal || (Date.now() - parseInt(lastRenewal)) > 3600000 // 1 hora
 
-        response.cookies.set('ml-agent-org', orgId, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'lax',
-          maxAge: 30 * 24 * 60 * 60, // 30 dias
-          path: '/'
-        })
+        if (shouldRenew) {
+          // Renovar cookies para manter sessão por mais 30 dias
+          response.cookies.set('ml-agent-session', sessionToken, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            maxAge: 30 * 24 * 60 * 60, // 30 dias
+            path: '/'
+          })
+
+          response.cookies.set('ml-agent-org', orgId, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            maxAge: 30 * 24 * 60 * 60, // 30 dias
+            path: '/'
+          })
+
+          // Marcar quando renovamos (cookie de controle)
+          response.cookies.set('ml-agent-renewal', Date.now().toString(), {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            maxAge: 30 * 24 * 60 * 60,
+            path: '/'
+          })
+        }
       }
     }
   }
   
-  // Redirect root to agente if authenticated, login if not
+  // 🚀 ENTERPRISE FIX: Redirect root baseado em role (SUPER_ADMIN vs CLIENT)
   if (pathname === "/") {
     // Cookie padronizado para produção
     const sessionToken = request.cookies.get('ml-agent-session')?.value
+    const userRole = request.cookies.get('ml-agent-role')?.value // Cookie cache do role
 
     // 🎯 iOS PWA FIX: Usar clone() do URL para manter exatamente o mesmo contexto
     const url = request.nextUrl.clone()
     url.search = '' // Limpar query params
 
     if (sessionToken) {
-      url.pathname = "/agente"
+      // ✅ CRITICAL FIX: Redirecionar baseado em role
+      if (userRole === 'SUPER_ADMIN') {
+        url.pathname = "/admin/dashboard" // Admin vai para painel administrativo
+      } else {
+        url.pathname = "/agente" // Cliente vai para painel normal
+      }
       return NextResponse.redirect(url)
     } else {
       url.pathname = "/login"

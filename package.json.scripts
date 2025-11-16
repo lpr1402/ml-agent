@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "verify": "npx tsx verify-system.ts",
+    "test-sync": "npx tsx test-full-sync.ts",
+    "check-health": "curl https://gugaleo.axnexlabs.com.br/api/ml-metrics?format=dashboard | jq",
+    "check-queue": "curl https://gugaleo.axnexlabs.com.br/api/ml-metrics?format=queue | jq",
+    "check-alerts": "curl https://gugaleo.axnexlabs.com.br/api/ml-metrics?format=alerts | jq",
+    "force-sync": "curl -X POST https://gugaleo.axnexlabs.com.br/api/stock/sync-full -H 'Content-Type: application/json' -d '{\"force\": true}'"
+  }
+}

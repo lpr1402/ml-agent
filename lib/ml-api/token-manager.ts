@@ -13,7 +13,7 @@ import {
   getCachedToken,
   setCachedToken
 } from './token-cache-manager'
-import { fetchWithRateLimit } from '@/lib/api/smart-rate-limiter'
+import { globalMLRateLimiter } from './global-rate-limiter'
 
 export interface TokenRefreshResult {
   success: boolean
@@ -52,11 +52,13 @@ export async function getValidMLToken(mlAccountId: string): Promise<string | nul
       return null
     }
 
+    // ⚡ FIX CRÍTICO: NÃO bloquear se inativa - permitir auto-recuperação via refresh
+    // Se conta foi desativada por token expirado, vamos tentar reativar
     if (!account.isActive) {
-      logger.error(`[TokenManager] Account ${account.nickname} is inactive`)
-      return null
+      logger.warn(`[TokenManager] Account ${account.nickname} is inactive, will try to recover via token refresh`)
+      // Continua para tentar refresh ao invés de retornar null
     }
-    
+
     // Verificar cache com isolamento por organização
     const cached = getCachedToken(account.organizationId, mlAccountId)
     if (cached && !cached.needsRefresh) {
@@ -138,35 +140,46 @@ async function refreshMLToken(account: any): Promise<TokenRefreshResult> {
       authTag: account.refreshTokenTag
     })
 
-    // Fazer chamada para ML com rate limiting
-    const response = await fetchWithRateLimit(
-      'https://api.mercadolibre.com/oauth/token',
-      {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: process.env['ML_CLIENT_ID']!,
-          client_secret: process.env['ML_CLIENT_SECRET']!,
-        refresh_token: refreshToken
-      })
-    },
-    'oauth/token'
-  )
+    // Fazer chamada para ML com rate limiting global
+    const response = await globalMLRateLimiter.executeRequest({
+      mlAccountId: account.id,
+      organizationId: account.organizationId,
+      endpoint: 'oauth/token',
+      priority: 'high', // Token refresh tem prioridade alta
+      requestFn: async () => {
+        const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            client_id: process.env['ML_CLIENT_ID']!,
+            client_secret: process.env['ML_CLIENT_SECRET']!,
+            refresh_token: refreshToken
+          })
+        })
 
-    const responseText = await response.text()
+        // ✅ FIX: Ler response uma única vez e retornar objeto com dados
+        const responseText = await res.text()
+        return {
+          ok: res.ok,
+          status: res.status,
+          text: responseText
+        }
+      }
+    })
+
     logger.info(`[TokenManager] Refresh response status: ${response.status}`)
 
     if (!response.ok) {
       let errorMessage = 'Unknown error'
       try {
-        const errorData = JSON.parse(responseText)
-        errorMessage = errorData.message || errorData.error || responseText
+        const errorData = JSON.parse(response.text)
+        errorMessage = errorData.message || errorData.error || response.text
       } catch {
-        errorMessage = responseText
+        errorMessage = response.text
       }
 
       logger.error(`[TokenManager] Refresh failed: ${errorMessage}`)
@@ -185,7 +198,7 @@ async function refreshMLToken(account: any): Promise<TokenRefreshResult> {
       }
     }
 
-    const tokens = JSON.parse(responseText)
+    const tokens = JSON.parse(response.text)
     logger.info(`[TokenManager] Token refreshed successfully for ${account.nickname}`)
 
     // Criptografar novos tokens

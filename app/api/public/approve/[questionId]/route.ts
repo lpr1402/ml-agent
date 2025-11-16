@@ -90,22 +90,34 @@ export async function POST(
         }
       })
       
-      // Update metrics - using mlAccount.mlUserId for consistency
-      // Only update if metrics exist (upsert not used to avoid creating orphan records)
-      const metricsExist = await prisma.userMetrics.findUnique({
-        where: { mlUserId: question.mlAccount.mlUserId }
+      // 🔴 FIX: Usar upsert para criar métricas se não existirem
+      await prisma.userMetrics.upsert({
+        where: { mlUserId: question.mlAccount.mlUserId },
+        update: {
+          answeredQuestions: { increment: 1 },
+          pendingQuestions: { decrement: 1 },
+          autoApprovedCount: { increment: 1 },
+          lastActiveAt: new Date()
+        },
+        create: {
+          mlUserId: question.mlAccount.mlUserId,
+          totalQuestions: 0,
+          answeredQuestions: 1,
+          pendingQuestions: 0,
+          answeredToday: 0,
+          avgResponseTime: 0,
+          autoApprovedCount: 1,
+          manualApprovedCount: 0,
+          revisedCount: 0,
+          rejectedCount: 0,
+          failedQuestions: 0,
+          totalXP: 0,
+          currentLevel: 1,
+          currentStreak: 0,
+          maxStreak: 0,
+          achievements: []
+        }
       })
-      
-      if (metricsExist) {
-        await prisma.userMetrics.update({
-          where: { mlUserId: question.mlAccount.mlUserId },
-          data: {
-            answeredQuestions: { increment: 1 },
-            pendingQuestions: { decrement: 1 },
-            autoApprovedCount: { increment: 1 }
-          }
-        })
-      }
       
       // Send WhatsApp confirmation com parâmetros corretos
       await zapsterService.sendApprovalConfirmation({

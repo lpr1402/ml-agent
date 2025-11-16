@@ -312,13 +312,31 @@ export async function POST(request: NextRequest) {
     
     // Notificações de revisão removidas - processo simplificado
     
-    // Update metrics if userMetrics table exists
+    // 🔴 FIX: Update metrics usando upsert para evitar P2025
     try {
-      await prisma.userMetrics.update({
+      await prisma.userMetrics.upsert({
         where: { mlUserId: question.mlAccount.mlUserId },
-        data: {
+        update: {
           revisedCount: { increment: 1 },
           lastActiveAt: new Date()
+        },
+        create: {
+          mlUserId: question.mlAccount.mlUserId,
+          totalQuestions: 0,
+          answeredQuestions: 0,
+          pendingQuestions: 0,
+          answeredToday: 0,
+          avgResponseTime: 0,
+          autoApprovedCount: 0,
+          manualApprovedCount: 0,
+          revisedCount: 1,
+          rejectedCount: 0,
+          failedQuestions: 0,
+          totalXP: 0,
+          currentLevel: 1,
+          currentStreak: 0,
+          maxStreak: 0,
+          achievements: []
         }
       })
     } catch (metricsError) {

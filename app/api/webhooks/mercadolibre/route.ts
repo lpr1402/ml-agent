@@ -102,78 +102,224 @@ export async function POST(request: NextRequest) {
       }
     })
     
-    // Processar webhook baseado no tópico
-    try {
-      switch (data.topic) {
-        case 'questions':
-          // GARANTIA EXTRA: Log de todas perguntas recebidas
-          logger.info('[Webhook] 📨 QUESTION WEBHOOK RECEIVED', {
-            questionId: data.resource?.split('/').pop(),
-            userId: data.user_id,
-            timestamp: new Date().toISOString(),
-            webhookId: webhookEvent.id
-          })
-
-          // Processar nova pergunta
-          if (mlAccount) {
-            await processQuestionWebhook(data, mlAccount)
-
-            // Marcar webhook como processado
-            await prisma.webhookEvent.update({
-              where: { id: webhookEvent.id },
-              data: {
-                processed: true,
-                processedAt: new Date()
-              }
-            })
-
-            logger.info('[Webhook] ✅ Question webhook processed successfully', {
+    // ⚡ PERFORMANCE: Responder 200 IMEDIATAMENTE (< 500ms requirement)
+    // Processar webhook de forma ASYNC (não bloquear resposta)
+    const processAsync = async () => {
+      try {
+        switch (data.topic) {
+          case 'questions':
+            // GARANTIA EXTRA: Log de todas perguntas recebidas
+            logger.info('[Webhook] 📨 QUESTION WEBHOOK RECEIVED', {
               questionId: data.resource?.split('/').pop(),
+              userId: data.user_id,
+              timestamp: new Date().toISOString(),
               webhookId: webhookEvent.id
             })
-          } else {
-            logger.warn('[Webhook] ⚠️ No ML account found for question webhook', {
-              questionId: data.resource?.split('/').pop(),
-              userId: data.user_id
+
+            // Processar nova pergunta
+            if (mlAccount) {
+              await processQuestionWebhook(data, mlAccount)
+
+              // Marcar webhook como processado
+              await prisma.webhookEvent.update({
+                where: { id: webhookEvent.id },
+                data: {
+                  processed: true,
+                  processedAt: new Date(),
+                  status: 'COMPLETED'
+                }
+              })
+
+              logger.info('[Webhook] ✅ Question webhook processed successfully', {
+                questionId: data.resource?.split('/').pop(),
+                webhookId: webhookEvent.id
+              })
+            } else {
+              logger.warn('[Webhook] ⚠️ No ML account found for question webhook', {
+                questionId: data.resource?.split('/').pop(),
+                userId: data.user_id
+              })
+            }
+            break
+
+          case 'orders_v2':
+          case 'orders':
+            // 💰 ORDERS WEBHOOK - Real-time sales updates
+            logger.info('[Webhook] 💰 ORDER WEBHOOK RECEIVED', {
+              topic: data.topic,
+              resource: data.resource,
+              userId: data.user_id,
+              webhookId: webhookEvent.id
             })
-          }
-          break
-          
-        case 'orders':
-          // Processar ordem (implementar se necessário)
-          logger.info('[Webhook] Order webhook received:', { data: data.resource })
-          break
-          
-        case 'items':
-          // Processar mudança em item (implementar se necessário)
-          logger.info('[Webhook] Item webhook received:', { data: data.resource })
-          break
-          
-        case 'messages':
-          // Processar mensagem (implementar se necessário)
-          logger.info('[Webhook] Message webhook received:', { data: data.resource })
-          break
-          
-        default:
-          logger.info(`[Webhook] Unknown topic: ${data.topic}`)
-      }
-      
-    } catch (processingError) {
-      logger.error('[Webhook] Processing error:', { error: { error: processingError } })
-      
-      // Atualizar webhook com erro
-      await prisma.webhookEvent.update({
-        where: { id: webhookEvent.id },
-        data: {
-          processingError: processingError instanceof Error ? processingError.message : 'Unknown error'
+
+            if (mlAccount) {
+              const { processOrderWebhook } = await import('@/lib/webhooks/orders-processor')
+
+              await processOrderWebhook(data, {
+                id: mlAccount.id,
+                mlUserId: mlAccount.mlUserId,
+                organizationId: mlAccount.organizationId,
+                siteId: mlAccount.siteId,
+                accessToken: mlAccount.accessToken,
+                accessTokenIV: mlAccount.accessTokenIV,
+                accessTokenTag: mlAccount.accessTokenTag
+              })
+
+              await prisma.webhookEvent.update({
+                where: { id: webhookEvent.id },
+                data: {
+                  processed: true,
+                  processedAt: new Date(),
+                  status: 'COMPLETED'
+                }
+              })
+
+              logger.info('[Webhook] ✅ Order webhook processed', {
+                resource: data.resource,
+                webhookId: webhookEvent.id
+              })
+            }
+            break
+
+          case 'items':
+            // 🏷️ ITEMS WEBHOOK - Product changes + Profile refresh trigger
+            logger.info('[Webhook] 🏷️ ITEM WEBHOOK RECEIVED', {
+              resource: data.resource,
+              userId: data.user_id,
+              webhookId: webhookEvent.id
+            })
+
+            if (mlAccount) {
+              const { processItemWebhook } = await import('@/lib/webhooks/items-processor')
+
+              await processItemWebhook(data, {
+                id: mlAccount.id,
+                mlUserId: mlAccount.mlUserId,
+                organizationId: mlAccount.organizationId,
+                siteId: mlAccount.siteId
+              })
+
+              await prisma.webhookEvent.update({
+                where: { id: webhookEvent.id },
+                data: {
+                  processed: true,
+                  processedAt: new Date(),
+                  status: 'COMPLETED'
+                }
+              })
+
+              logger.info('[Webhook] ✅ Item webhook processed', {
+                resource: data.resource,
+                webhookId: webhookEvent.id
+              })
+            }
+            break
+
+          case 'payments':
+            // 💳 PAYMENTS WEBHOOK - Payment status updates
+            logger.info('[Webhook] 💳 PAYMENT WEBHOOK RECEIVED', {
+              resource: data.resource,
+              userId: data.user_id,
+              webhookId: webhookEvent.id
+            })
+
+            if (mlAccount) {
+              const { processPaymentWebhook } = await import('@/lib/webhooks/payments-processor')
+
+              await processPaymentWebhook(data, {
+                id: mlAccount.id,
+                mlUserId: mlAccount.mlUserId,
+                organizationId: mlAccount.organizationId,
+                siteId: mlAccount.siteId,
+                accessToken: mlAccount.accessToken,
+                accessTokenIV: mlAccount.accessTokenIV,
+                accessTokenTag: mlAccount.accessTokenTag
+              })
+
+              await prisma.webhookEvent.update({
+                where: { id: webhookEvent.id },
+                data: {
+                  processed: true,
+                  processedAt: new Date(),
+                  status: 'COMPLETED'
+                }
+              })
+
+              logger.info('[Webhook] ✅ Payment webhook processed', {
+                resource: data.resource,
+                webhookId: webhookEvent.id
+              })
+            }
+            break
+
+          case 'messages':
+            // 💬 MESSAGES WEBHOOK - Chat messages
+            logger.info('[Webhook] 💬 MESSAGE WEBHOOK RECEIVED', {
+              resource: data.resource,
+              userId: data.user_id,
+              webhookId: webhookEvent.id,
+              actions: data.actions
+            })
+
+            // Emit WebSocket event para UI (toast notification opcional)
+            if (mlAccount) {
+              try {
+                const { emitToOrganization } = require('@/lib/websocket/emit-events')
+
+                emitToOrganization(
+                  mlAccount.organizationId,
+                  'message:received',
+                  {
+                    messageId: data.resource,
+                    accountId: mlAccount.id,
+                    actions: data.actions,
+                    receivedAt: new Date()
+                  }
+                )
+              } catch (wsError) {
+                logger.warn('[Webhook] Failed to emit message event', { error: wsError })
+              }
+
+              await prisma.webhookEvent.update({
+                where: { id: webhookEvent.id },
+                data: {
+                  processed: true,
+                  processedAt: new Date(),
+                  status: 'COMPLETED'
+                }
+              })
+            }
+            break
+
+          default:
+            logger.info(`[Webhook] Unknown topic: ${data.topic}`)
         }
-      })
+
+      } catch (processingError) {
+        logger.error('[Webhook] Processing error:', { error: { error: processingError } })
+
+        // Atualizar webhook com erro
+        await prisma.webhookEvent.update({
+          where: { id: webhookEvent.id },
+          data: {
+            processingError: processingError instanceof Error ? processingError.message : 'Unknown error',
+            status: 'FAILED'
+          }
+        })
+      }
     }
-    
-    // Retornar sucesso rapidamente (webhook ML tem timeout curto)
-    return NextResponse.json({ 
+
+    // ⚡ CRITICAL: Processar ASYNC - não aguardar
+    setImmediate(() => {
+      processAsync().catch(err => {
+        logger.error('[Webhook] Async processing failed', { error: err })
+      })
+    })
+
+    // ⚡ Retornar sucesso IMEDIATAMENTE (< 500ms requirement)
+    return NextResponse.json({
       received: true,
-      webhookId: webhookEvent.id 
+      webhookId: webhookEvent.id
     })
     
   } catch (_error) {

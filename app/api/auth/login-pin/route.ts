@@ -65,9 +65,27 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Configurar cookie da sessão com nome padronizado para produção
+    // Configurar cookies da sessão com nome padronizado para produção
     const cookieStore = await cookies()
     cookieStore.set('ml-agent-session', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: sessionExpiry
+    })
+
+    // 🚀 ENTERPRISE FIX: Setar cookie de role para middleware redirecionar corretamente
+    cookieStore.set('ml-agent-role', organization.role || 'CLIENT', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: sessionExpiry
+    })
+
+    // Setar cookie de organizationId
+    cookieStore.set('ml-agent-org', organization.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -78,16 +96,19 @@ export async function POST(request: NextRequest) {
     logger.info('[Login PIN] Successful login', {
       username,
       organizationId: organization.id,
+      role: organization.role,
       mlAccountsCount: organization.mlAccounts.length
     })
 
     return NextResponse.json({
       success: true,
+      role: organization.role || 'CLIENT', // ✅ Retornar role para frontend redirecionar
       organization: {
         id: organization.id,
         username: organization.username,
         organizationName: organization.organizationName,
         plan: organization.plan,
+        role: organization.role,
         mlAccountsCount: organization.mlAccounts.length
       }
     })

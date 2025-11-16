@@ -1,16 +1,12 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { apiClient } from '@/lib/api-client'
 import { logger } from '@/lib/logger'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MLAccountSwitcher } from '@/components/ml-account-switcher'
-import { MLAgentDashboardModern } from '@/components/dashboard/ml-agent-dashboard-modern'
-import { MultiAccountQuestions } from '@/components/agent/multi-account-questions'
-import { MetricsROIModern } from '@/components/agent/metrics-roi-modern'
-// import { MLAccountsPodium } from '@/components/agent/ml-accounts-podium' // Temporariamente removido
 import { PremiumLoader } from '@/components/ui/premium-loader'
 import { AddAccountModal } from '@/components/add-account-modal'
 import { ProActivationModal } from '@/components/pro-activation-modal'
@@ -18,12 +14,24 @@ import {
   MessageSquare,
   Activity,
   LogOut,
-  Clock
+  Trophy
 } from 'lucide-react'
+
+// 🚀 ENTERPRISE: Lazy loading de componentes pesados para initial load rápido
+const MLAgentDashboardModern = lazy(() => import('@/components/dashboard/ml-agent-dashboard-modern').then(mod => ({ default: mod.MLAgentDashboardModern })))
+const MultiAccountQuestions = lazy(() => import('@/components/agent/multi-account-questions').then(mod => ({ default: mod.MultiAccountQuestions })))
+const GamificationDashboard = lazy(() => import('@/components/gamification/gamification-dashboard').then(mod => ({ default: mod.GamificationDashboard })))
+
+// Componente de loading
+const ComponentLoader = () => (
+  <div className="flex items-center justify-center py-12">
+    <Activity className="h-8 w-8 text-gold animate-pulse" />
+  </div>
+)
 
 export default function AgenteMultiConta() {
   // Add custom style for shimmer animation with proper cleanup
-  React.useEffect(() => {
+  useEffect(() => {
     const styleId = 'agente-shimmer-style'
 
     // Check if style already exists before adding
@@ -53,8 +61,8 @@ export default function AgenteMultiConta() {
   }, [])
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [selectedAccountId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [_selectedAccountId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('performance')
   const [organizationData, setOrganizationData] = useState<any>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [isPro, setIsPro] = useState(false)
@@ -238,151 +246,161 @@ export default function AgenteMultiConta() {
           <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
 
           <div className="relative z-10 p-4 sm:p-6 lg:p-8">
+            {/* Header Section - Title + Filters Inline on Mobile */}
             <div className="mb-4 sm:mb-6 lg:mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
-                <div className="flex items-center gap-2 sm:gap-3 relative w-full sm:w-auto">
-                  {/* Online Status - Mobile Top Right - Aligned with Title */}
-                  <div className="absolute -top-1 right-0 sm:hidden z-20">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/50 backdrop-blur">
-                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-xs text-gray-400 font-semibold">Online</span>
-                    </div>
-                  </div>
+              {/* Mobile: Title Left + Filters Right in same row */}
+              <div className="flex items-start justify-between gap-2 mb-3 sm:mb-0">
+                {/* Title Section - Left Side */}
+                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
                     <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
                   </div>
                   <div>
                     <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold">
-                      Central de Atendimento
+                      <span className="lg:hidden">Atendimento</span>
+                      <span className="hidden lg:inline">Central de Atendimento</span>
                     </h3>
-                    <p className="text-xs sm:text-sm text-gray-400 hidden sm:block">
+                    <p className="text-xs sm:text-sm text-gray-400 hidden lg:block">
                       Responda rapidamente para manter sua reputação em alta
                     </p>
                   </div>
                 </div>
 
-                {/* Filters Container - Aligned with title */}
-                <div id="questions-filters-container" className="w-full sm:w-auto sm:mt-2" />
+                {/* Filters Container - Right Side (Mobile and Desktop) */}
+                <div id="questions-filters-container" className="flex-shrink-0 relative z-50" />
               </div>
             </div>
 
-            <MultiAccountQuestions
-              key={refreshKey}
-              selectedAccountId={selectedAccountId}
-              filterStatus="pending"
-              showFilters={true}
-              renderFiltersTo="questions-filters-container"
-              pageKey="central-atendimento"
-            />
+            <Suspense fallback={<ComponentLoader />}>
+              <MultiAccountQuestions
+                key={refreshKey}
+                selectedAccountId={null}
+                filterStatus="pending"
+                showFilters={true}
+                renderFiltersTo="questions-filters-container"
+                pageKey="central-atendimento"
+              />
+            </Suspense>
           </div>
         </section>
 
-        {/* Dashboard Tabs Section - Ultra Premium 2025 - Mobile Optimized */}
+        {/* Dashboard Tabs Section - Ultra Modern 2025 Glassmorphism Fixed Height */}
         <section className="relative">
-          {/* Glow Effect Background */}
-          <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 via-transparent to-gold/10 blur-xl sm:blur-3xl opacity-30 pointer-events-none" />
+          <Tabs defaultValue="performance" value={activeTab} onValueChange={setActiveTab} className="relative">
+            {/* Tab Navigation - Pill Style with Fixed Container Height */}
+            <div className="relative flex justify-center mb-5 sm:mb-6">
+              {/* Fixed Height Container - Prevents Layout Shift */}
+              <div className="relative h-12 sm:h-[52px] lg:h-14 flex items-center">
+                <TabsList className="relative inline-flex h-full p-1 sm:p-1.5 gap-1 sm:gap-1.5
+                  bg-black/40 backdrop-blur-2xl
+                  rounded-full
+                  border border-white/[0.08]
+                  shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+                  before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none
+                  after:absolute after:inset-0 after:rounded-full after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none">
 
-          <Tabs defaultValue="dashboard" value={activeTab} onValueChange={setActiveTab} className="relative">
-            {/* Tab Navigation Container - Mobile Optimized */}
-            <div className="relative overflow-hidden rounded-xl sm:rounded-2xl lg:rounded-[2rem] bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl">
-              {/* Inner Glow Effect */}
-              <div className="absolute inset-0 bg-gradient-to-t from-gold/5 to-transparent opacity-50 pointer-events-none" />
+                  {/* Performance Tab - FIXED HEIGHT */}
+                  <TabsTrigger
+                    value="performance"
+                    className="group relative z-10
+                      min-w-[100px] sm:min-w-[140px] lg:min-w-[160px]
+                      px-4 sm:px-6 lg:px-8
+                      h-10 sm:h-11 lg:h-12
+                      rounded-full
+                      font-medium text-xs sm:text-sm lg:text-base
+                      transition-colors duration-300 ease-out
 
-              <TabsList className="relative w-full h-14 sm:h-16 lg:h-20 bg-transparent p-2 sm:p-3 lg:p-4 flex items-center justify-center gap-1 sm:gap-2 lg:gap-4">
-                {/* Dashboard Tab - Mobile Optimized */}
-                <TabsTrigger
-                  value="dashboard"
-                  className="group relative flex-1 h-10 sm:h-11 lg:h-12 px-2 sm:px-3 lg:px-5 rounded-xl sm:rounded-xl lg:rounded-2xl font-bold text-xs sm:text-sm lg:text-base transition-all duration-500 overflow-hidden
-                    data-[state=inactive]:bg-white/[0.02] data-[state=inactive]:hover:bg-white/[0.05]
-                    data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white
-                    data-[state=active]:bg-gradient-to-r data-[state=active]:from-gold data-[state=active]:via-gold-light data-[state=active]:to-gold
-                    data-[state=active]:text-black data-[state=active]:shadow-2xl data-[state=active]:shadow-gold/40
-                    flex items-center justify-center gap-1 sm:gap-1.5 lg:gap-2"
-                >
-                  {/* Animated Background for Inactive State */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 data-[state=active]:hidden" />
+                      border border-transparent
 
-                  <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 relative z-10" />
-                  <span className="relative z-10 font-semibold text-xs sm:text-sm lg:text-base hidden sm:inline">Dashboard</span>
+                      data-[state=inactive]:text-gray-400
+                      data-[state=inactive]:hover:text-white
+                      data-[state=inactive]:hover:bg-white/[0.03]
 
-                  {/* Active State Shine Effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-data-[state=active]:animate-shimmer" />
-                </TabsTrigger>
+                      data-[state=active]:text-white
+                      data-[state=active]:bg-gradient-to-br data-[state=active]:from-white/[0.12] data-[state=active]:to-white/[0.06]
+                      data-[state=active]:shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)]
+                      data-[state=active]:border-gold/30
 
-                {/* History Tab - Mobile Optimized */}
-                <TabsTrigger
-                  value="all-questions"
-                  className="group relative flex-1 h-10 sm:h-11 lg:h-12 px-2 sm:px-3 lg:px-5 rounded-xl sm:rounded-xl lg:rounded-2xl font-bold text-xs sm:text-sm lg:text-base transition-all duration-500 overflow-hidden
-                    data-[state=inactive]:bg-white/[0.02] data-[state=inactive]:hover:bg-white/[0.05]
-                    data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white
-                    data-[state=active]:bg-gradient-to-r data-[state=active]:from-gold data-[state=active]:via-gold-light data-[state=active]:to-gold
-                    data-[state=active]:text-black data-[state=active]:shadow-2xl data-[state=active]:shadow-gold/40
-                    flex items-center justify-center gap-1 sm:gap-1.5 lg:gap-2"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 data-[state=active]:hidden" />
+                      flex items-center justify-center gap-2 sm:gap-2.5
+                      touch-manipulation
+                      active:scale-[0.98]
+                      will-change-[background-color,border-color,color]"
+                  >
+                    <Activity
+                      className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0
+                      transition-all duration-300
+                      group-data-[state=active]:text-gold
+                      group-data-[state=inactive]:opacity-60 group-hover:opacity-100"
+                      strokeWidth={2.5}
+                    />
+                    <span className="font-semibold tracking-wide whitespace-nowrap">Performance</span>
+                  </TabsTrigger>
 
-                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 relative z-10" />
-                  <span className="relative z-10 font-semibold text-xs sm:text-sm lg:text-base hidden sm:inline">Histórico</span>
+                  {/* Ranking Tab - FIXED HEIGHT */}
+                  <TabsTrigger
+                    value="gamification"
+                    className="group relative z-10
+                      min-w-[100px] sm:min-w-[140px] lg:min-w-[160px]
+                      px-4 sm:px-6 lg:px-8
+                      h-10 sm:h-11 lg:h-12
+                      rounded-full
+                      font-medium text-xs sm:text-sm lg:text-base
+                      transition-colors duration-300 ease-out
 
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-data-[state=active]:animate-shimmer" />
-                </TabsTrigger>
-              </TabsList>
+                      border border-transparent
+
+                      data-[state=inactive]:text-gray-400
+                      data-[state=inactive]:hover:text-white
+                      data-[state=inactive]:hover:bg-white/[0.03]
+
+                      data-[state=active]:text-white
+                      data-[state=active]:bg-gradient-to-br data-[state=active]:from-white/[0.12] data-[state=active]:to-white/[0.06]
+                      data-[state=active]:shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)]
+                      data-[state=active]:border-gold/30
+
+                      flex items-center justify-center gap-2 sm:gap-2.5
+                      touch-manipulation
+                      active:scale-[0.98]
+                      will-change-[background-color,border-color,color]"
+                  >
+                    <Trophy
+                      className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0
+                      transition-all duration-300
+                      group-data-[state=active]:text-gold
+                      group-data-[state=inactive]:opacity-60 group-hover:opacity-100"
+                      strokeWidth={2.5}
+                    />
+                    <span className="font-semibold tracking-wide whitespace-nowrap">Ranking</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
 
-            <div className="mt-4 sm:mt-6 lg:mt-8">
-              <TabsContent value="dashboard" className="animate-in fade-in-50 slide-in-from-bottom-2 duration-500">
-                <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+            {/* Content Container - Matching Glassmorphism */}
+            <div className="relative rounded-2xl sm:rounded-3xl
+              bg-black/40 backdrop-blur-2xl
+              border border-white/[0.08]
+              shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+              before:absolute before:inset-0 before:rounded-2xl sm:before:rounded-3xl before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none
+              after:absolute after:inset-0 after:rounded-2xl sm:after:rounded-3xl after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none
+              overflow-hidden">
+
+              <TabsContent value="performance" className="relative z-10 p-4 sm:p-6 lg:p-8 m-0
+                data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-2
+                data-[state=inactive]:animate-out data-[state=inactive]:fade-out-0 data-[state=inactive]:slide-out-to-top-2
+                duration-500">
+                <Suspense fallback={<ComponentLoader />}>
                   <MLAgentDashboardModern />
-                  <MetricsROIModern
-                    accountId={selectedAccountId}
-                    organizationId={organizationData?.organizationId || ""}
-                  />
-                  {/* Temporariamente removido - Pódio de Contas
-                  <MLAccountsPodium
-                    organizationId={organizationData?.organizationId || ""}
-                    onAddAccount={() => setIsAddAccountModalOpen(true)}
-                  />
-                  */}
-                </div>
+                </Suspense>
               </TabsContent>
 
-              <TabsContent value="all-questions" className="animate-in fade-in-50 slide-in-from-bottom-2 duration-500">
-                {/* Histórico Section - Matching Central de Atendimento Design - Mobile Optimized */}
-                <section className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
-                  {/* Background Glow */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
-
-                  <div className="relative z-10 p-4 sm:p-6 lg:p-8">
-                    <div className="mb-4 sm:mb-6 lg:mb-8">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                            <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
-                          </div>
-                          <div>
-                            <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold">
-                              Histórico de Atendimento
-                            </h3>
-                            <p className="text-xs sm:text-sm text-gray-400 hidden sm:block">
-                              Visualize o histórico completo de perguntas respondidas
-                            </p>
-                          </div>
-                        </div>
-                        {/* Portal container for filters - positioned at top right */}
-                        <div id="historico-filters-portal" className="flex items-center" />
-                      </div>
-                    </div>
-
-                    <MultiAccountQuestions
-                      key={refreshKey + 100}
-                      selectedAccountId={selectedAccountId}
-                      filterStatus="completed"
-                      showFilters={true}
-                      renderFiltersTo="historico-filters-portal"
-                      pageKey="historico-atendimento"
-                    />
-                  </div>
-                </section>
+              <TabsContent value="gamification" className="relative z-10 p-4 sm:p-6 lg:p-8 m-0
+                data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-2
+                data-[state=inactive]:animate-out data-[state=inactive]:fade-out-0 data-[state=inactive]:slide-out-to-top-2
+                duration-500">
+                <Suspense fallback={<ComponentLoader />}>
+                  <GamificationDashboard />
+                </Suspense>
               </TabsContent>
             </div>
           </Tabs>

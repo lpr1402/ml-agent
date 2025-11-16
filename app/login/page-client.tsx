@@ -106,7 +106,13 @@ export default function LoginClient() {
           title: 'Login realizado com sucesso',
           description: 'Bem-vindo ao ML Agent PRO'
         })
-        router.push('/agente')
+
+        // 🚀 ENTERPRISE FIX: Redirecionar baseado em role
+        if (data.role === 'SUPER_ADMIN') {
+          router.push('/admin/dashboard') // Admin vai para painel administrativo
+        } else {
+          router.push('/agente') // Cliente vai para painel normal
+        }
       } else {
         setError(data.error || 'Usuário ou PIN incorretos')
         setPin(['', '', ''])

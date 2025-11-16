@@ -36,13 +36,14 @@ export async function GET(_request: Request) {
       ? session.organization.mlAccounts.find(acc => acc.id === session.activeMLAccountId)
       : session.organization.mlAccounts.find(acc => acc.isPrimary)
     
-    // Retornar dados completos da sessão para o dashboard multi-conta
-    return NextResponse.json({
+    // 🚀 ENTERPRISE FIX: Retornar role para identificar admin
+    const response = NextResponse.json({
       // Dados essenciais para o dashboard
       organizationId: session.organizationId,
       organizationName: session.organization.primaryNickname || 'ML Agent Pro',
       accountCount: session.organization.mlAccounts.length,
       plan: session.organization.plan || 'TRIAL',
+      role: session.organization.role || 'CLIENT', // ✅ CRITICAL: Incluir role
       
       // Dados do usuário/conta ativa
       user: {
@@ -81,6 +82,18 @@ export async function GET(_request: Request) {
       sessionToken,
       expiresAt: session.expiresAt
     })
+
+    // 🚀 ENTERPRISE FIX: Setar cookie de role para middleware usar (cache de performance)
+    response.cookies.set('ml-agent-role', session.organization.role || 'CLIENT', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 dias
+      path: '/'
+    })
+
+    return response
+
   } catch (error) {
     logger.error("Session check error:", { error })
     return NextResponse.json(null, { status: 500 })

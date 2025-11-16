@@ -13,6 +13,7 @@ async function getHistoricalData(
 ) {
   const now = new Date()
   const chartData: number[] = []
+  const chartLabels: string[] = []
 
   if (period === "24h") {
     // Get hourly data for last 24 hours
@@ -33,9 +34,11 @@ async function getHistoricalData(
         }
       })
       chartData.push(count)
+      chartLabels.push(`${hourStart.getHours()}h`)
     }
   } else if (period === "7d") {
     // Get daily data for last 7 days
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
     for (let i = 6; i >= 0; i--) {
       const dayStart = new Date(now)
       dayStart.setDate(now.getDate() - i)
@@ -54,8 +57,9 @@ async function getHistoricalData(
         }
       })
       chartData.push(count)
+      chartLabels.push(`${days[dayStart.getDay()]} ${dayStart.getDate()}`)
     }
-  } else {
+  } else if (period === "30d") {
     // Get daily data for last 30 days
     for (let i = 29; i >= 0; i--) {
       const dayStart = new Date(now)
@@ -75,10 +79,104 @@ async function getHistoricalData(
         }
       })
       chartData.push(count)
+      // Show label every 5 days to avoid overcrowding
+      if (i % 5 === 0 || i === 29) {
+        chartLabels.push(`${dayStart.getDate()}/${dayStart.getMonth() + 1}`)
+      } else {
+        chartLabels.push('')
+      }
+    }
+  } else if (period === "all") {
+    // 🎯 TODOS OS TEMPOS - DIA A DIA desde a primeira pergunta até hoje
+    // Buscar a data da primeira pergunta da organização
+    const firstQuestion = await prisma.question.findFirst({
+      where: {
+        mlAccount: { organizationId },
+        ...(accountId && { mlAccountId: accountId })
+      },
+      orderBy: { receivedAt: 'asc' },
+      select: { receivedAt: true }
+    })
+
+    if (firstQuestion) {
+      const firstDate = new Date(firstQuestion.receivedAt)
+      firstDate.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      // Calcular quantos dias desde a primeira pergunta
+      const diffTime = today.getTime() - firstDate.getTime()
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      // Se for mais de 90 dias, agrupar por semana para não sobrecarregar o gráfico
+      if (diffDays > 90) {
+        // Agrupar por semana
+        const weeks = Math.ceil(diffDays / 7)
+        let currentWeekStart = new Date(firstDate)
+
+        for (let i = 0; i < weeks; i++) {
+          const weekStart = new Date(currentWeekStart)
+          weekStart.setHours(0, 0, 0, 0)
+          const weekEnd = new Date(currentWeekStart)
+          weekEnd.setDate(weekEnd.getDate() + 6)
+          weekEnd.setHours(23, 59, 59, 999)
+
+          // Não ultrapassar hoje
+          if (weekEnd > today) {
+            weekEnd.setTime(today.getTime())
+            weekEnd.setHours(23, 59, 59, 999)
+          }
+
+          const count = await prisma.question.count({
+            where: {
+              mlAccount: { organizationId },
+              ...(accountId && { mlAccountId: accountId }),
+              receivedAt: {
+                gte: weekStart,
+                lte: weekEnd
+              }
+            }
+          })
+
+          chartData.push(count)
+          // Formato: "01/11" para primeira data da semana
+          chartLabels.push(`${String(weekStart.getDate()).padStart(2, '0')}/${String(weekStart.getMonth() + 1).padStart(2, '0')}`)
+
+          currentWeekStart.setDate(currentWeekStart.getDate() + 7)
+          if (currentWeekStart > today) break
+        }
+      } else {
+        // Menos de 90 dias: mostrar dia a dia
+        let currentDate = new Date(firstDate)
+
+        for (let i = 0; i <= diffDays; i++) {
+          const dayStart = new Date(currentDate)
+          dayStart.setHours(0, 0, 0, 0)
+          const dayEnd = new Date(currentDate)
+          dayEnd.setHours(23, 59, 59, 999)
+
+          const count = await prisma.question.count({
+            where: {
+              mlAccount: { organizationId },
+              ...(accountId && { mlAccountId: accountId }),
+              receivedAt: {
+                gte: dayStart,
+                lte: dayEnd
+              }
+            }
+          })
+
+          chartData.push(count)
+          // Formato: "01/11" para dia/mês
+          chartLabels.push(`${String(dayStart.getDate()).padStart(2, '0')}/${String(dayStart.getMonth() + 1).padStart(2, '0')}`)
+
+          currentDate.setDate(currentDate.getDate() + 1)
+        }
+      }
     }
   }
 
-  return chartData
+  return { chartData, chartLabels }
 }
 
 interface AccountMetrics {
@@ -96,6 +194,8 @@ interface AccountMetrics {
   revisedCount: number
   failedCount: number
   tokenErrors: number
+  totalSales?: number // 🔥 VENDAS REAIS
+  totalRevenue?: number // 🔥 RECEITA REAL
 }
 
 interface AggregatedMetrics {
@@ -138,7 +238,7 @@ export async function GET(request: Request) {
 
     // Calculate date filter
     const now = new Date()
-    const dateFilter = new Date()
+    let dateFilter: Date | null = new Date()
 
     switch (period) {
       case "24h":
@@ -150,6 +250,11 @@ export async function GET(request: Request) {
       case "30d":
         dateFilter.setDate(now.getDate() - 30)
         break
+      case "all":
+        dateFilter = null // No date filter for all time
+        break
+      default:
+        dateFilter.setDate(now.getDate() - 7) // Default to 7 days
     }
 
     // Check cache first
@@ -219,51 +324,51 @@ export async function GET(request: Request) {
           prisma.question.count({
             where: {
               mlAccountId: account.id,
-              receivedAt: { gte: dateFilter }
+              ...(dateFilter && { receivedAt: { gte: dateFilter } })
             }
           }),
-          
+
           // Perguntas respondidas
           prisma.question.count({
             where: {
               mlAccountId: account.id,
               status: { in: ["RESPONDED", "APPROVED", "COMPLETED"] },
-              receivedAt: { gte: dateFilter }
+              ...(dateFilter && { receivedAt: { gte: dateFilter } })
             }
           }),
-          
+
           // Perguntas pendentes
           prisma.question.count({
             where: {
               mlAccountId: account.id,
               status: { in: ["AWAITING_APPROVAL", "REVISING", "FAILED", "TOKEN_ERROR", "PROCESSING"] },
-              receivedAt: { gte: dateFilter }
+              ...(dateFilter && { receivedAt: { gte: dateFilter } })
             }
           }),
-          
+
           // Auto aprovadas
           prisma.question.count({
             where: {
               mlAccountId: account.id,
               approvalType: "AUTO",
-              receivedAt: { gte: dateFilter }
+              ...(dateFilter && { receivedAt: { gte: dateFilter } })
             }
           }),
-          
+
           // Aprovadas manualmente
           prisma.question.count({
             where: {
               mlAccountId: account.id,
               approvalType: "MANUAL",
-              receivedAt: { gte: dateFilter }
+              ...(dateFilter && { receivedAt: { gte: dateFilter } })
             }
           }),
-          
+
           // Revisadas (conta perguntas que tem revisões)
           prisma.question.count({
             where: {
               mlAccountId: account.id,
-              receivedAt: { gte: dateFilter },
+              ...(dateFilter && { receivedAt: { gte: dateFilter } }),
               revisions: {
                 some: {} // Tem pelo menos uma revisão
               }
@@ -286,34 +391,81 @@ export async function GET(request: Request) {
             }
           }),
           
-          // Tempo médio de resposta com ML Agent
-          prisma.$queryRaw<Array<{ avg: number | null }>>(
-            Prisma.sql`
-              SELECT AVG(EXTRACT(EPOCH FROM ("answeredAt" - "receivedAt"))) as avg
-              FROM "Question"
-              WHERE "mlAccountId" = ${account.id}
-              AND "answeredAt" IS NOT NULL
-              AND "receivedAt" IS NOT NULL
-              AND "status" IN ('RESPONDED', 'APPROVED', 'COMPLETED')
-            `
-          )
+          // 🔥 TEMPO REAL DE RESPOSTA (visão do cliente)
+          // Tempo desde que ML CRIOU a pergunta até nós RESPONDERMOS ao ML
+          dateFilter
+            ? prisma.$queryRaw<Array<{ avg: number | null }>>(
+                Prisma.sql`
+                  SELECT AVG(EXTRACT(EPOCH FROM ("sentToMLAt" - "dateCreated"))) as avg
+                  FROM "Question"
+                  WHERE "mlAccountId" = ${account.id}
+                  AND "sentToMLAt" IS NOT NULL
+                  AND "dateCreated" IS NOT NULL
+                  AND "receivedAt" >= ${dateFilter}
+                  AND "status" IN ('RESPONDED', 'APPROVED', 'COMPLETED')
+                `
+              )
+            : prisma.$queryRaw<Array<{ avg: number | null }>>(
+                Prisma.sql`
+                  SELECT AVG(EXTRACT(EPOCH FROM ("sentToMLAt" - "dateCreated"))) as avg
+                  FROM "Question"
+                  WHERE "mlAccountId" = ${account.id}
+                  AND "sentToMLAt" IS NOT NULL
+                  AND "dateCreated" IS NOT NULL
+                  AND "status" IN ('RESPONDED', 'APPROVED', 'COMPLETED')
+                `
+              )
         ])
 
         const avgResponseTime = responseTimeStats[0]?.avg || 0
 
-        // Calcular tempo médio de processamento da IA (receivedAt até aiProcessedAt)
+        // 🔥 TEMPO REAL EM "PROCESSING" - ÚLTIMAS 10 PERGUNTAS RECENTES (7 DIAS)
+        // Tempo que fica em status PROCESSING (entre envio ao N8N e retorno da IA)
+        // Filtrar apenas últimos 7 dias para dados mais precisos e tempos válidos
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+
         const processingTimeResult = await prisma.$queryRaw<Array<{ avg: number | null }>>(
           Prisma.sql`
-            SELECT AVG(EXTRACT(EPOCH FROM (COALESCE("aiProcessedAt", "processedAt") - "receivedAt"))) as avg
-            FROM "Question"
-            WHERE "mlAccountId" = ${account.id}
-            AND (("aiProcessedAt" IS NOT NULL) OR ("processedAt" IS NOT NULL))
-            AND "receivedAt" IS NOT NULL
-            AND "receivedAt" >= ${dateFilter}
-            AND "status" IN ('RESPONDED', 'APPROVED', 'COMPLETED', 'PENDING', 'AWAITING_APPROVAL')
+            SELECT AVG(processing_time) as avg
+            FROM (
+              SELECT EXTRACT(EPOCH FROM ("aiProcessedAt" - "sentToAIAt")) as processing_time
+              FROM "Question"
+              WHERE "mlAccountId" = ${account.id}
+              AND "aiProcessedAt" IS NOT NULL
+              AND "sentToAIAt" IS NOT NULL
+              AND "aiProcessedAt" > "sentToAIAt"
+              AND "receivedAt" >= ${sevenDaysAgo}
+              AND EXTRACT(EPOCH FROM ("aiProcessedAt" - "sentToAIAt")) BETWEEN 1 AND 120
+              AND "status" IN ('RESPONDED', 'APPROVED', 'COMPLETED', 'AWAITING_APPROVAL')
+              ORDER BY "aiProcessedAt" DESC
+              LIMIT 10
+            ) recent_questions
           `
         )
         const avgProcessingTime = processingTimeResult[0]?.avg || 0
+
+        // 🔥 BUSCAR VENDAS REAIS desta conta (via modelo Order)
+        const totalSales = await prisma.order.count({
+          where: {
+            mlAccountId: account.id,
+            status: { in: ['paid', 'delivered', 'completed'] },
+            ...(dateFilter && { dateCreated: { gte: dateFilter } })
+          }
+        })
+
+        // 🔥 RECEITA REAL desta conta
+        const revenueData = await prisma.order.aggregate({
+          where: {
+            mlAccountId: account.id,
+            status: { in: ['paid', 'delivered', 'completed'] },
+            ...(dateFilter && { dateCreated: { gte: dateFilter } })
+          },
+          _sum: {
+            paidAmount: true
+          }
+        })
+        const totalRevenue = revenueData._sum.paidAmount || 0
 
         return {
           accountId: account.id,
@@ -329,7 +481,9 @@ export async function GET(request: Request) {
           manualApprovedCount,
           revisedCount,
           failedCount,
-          tokenErrors: tokenErrorCount
+          tokenErrors: tokenErrorCount,
+          totalSales, // 🔥 VENDAS REAIS
+          totalRevenue // 🔥 RECEITA REAL
         } as AccountMetrics
         
       } catch (error) {
@@ -394,42 +548,52 @@ export async function GET(request: Request) {
 
     // 🎯 COMPARAÇÃO COM PERÍODO ANTERIOR
     // Calcular mesmo período, mas deslocado para trás
-    const previousDateFilter = new Date(dateFilter)
-    const previousDateEnd = new Date(dateFilter)
+    // Skip period comparison for "all" period
+    let previousDateFilter: Date | null = null
+    let previousDateEnd: Date | null = null
 
-    switch (period) {
-      case "24h":
-        previousDateFilter.setHours(previousDateFilter.getHours() - 24)
-        break
-      case "7d":
-        previousDateFilter.setDate(previousDateFilter.getDate() - 7)
-        break
-      case "30d":
-        previousDateFilter.setDate(previousDateFilter.getDate() - 30)
-        break
-    }
+    if (dateFilter) {
+      previousDateFilter = new Date(dateFilter)
+      previousDateEnd = new Date(dateFilter)
 
-    const previousPeriodAnswered = await prisma.question.count({
-      where: {
-        mlAccount: { organizationId },
-        status: { in: ["RESPONDED", "APPROVED", "COMPLETED"] },
-        receivedAt: {
-          gte: previousDateFilter,
-          lt: previousDateEnd
-        }
+      switch (period) {
+        case "24h":
+          previousDateFilter.setHours(previousDateFilter.getHours() - 24)
+          break
+        case "7d":
+          previousDateFilter.setDate(previousDateFilter.getDate() - 7)
+          break
+        case "30d":
+          previousDateFilter.setDate(previousDateFilter.getDate() - 30)
+          break
       }
-    })
 
-    aggregated.previousPeriodAnswered = previousPeriodAnswered
+      const previousPeriodAnswered = await prisma.question.count({
+        where: {
+          mlAccount: { organizationId },
+          status: { in: ["RESPONDED", "APPROVED", "COMPLETED"] },
+          receivedAt: {
+            gte: previousDateFilter,
+            lt: previousDateEnd
+          }
+        }
+      })
 
-    // Calcular crescimento real (%)
-    if (previousPeriodAnswered > 0) {
-      const growth = ((aggregated.answeredQuestions - previousPeriodAnswered) / previousPeriodAnswered) * 100
-      aggregated.growthPercentage = Math.round(growth)
-    } else if (aggregated.answeredQuestions > 0) {
-      // Primeira vez usando o sistema - crescimento infinito, mostrar apenas o número absoluto
-      aggregated.growthPercentage = 100
+      aggregated.previousPeriodAnswered = previousPeriodAnswered
+
+      // Calcular crescimento real (%)
+      if (previousPeriodAnswered > 0) {
+        const growth = ((aggregated.answeredQuestions - previousPeriodAnswered) / previousPeriodAnswered) * 100
+        aggregated.growthPercentage = Math.round(growth)
+      } else if (aggregated.answeredQuestions > 0) {
+        // Primeira vez usando o sistema - crescimento infinito, mostrar apenas o número absoluto
+        aggregated.growthPercentage = 100
+      } else {
+        aggregated.growthPercentage = 0
+      }
     } else {
+      // For "all" period, no previous comparison
+      aggregated.previousPeriodAnswered = 0
       aggregated.growthPercentage = 0
     }
 
@@ -437,7 +601,7 @@ export async function GET(request: Request) {
     // Segundo ML: <1h = excelente, <4h = bom, <24h = regular, >24h = lento
     const avgResponseMinutes = aggregated.avgResponseTime / 60
     if (avgResponseMinutes < 60) {
-      aggregated.responseTimeStatus = 'Excelente! 🔥'
+      aggregated.responseTimeStatus = 'Excelente'
     } else if (avgResponseMinutes < 240) {
       aggregated.responseTimeStatus = 'Bom desempenho'
     } else if (avgResponseMinutes < 1440) {
@@ -449,13 +613,13 @@ export async function GET(request: Request) {
     // 🎯 STATUS DINÂMICO DE PROCESSAMENTO IA (baseado em performance real)
     const avgProcessingSeconds = aggregated.avgProcessingTime
     if (avgProcessingSeconds < 10) {
-      aggregated.aiProcessingStatus = 'Ultra-rápido ⚡'
+      aggregated.aiProcessingStatus = 'Ultra-rápido'
     } else if (avgProcessingSeconds < 30) {
       aggregated.aiProcessingStatus = 'Rápido'
     } else if (avgProcessingSeconds < 60) {
       aggregated.aiProcessingStatus = 'Normal'
     } else {
-      aggregated.aiProcessingStatus = 'Otimizando...'
+      aggregated.aiProcessingStatus = 'Otimizando'
     }
 
     // Calculate additional metrics for ROI
@@ -465,7 +629,7 @@ export async function GET(request: Request) {
           organizationId
         },
         ...(accountId && { mlAccountId: accountId }),
-        receivedAt: { gte: dateFilter },
+        ...(dateFilter && { receivedAt: { gte: dateFilter } }),
         status: { in: ["RESPONDED", "COMPLETED", "APPROVED"] }
       },
       select: {
@@ -476,10 +640,26 @@ export async function GET(request: Request) {
       }
     })
 
-    // Calculate fast responses (<1h)
-    const fastResponses = questionsWithItems.filter(q => {
-      if (!q.sentToMLAt || !q.receivedAt) return false
-      const responseTime = (new Date(q.sentToMLAt).getTime() - new Date(q.receivedAt).getTime()) / 1000 / 60
+    // 🔥 RESPOSTAS RÁPIDAS REAIS (<1h do ponto de vista do cliente)
+    // Buscar perguntas com timestamps completos
+    const questionsWithTiming = await prisma.question.findMany({
+      where: {
+        mlAccount: { organizationId },
+        ...(dateFilter && { receivedAt: { gte: dateFilter } }),
+        status: { in: ["RESPONDED", "COMPLETED", "APPROVED"] },
+        sentToMLAt: { not: null }
+        // dateCreated é obrigatório no schema, sempre existe
+      },
+      select: {
+        sentToMLAt: true,
+        dateCreated: true
+      }
+    })
+
+    const fastResponses = questionsWithTiming.filter(q => {
+      if (!q.sentToMLAt) return false
+      // dateCreated sempre existe (campo obrigatório)
+      const responseTime = (new Date(q.sentToMLAt).getTime() - new Date(q.dateCreated).getTime()) / 1000 / 60
       return responseTime < 60
     }).length
 
@@ -520,7 +700,7 @@ export async function GET(request: Request) {
       where: {
         mlAccount: { organizationId },
         status: { in: ["RESPONDED", "COMPLETED", "APPROVED"] },
-        receivedAt: { gte: dateFilter },
+        ...(dateFilter && { receivedAt: { gte: dateFilter } }),
         itemId: { not: '' }
       },
       select: {
@@ -574,7 +754,7 @@ export async function GET(request: Request) {
     const conversionRate = estimatedConversionRate / 100
 
     // Get historical data for chart
-    const chartData = await getHistoricalData(organizationId, accountId, period)
+    const { chartData, chartLabels } = await getHistoricalData(organizationId, accountId, period)
 
     // Get organization plan for cost calculations
     const organization = await prisma.organization.findUnique({
@@ -672,6 +852,7 @@ export async function GET(request: Request) {
       monthlyQuestions,
       conversionRate,
       chartData,
+      chartLabels,
       plan: organization?.plan || 'FREE',
       mlAgentCost: costPerAccount,
       avgResponseTimeMinutes,

@@ -14,6 +14,43 @@ export function PWAInitializer() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
+    // 🔴 CRITICAL FIX: Listener para tocar sons quando Service Worker enviar mensagem
+    // iOS/Windows precisam que o cliente toque o som (Service Worker não tem acesso ao Audio API)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'PLAY_NOTIFICATION_SOUND') {
+          const { sound, volume = 0.8, repeat = 1 } = event.data
+
+          console.log('[PWA] 🔊 Playing notification sound:', sound, 'volume:', volume, 'repeat:', repeat)
+
+          try {
+            const audio = new Audio(sound)
+            audio.volume = volume
+
+            // Tocar o som
+            audio.play().catch(err => {
+              console.warn('[PWA] Failed to play notification sound:', err)
+            })
+
+            // Se repeat > 1, tocar múltiplas vezes
+            if (repeat > 1) {
+              audio.addEventListener('ended', function playAgain() {
+                const currentRepeat = (this as any).__repeat || 1
+                if (currentRepeat < repeat) {
+                  (this as any).__repeat = currentRepeat + 1
+                  this.play().catch(err => console.warn('[PWA] Repeat play failed:', err))
+                } else {
+                  this.removeEventListener('ended', playAgain)
+                }
+              })
+            }
+          } catch (error) {
+            console.error('[PWA] Error creating audio:', error)
+          }
+        }
+      })
+    }
+
     // Verificar contexto seguro
     const isSecureContext = window.isSecureContext
     const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1'

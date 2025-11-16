@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger'
+import { ensureHttps } from '@/lib/utils/ensure-https'
 
 /**
  * Enhanced Product Fetcher - September 2025 Version
@@ -139,7 +140,8 @@ export async function fetchCompleteProductData(
 
     const itemData = await itemResponse.json()
 
-    // Initialize complete product object
+    // Initialize complete product object (cast to bypass exactOptionalPropertyTypes strictness)
+    const thumbnailUrl = itemData.thumbnail || itemData.pictures?.[0]?.secure_url || itemData.pictures?.[0]?.url
     const completeProduct: MLCompleteProduct = {
       id: itemData.id,
       title: itemData.title || 'Produto sem título',
@@ -149,7 +151,7 @@ export async function fetchCompleteProductData(
       available_quantity: itemData.available_quantity || 0,
       sold_quantity: itemData.sold_quantity || 0,
       permalink: itemData.permalink || '',
-      thumbnail: itemData.thumbnail || itemData.pictures?.[0]?.url,
+      ...(thumbnailUrl ? { thumbnail: ensureHttps(thumbnailUrl)! } : {}),
       category_id: itemData.category_id || '',
       listing_type_id: itemData.listing_type_id || '',
       warranty: itemData.warranty,

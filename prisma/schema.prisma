@@ -36,9 +36,12 @@ model Organization {
   subscriptionEndsAt DateTime?
   trialEndsAt        DateTime           @default(dbgenerated("NOW() + INTERVAL '7 days'"))
 
+  // 🎯 ADMIN: Role system
+  role               OrganizationRole   @default(CLIENT)
+
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
-  
+
   // Relations
   mlAccounts       MLAccount[]
   sessions         Session[]
@@ -47,9 +50,12 @@ model Organization {
   webhookEvents    WebhookEvent[]
   approvalTokens   ApprovalToken[]
   pushSubscriptions PushSubscription[]
+  fullStockSnapshots FullStockSnapshot[]
+  alerts           Alert[]
 
   @@index([primaryMLUserId])
   @@index([subscriptionStatus])
+  @@index([role])
 }
 
 // ========== CONTAS ML (Múltiplas por organização) ==========
@@ -88,11 +94,18 @@ model MLAccount {
   isActive        Boolean  @default(true)
   lastSyncAt      DateTime?
   connectionError String?
-  
-  // Seller info cache
+
+  // Seller info cache (JSON completo)
   sellerReputation Json?
   powerSellerStatus String?
-  
+
+  // 🔥 ENTERPRISE: Profile sync metadata
+  lastProfileSync           DateTime? // Última vez que /users/me foi chamado
+  sellerReputationLevel     String?   // red, orange, yellow, light_green, green
+  sellerTransactionsCompleted Int?    // Total de transações completadas
+  sellerTransactionsCanceled  Int?    // Total de transações canceladas
+  isPowerSeller             Boolean   @default(false) // platinum, gold = true
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
@@ -101,7 +114,11 @@ model MLAccount {
   metrics         MLMetrics[]
   webhooks        WebhookEvent[]
   approvalTokens  ApprovalToken[]
-  
+  fullStockSnapshots FullStockSnapshot[]
+  orders          Order[] // 🎯 Vendas da conta
+  alerts          Alert[]
+  xpTracking      MLAccountXP? // 🎮 Sistema de XP/Ranking
+
   @@index([organizationId])
   @@index([mlUserId])
   @@index([isPrimary])
@@ -225,6 +242,7 @@ model Question {
   itemTitle     String?
   itemPrice     Float?    @default(0)
   itemPermalink String?   // Link do produto no ML
+  itemThumbnail String?   // URL da imagem do produto
   
   // Dados da pergunta
   sellerId      String    // ID do vendedor no ML
@@ -281,10 +299,16 @@ model Question {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
+  // 🎯 ROI TRACKING - Conversão de perguntas em vendas
+  hasConversion   Boolean  @default(false) // Se essa pergunta gerou venda
+  convertedAt     DateTime? // Quando a conversão aconteceu
+  conversionValue Float?    @default(0) // Valor da venda gerada (R$)
+
   // Relations
   revisions     Revision[]
   approvalTokens ApprovalToken[]
-  
+  conversions   OrderConversion[] // Vendas geradas por essa pergunta
+
   // Índices otimizados para máxima performance
   @@index([mlAccountId, status])
   @@index([mlQuestionId])
@@ -294,6 +318,8 @@ model Question {
   @@index([sellerId, status, dateCreated]) // Query de métricas
   @@index([mlAccountId, dateCreated]) // Histórico por conta
   @@index([status, answeredAt]) // Análise de performance
+  @@index([customerId, sellerId]) // 🎯 CRUCIAL para tracking de conversão
+  @@index([hasConversion]) // Filtrar perguntas que converteram
 }
 
 // ========== REVISÕES ==========
@@ -522,4 +548,492 @@ enum PaymentMethod {
 enum PlanType {
   FREE
   PRO
+}
+
+enum OrganizationRole {
+  CLIENT
+  SUPER_ADMIN
+}
+
+// ========== ORDERS (Vendas do Mercado Livre) ==========
+// Sistema de tracking de vendas para análise de ROI do ML Agent
+// Permite rastrear quais perguntas geraram vendas concretas
+
+model Order {
+  id              String   @id @default(cuid())
+  mlOrderId       String   @unique // ID da order no ML (ex: 2000003508419013)
+
+  // Relacionamento com conta ML e organização
+  mlAccountId     String
+  mlAccount       MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  organizationId  String
+
+  // 🎯 IDs CRÍTICOS para tracking de conversão
+  sellerId        String   // ID do vendedor no ML
+  buyerId         String   // ID do comprador no ML (CHAVE para conversão!)
+
+  // Dados financeiros
+  totalAmount     Float    @default(0) // Valor total da order
+  paidAmount      Float    @default(0) // Valor pago
+  currencyId      String   @default("BRL") // Moeda
+
+  // Status da order (seguindo padrões ML)
+  status          String   // paid, confirmed, cancelled, invalid, etc
+  statusDetail    String?  // Detalhe adicional do status
+
+  // Itens da order (JSON array para flexibilidade)
+  orderItems      Json     // Array de {item_id, title, quantity, unit_price, sale_fee}
+
+  // Informações de pagamento
+  paymentMethod   String?  // credit_card, account_money, pix, etc
+  paymentStatus   String?  // approved, pending, rejected, etc
+
+  // Informações de envio
+  shippingId      String?  // ID do envio (se houver)
+  shippingCost    Float?   @default(0)
+
+  // Datas importantes
+  dateCreated     DateTime // Data de criação da order no ML
+  dateClosed      DateTime? // Data de confirmação/pagamento
+  lastUpdated     DateTime @updatedAt // Última atualização
+
+  // 🎯 TRACKING DE CONVERSÃO - Perguntas relacionadas
+  // Relacionamento many-to-many com Question
+  conversions     OrderConversion[]
+
+  // Flags de análise
+  hasRelatedQuestions Boolean @default(false) // Se tem perguntas vinculadas
+  attributedToAgent   Boolean @default(false) // Se foi atribuída ao Agent
+
+  // Metadata completa do ML (para análises futuras e debug)
+  mlPayload       Json?    // Payload completo da API /orders/:id
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Índices otimizados para queries de ROI
+  @@index([mlAccountId, status])
+  @@index([organizationId, status])
+  @@index([buyerId, sellerId]) // 🎯 CRUCIAL para buscar perguntas do buyer
+  @@index([dateCreated])
+  @@index([dateClosed])
+  @@index([status, dateClosed]) // Orders pagas por período
+  @@index([attributedToAgent, dateClosed]) // Vendas do Agent
+  @@index([mlOrderId])
+}
+
+// ========== ORDER CONVERSIONS (Link Question → Order) ==========
+// Tabela de relacionamento many-to-many entre perguntas e vendas
+// Permite rastrear exatamente quais perguntas geraram quais vendas
+
+model OrderConversion {
+  id            String   @id @default(cuid())
+
+  // Relacionamentos
+  questionId    String
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Metadata da conversão
+  conversionValue Float  @default(0) // Valor da venda
+  timeToConversion Int?  // Tempo em minutos entre pergunta e venda
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+
+  // Garantir que uma pergunta não seja vinculada duas vezes à mesma order
+  @@unique([questionId, orderId])
+  @@index([questionId])
+  @@index([orderId])
+}
+
+// ========== FULL STOCK SYSTEM (Mercado Full) ==========
+
+model FullStockSnapshot {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mlAccountId     String
+  mlAccount       MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+
+  // ⚠️ IMPORTANTE - Identificadores ML com comportamento dual:
+  //
+  // inventoryId pode conter DOIS tipos de valores:
+  // 1. Full Puro:       "LCQI05831" (inventory_id tradicional do ML)
+  // 2. Full+Flex/Multi: "MLAU12345678" (user_product_id - detectável por regex ML[A-Z]U\d+)
+  // 3. Pending:         "PENDING_MLB123456" (temporário, aguardando recepção)
+  //
+  // Use stockTypeDetector.isValidUserProductId() para distinguir!
+  //
+  inventoryId     String   // ID único do Full - PODE SER inventory_id OU user_product_id
+  itemId          String   // MLB1234567 (ID do anúncio no marketplace)
+  variationId     String?  // Se for variação (ex: cor, tamanho)
+  userProductId   String?  // MLAU1234567 (quando Full+Flex ou Multi-Origem)
+
+  // Dados do item (cache para evitar chamadas ML)
+  itemTitle       String
+  itemThumbnail   String?
+  itemPrice       Float    @default(0)
+  itemPermalink   String?
+
+  // Estoque Full atual
+  totalStock      Int      @default(0)
+  availableStock  Int      @default(0)
+  notAvailableStock Int    @default(0)
+  notAvailableDetail Json? // Array de {status, quantity}
+
+  // Análise de vendas (baseado em orders)
+  lookbackDays    Int      @default(30)
+  totalSales      Int      @default(0)
+  avgDailySales   Float    @default(0)
+  stdDevSales     Float    @default(0)
+  salesTrend      String   @default("stable") // stable | increasing | decreasing
+
+  // Projeções e recomendações
+  daysOfCover     Float    @default(0)
+  stockoutDate    DateTime?
+  reorderPoint    Int      @default(0)
+  safetyStock     Int      @default(0)
+  recommendedQty  Int      @default(0)
+  recommendedDate DateTime?
+
+  // Alertas
+  alertLevel      String   @default("ok") // critical | warning | ok | unknown
+  confidence      Float    @default(0)
+  signals         Json     @default("[]") // Array de sinais detectados
+
+  // Configuração da análise
+  leadTimeDays    Int      @default(7)
+  safetyStockDays Int      @default(3)
+  serviceLevel    Float    @default(0.90)
+  targetDaysOfCover Int    @default(30)
+
+  // Qualidade dos dados
+  dataQuality     String   @default("unknown") // high | medium | low | unknown
+  lastAnalyzedAt  DateTime @default(now())
+
+  // 🚀 ENTERPRISE: Métricas Financeiras Avançadas (Outubro 2025)
+  lostRevenue7d       Float    @default(0) // Receita perdida próximos 7 dias (se zero)
+  lostRevenue30d      Float    @default(0) // Receita perdida próximos 30 dias (se zero)
+  storageCostMonthly  Float    @default(0) // Custo armazenagem Full (R$/mês)
+  capitalInvested     Float    @default(0) // Valor investido em estoque
+  potentialRevenue7d  Float    @default(0) // Receita potencial 7 dias
+  potentialRevenue30d Float    @default(0) // Receita potencial 30 dias
+  turnoverRate        Float    @default(0) // Giro de estoque (x/mês)
+  stockROI            Float    @default(0) // ROI mensal (%)
+  sellOutDays         Float    @default(0) // Dias para zerar estoque
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  alerts          StockAlert[]
+  operations      StockOperation[]
+
+  // ✅ FIX P2-1: UNIQUE CONSTRAINTS otimizados
+  //
+  // Constraint 1: Garante um snapshot por inventoryId por organização
+  // (inventoryId pode ser inventory_id OU user_product_id - ver comentário acima)
+  @@unique([organizationId, inventoryId])
+  //
+  // Constraint 2: Garante um snapshot por inventoryId por conta ML
+  // Importante: Uma mesma conta pode ter múltiplos inventários
+  @@unique([inventoryId, mlAccountId])
+  //
+  // ÍNDICES DE PERFORMANCE:
+  @@index([mlAccountId]) // Queries por conta
+  @@index([organizationId, alertLevel]) // Dashboard filtrado
+  @@index([daysOfCover]) // Sorting por cobertura
+  @@index([lastAnalyzedAt]) // Sync status
+  @@index([alertLevel, daysOfCover]) // ✅ NOVO: Filtro + sort combinados
+  @@index([organizationId, mlAccountId, alertLevel]) // ✅ NOVO: Query principal do dashboard
+  @@map("FullStockSnapshot")
+}
+
+
+// Operações de estoque (histórico)
+model StockOperation {
+  id              String   @id @default(cuid())
+  snapshotId      String
+  snapshot        FullStockSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  // Dados da operação ML
+  mlOperationId   String   @unique // ID da operação no ML
+  inventoryId     String
+  operationType   String   // SALE_CONFIRMATION, INBOUND_RECEPTION, etc
+  dateCreated     DateTime // Data da operação no ML
+
+  // Mudanças no estoque
+  availableChange Int      // +100 ou -5
+  totalChange     Int
+
+  // Detalhes
+  detail          Json     // StockOperationDetail original
+  result          Json     // StockOperationResult original
+  externalRefs    Json     // Array de referências (shipment_id, etc)
+
+  createdAt       DateTime @default(now())
+
+  @@index([snapshotId, dateCreated])
+  @@index([inventoryId, dateCreated])
+  @@index([operationType])
+}
+
+// Alertas de estoque
+model StockAlert {
+  id              String   @id @default(cuid())
+  organizationId  String
+  snapshotId      String
+  snapshot        FullStockSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  // Dados do alerta
+  inventoryId     String
+  itemId          String
+  variationId     String?
+  itemTitle       String
+  itemThumbnail   String?
+
+  alertLevel      String   // critical | warning | ok
+  message         String   @db.Text
+  daysOfCover     Float
+  currentStock    Int
+  recommendedQty  Int
+  recommendedDate DateTime?
+  recommendedAction String @db.Text
+
+  // Controle de visualização
+  acknowledged    Boolean  @default(false)
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?  // User ID ou "AUTO"
+
+  // Snooze
+  snoozedUntil    DateTime?
+  snoozeReason    String?
+
+  // Notificações enviadas
+  notifiedInApp   Boolean  @default(false)
+  notifiedEmail   Boolean  @default(false)
+  notifiedWhatsApp Boolean @default(false)
+  notifiedAt      DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId, alertLevel])
+  @@index([snapshotId])
+  @@index([inventoryId])
+  @@index([itemId])
+  @@index([alertLevel, acknowledged])
+}
+
+// ========== ADMIN: ALERTS SYSTEM ==========
+// Sistema de alertas para painel administrativo
+// Monitora saúde de organizações, contas ML, e perguntas
+
+model Alert {
+  id              String   @id @default(cuid())
+
+  // Tipo e categoria
+  type            AlertType
+  category        AlertCategory
+
+  // Contexto
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mlAccountId     String?
+  mlAccount       MLAccount? @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+
+  // Detalhes
+  message         String   @db.Text
+  affectedQuestions Int?
+  suggestedAction String   @db.Text
+  actionUrl       String?
+
+  // Status
+  status          AlertStatus @default(ACTIVE)
+  detectedAt      DateTime @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      String?  // "AUTO" ou admin userId
+  dismissedAt     DateTime?
+  dismissedBy     String?
+
+  // Metadata
+  metadata        Json?    // Dados extras
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, type])
+  @@index([organizationId, status])
+  @@index([detectedAt])
+  @@index([status, detectedAt])
+}
+
+enum AlertType {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum AlertCategory {
+  // Críticos
+  TOKEN_EXPIRED
+  QUESTION_STUCK
+  WEBHOOK_FAILED
+  RATE_LIMIT_EXCEEDED
+  ORG_DISCONNECTED
+
+  // Warnings
+  TOKEN_EXPIRING_SOON
+  HIGH_ERROR_RATE
+  SLOW_PROCESSING
+  LOW_ACTIVITY
+
+  // Info
+  NEW_ORGANIZATION
+  ACCOUNT_ADDED
+  HIGH_VOLUME
+  MILESTONE_REACHED
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  DISMISSED
+}
+
+// ========== GAMIFICATION: XP & RANKING SYSTEM ==========
+// Sistema de experiência e ranking para motivar vendedores
+// Event-driven com WebSocket para updates em tempo real
+
+model MLAccountXP {
+  id              String    @id @default(cuid())
+  mlAccountId     String    @unique
+
+  // XP Core
+  totalXP         Int       @default(0)
+  level           Int       @default(1)
+
+  // Estatísticas de Performance
+  questionsAnswered      Int   @default(0)
+  avgResponseTimeMinutes Float @default(0)
+
+  // Speed Stats (para achievements e cálculo de XP)
+  ultraFastCount     Int   @default(0)  // < 5 min (DOBRO de XP!)
+  fastResponsesCount Int   @default(0)  // < 30 min
+  normalResponsesCount Int @default(0)  // < 1 hora
+
+  // Streaks (sequências motivacionais)
+  currentStreak      Int   @default(0)  // Sequência atual
+  longestStreak      Int   @default(0)  // Maior sequência já alcançada
+
+  // Quality Stats
+  firstApprovalCount Int   @default(0)  // Aprovado sem revisão
+  revisionCount      Int   @default(0)  // Precisou de revisão
+
+  // Special Bonuses
+  earlyBirdCount     Int   @default(0)  // Respostas antes 8h
+  weekendCount       Int   @default(0)  // Respostas fim de semana
+  lateNightCount     Int   @default(0)  // Respostas após 22h
+
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastXPAt        DateTime? // Última vez que ganhou XP
+
+  // Relations
+  mlAccount       MLAccount @relation(fields: [mlAccountId], references: [id], onDelete: Cascade)
+  activities      XPActivity[]
+  achievements    Achievement[]
+
+  // Índices para performance de queries
+  @@index([totalXP(sort: Desc)])  // Ranking ordenado
+  @@index([mlAccountId])
+  @@index([level])
+}
+
+model XPActivity {
+  id              String    @id @default(cuid())
+  mlAccountId     String
+
+  // Ação que gerou XP
+  actionType      String    // 'ultra_fast', 'fast', 'first_approval', 'streak_5', etc
+  actionDescription String  // "Resposta Ultrarrápida em 3 min"
+  xpEarned        Int
+
+  // Contexto da ação
+  questionId      String?   // Pergunta relacionada
+  responseTimeMinutes Int?  // Tempo de resposta em minutos
+
+  // Breakdown do XP (para transparência)
+  xpBreakdown     Json?     // { baseXP, timeBonus, qualityBonus, streakBonus }
+
+  // Timestamps
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  account         MLAccountXP @relation(fields: [mlAccountId], references: [mlAccountId], onDelete: Cascade)
+
+  // Índices otimizados
+  @@index([mlAccountId, createdAt(sort: Desc)])  // Últimas atividades da conta
+  @@index([createdAt(sort: Desc)])  // Feed global de XP
+  @@index([actionType])  // Análise por tipo
+}
+
+model Achievement {
+  id              String    @id @default(cuid())
+  mlAccountId     String
+
+  // Achievement Info
+  achievementType String    // 'speed_tier_1', 'ultra_speed_tier_3', etc
+  achievementBaseType String @default("streak") // 'speed', 'ultra_speed', 'streak', etc
+  tier            Int       @default(1) // 1-5 (Bronze, Prata, Ouro, Platina, Diamante)
+  title           String    // Nome da conquista
+  description     String    @db.Text
+
+  // Recompensa
+  xpRewarded      Int       // XP ganho ao desbloquear
+
+  // Unlock info
+  unlockedAt      DateTime  @default(now())
+
+  // Relations
+  account         MLAccountXP @relation(fields: [mlAccountId], references: [mlAccountId], onDelete: Cascade)
+
+  // Garantir uma conquista por tipo por conta
+  @@unique([mlAccountId, achievementType])
+  @@index([mlAccountId])
+  @@index([achievementType])
+  @@index([achievementBaseType, tier])
+  @@index([unlockedAt])
+}
+
+// ========== ADMIN: SYSTEM METRICS ==========
+// Métricas agregadas do sistema para análise no painel admin
+
+model SystemMetric {
+  id          String   @id @default(cuid())
+
+  // Timestamp
+  timestamp   DateTime @default(now())
+
+  // Tipo de métrica
+  category    String   // "performance", "throughput", "success_rate", "api", "workers"
+  metricName  String   // "avg_processing_time", "questions_per_hour", etc
+  value       Float
+
+  // Dimensões (opcional)
+  organizationId String?
+  mlAccountId    String?
+  workerId       String?
+
+  // Metadata
+  metadata    Json?
+
+  @@index([timestamp, category])
+  @@index([category, metricName])
+  @@index([organizationId, timestamp])
 }

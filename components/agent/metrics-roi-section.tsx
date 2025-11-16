@@ -1,5 +1,10 @@
 "use client"
 
+/**
+ * ⚠️ DEPRECATED: Este componente não está sendo usado
+ * Use MetricsROIConversion no lugar
+ */
+
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
@@ -17,34 +22,7 @@ import {
   AlertCircle,
   Award
 } from "lucide-react"
-import { Line } from "react-chartjs-2"
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from "chart.js"
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-)
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts'
 
 interface MetricsROIProps {
   metrics: {
@@ -271,61 +249,6 @@ export function MetricsROISection({ metrics, questionsData, allQuestions = [] }:
   }
   
   const { labels: chartLabels, data: chartData } = getActivityData()
-  
-  const activityData = {
-    labels: chartLabels,
-    datasets: [{
-      label: selectedPeriod === "24h" ? "Perguntas por Hora" : "Perguntas por Dia",
-      data: chartData,
-      fill: true,
-      backgroundColor: "rgba(255, 230, 0, 0.1)",
-      borderColor: "#FFE600",
-      borderWidth: 2,
-      tension: 0.4,
-      pointBackgroundColor: "#FFE600",
-      pointBorderColor: "#000",
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
-    }]
-  }
-  
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        backgroundColor: "rgba(0, 0, 0, 0.9)",
-        titleColor: "#FFE600",
-        bodyColor: "#FFF",
-        borderColor: "#FFE600",
-        borderWidth: 1,
-        padding: 12,
-        cornerRadius: 8
-      }
-    },
-    scales: {
-      x: {
-        grid: {
-          color: "rgba(255, 255, 255, 0.05)"
-        },
-        ticks: {
-          color: "#666"
-        }
-      },
-      y: {
-        grid: {
-          color: "rgba(255, 255, 255, 0.05)"
-        },
-        ticks: {
-          color: "#666"
-        }
-      }
-    }
-  }
 
   return (
     <div className="metrics-roi-container">
@@ -651,7 +574,25 @@ export function MetricsROISection({ metrics, questionsData, allQuestions = [] }:
                  "Atividade Diária (Últimos 30 dias)"}
               </h4>
               <div style={{ height: "200px" }}>
-                <Line data={activityData} options={chartOptions} />
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={chartData.map((value, index) => ({
+                      label: chartLabels[index],
+                      value: value
+                    }))}
+                    margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
+                    <XAxis dataKey="label" stroke="#666" style={{ fontSize: '10px' }} />
+                    <YAxis stroke="#666" style={{ fontSize: '10px' }} />
+                    <RechartsTooltip
+                      contentStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.9)', border: '1px solid #FFE600', borderRadius: '8px' }}
+                      labelStyle={{ color: '#FFE600' }}
+                      itemStyle={{ color: '#FFF' }}
+                    />
+                    <Line type="monotone" dataKey="value" stroke="#FFE600" strokeWidth={2} dot={{ fill: '#FFE600', r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
             

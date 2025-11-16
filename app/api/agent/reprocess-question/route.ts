@@ -69,8 +69,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
     }
 
-    // Permite reprocessar apenas perguntas SEM resposta da IA que falharam
-    const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR"]
+    // 🎯 Permite reprocessar perguntas SEM resposta da IA que:
+    // 1. Falharam (FAILED, TOKEN_ERROR, ERROR)
+    // 2. Estão travadas (RECEIVED, PROCESSING há mais de 5 minutos sem dados)
+    const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR", "RECEIVED", "PROCESSING"]
 
     // Se já tem resposta da IA, não deve reprocessar (usar revisão em vez disso)
     if (question.aiSuggestion) {
@@ -83,9 +85,37 @@ export async function POST(request: NextRequest) {
 
     if (!allowedStatuses.includes(question.status)) {
       return NextResponse.json({
-        error: "Only failed questions can be reprocessed",
+        error: "Only failed or stuck questions can be reprocessed",
         currentStatus: question.status
       }, { status: 400 })
+    }
+
+    // 🎯 Para perguntas RECEIVED/PROCESSING, verificar se realmente está travada (>5min)
+    if (question.status === 'RECEIVED' || question.status === 'PROCESSING') {
+      const receivedDate = question.receivedAt || question.dateCreated || question.createdAt
+      if (receivedDate) {
+        const timeSinceReceived = Date.now() - new Date(receivedDate).getTime()
+        const fiveMinutesInMs = 5 * 60 * 1000
+
+        // Se ainda não passou 5 minutos E não tem texto genérico, não permite reprocessar
+        const hasGenericText = question.text?.includes('Processando') ||
+                               question.text?.includes('dados pendentes') ||
+                               question.text?.includes('Clique em "Reprocessar"')
+
+        if (timeSinceReceived < fiveMinutesInMs && !hasGenericText) {
+          return NextResponse.json({
+            error: "Question is still being processed. Please wait at least 5 minutes before reprocessing.",
+            currentStatus: question.status,
+            timeSinceReceived: Math.floor(timeSinceReceived / 1000 / 60) + ' minutes'
+          }, { status: 400 })
+        }
+
+        logger.info('[Reprocess] Reprocessing stuck question', {
+          questionId: question.mlQuestionId,
+          timeSinceReceived: Math.floor(timeSinceReceived / 1000 / 60) + ' minutes',
+          hasGenericText
+        })
+      }
     }
 
     // Verificar se a conta está ativa

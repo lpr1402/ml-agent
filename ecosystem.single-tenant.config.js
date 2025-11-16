@@ -14,17 +14,17 @@ module.exports = {
       exec_mode: 'fork', // Usar fork mode para Next.js
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G', // Otimizado: 1G suficiente para single-tenant
-      node_args: '--max-old-space-size=1024 --optimize-for-size',
+      max_memory_restart: '4G', // 🚀 ENTERPRISE: 4GB para performance máxima
+      node_args: '--max-old-space-size=4096',
       env_production: {
         // Core
         NODE_ENV: 'production',
         PORT: 3007,
         HOST: '0.0.0.0',
 
-        // Performance optimizations
-        NODE_OPTIONS: '--max-old-space-size=1024',
-        UV_THREADPOOL_SIZE: '16', // Otimizado: 16 threads para 10 contas
+        // 🚀 ENTERPRISE: Performance optimizations - 4GB para interface ultra fluida
+        NODE_OPTIONS: '--max-old-space-size=4096',
+        UV_THREADPOOL_SIZE: '64', // 🚀 ENTERPRISE: 64 threads para máxima performance
 
         // Database - Otimizado para produção com múltiplas contas ML
         DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public&pool_timeout=0&connection_limit=30',
@@ -133,7 +133,7 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '512M', // Otimizado: 512M suficiente
+      max_memory_restart: '768M', // ✅ FIX: Aumentado de 512M (uso real ~400-600MB)
       env_production: {
         NODE_ENV: 'production',
         // Herda configurações essenciais com pool otimizado
@@ -165,7 +165,7 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '512M', // Otimizado: 512M suficiente
+      max_memory_restart: '768M', // ✅ FIX: Aumentado de 512M (processamento de webhooks intensivo)
       env_production: {
         NODE_ENV: 'production',
         // Herda configurações essenciais
@@ -239,26 +239,145 @@ module.exports = {
       instance_var: 'INSTANCE_ID'
     },
     {
-      name: 'ml-agent-avatar-updater',
-      script: 'workers/avatar-updater.ts',
+      name: 'ml-agent-profile-sync',
+      script: 'workers/profile-sync-worker.ts',
       interpreter: 'npx',
       interpreter_args: 'tsx',
       instances: 1,
       exec_mode: 'fork',
       autorestart: false, // Não reiniciar automaticamente (é cron job)
-      cron_restart: '0 3 * * *', // Executar todo dia às 3h da manhã
+      cron_restart: '0 */6 * * *', // 🔥 ENTERPRISE: Executar a cada 6 horas
       watch: false,
       env_production: {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
+        REDIS_URL: 'redis://localhost:6379',
         ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
         LOG_LEVEL: 'info'
       },
-      error_file: './logs/avatar-updater-err.log',
-      out_file: './logs/avatar-updater-out.log',
-      log_file: './logs/avatar-updater-combined.log',
+      error_file: './logs/profile-sync-err.log',
+      out_file: './logs/profile-sync-out.log',
+      log_file: './logs/profile-sync-combined.log',
       time: true,
       merge_logs: true
+    },
+    {
+      name: 'ml-agent-token-maintenance',
+      script: 'workers/token-maintenance-worker.ts',
+      interpreter: 'npx',
+      interpreter_args: 'tsx',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '256M',
+      env_production: {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
+        REDIS_URL: 'redis://localhost:6379',
+        ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
+        ML_CLIENT_ID: '8077330788571096',
+        ML_CLIENT_SECRET: 'jy9KhpXPASCMVsmUuZ2LBtZEhIhsqWha',
+        LOG_LEVEL: 'info'
+      },
+      error_file: './logs/token-maintenance-err.log',
+      out_file: './logs/token-maintenance-out.log',
+      log_file: './logs/token-maintenance-combined.log',
+      time: true,
+      merge_logs: true,
+      min_uptime: '10s',
+      max_restarts: 10,
+      restart_delay: 3000,
+      kill_timeout: 10000
+    },
+    {
+      name: 'ml-system-orchestrator',
+      script: 'workers/ml-system-orchestrator.ts',
+      interpreter: 'npx',
+      interpreter_args: 'tsx',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M',
+      env_production: {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public&pool_timeout=0&connection_limit=30',
+        REDIS_URL: 'redis://localhost:6379',
+        ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
+        ML_CLIENT_ID: '8077330788571096',
+        ML_CLIENT_SECRET: 'jy9KhpXPASCMVsmUuZ2LBtZEhIhsqWha',
+        ML_REDIRECT_URI: 'https://gugaleo.axnexlabs.com.br/api/auth/callback/mercadolibre',
+        LOG_LEVEL: 'info',
+        // Orchestrator Config
+        AUTO_SYNC_ENABLED: 'true',
+        SYNC_INTERVAL_HOURS: '6',
+        METRICS_ENABLED: 'true'
+      },
+      error_file: './logs/orchestrator-err.log',
+      out_file: './logs/orchestrator-out.log',
+      log_file: './logs/orchestrator-combined.log',
+      time: true,
+      merge_logs: true,
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 10000,
+      kill_timeout: 30000
+    },
+    {
+      name: 'ml-agent-push-cleanup',
+      script: 'lib/push/subscription-cleaner.ts',
+      interpreter: 'npx',
+      interpreter_args: 'tsx',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: false, // Não reiniciar automaticamente (é cron job)
+      cron_restart: '0 3 * * *', // 🧹 Executar às 3AM diariamente
+      watch: false,
+      env_production: {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public',
+        LOG_LEVEL: 'info'
+      },
+      error_file: './logs/push-cleanup-err.log',
+      out_file: './logs/push-cleanup-out.log',
+      log_file: './logs/push-cleanup-combined.log',
+      time: true,
+      merge_logs: true
+    },
+    {
+      name: 'ml-agent-reconciliation',
+      script: 'workers/question-reconciliation-worker.ts',
+      interpreter: 'npx',
+      interpreter_args: 'tsx',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M',
+      env_production: {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://mlagent:mlagent2025@localhost:5432/mlagent_db?schema=public&pool_timeout=0&connection_limit=30',
+        REDIS_URL: 'redis://localhost:6379',
+        ENCRYPTION_KEY: 'e771911b5c648a1a460e7af26633009d7445fe688f8845f7e63324b29de95dce',
+        ML_CLIENT_ID: '8077330788571096',
+        ML_CLIENT_SECRET: 'jy9KhpXPASCMVsmUuZ2LBtZEhIhsqWha',
+        LOG_LEVEL: 'info',
+        // 🔄 RECONCILIATION: Sistema de sincronização inteligente
+        RECONCILIATION_INTERVAL_MS: '1800000', // 30 minutos (otimizado para não consumir rate limit)
+        RECONCILIATION_BATCH_SIZE: '50', // Máximo de 50 perguntas por rodada
+        RECONCILIATION_MIN_AGE_MS: '300000', // 5 minutos - idade mínima da pergunta
+        RECONCILIATION_VERBOSE: 'false' // Logs detalhados desabilitados em produção
+      },
+      error_file: './logs/reconciliation-err.log',
+      out_file: './logs/reconciliation-out.log',
+      log_file: './logs/reconciliation-combined.log',
+      time: true,
+      merge_logs: true,
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 10000,
+      kill_timeout: 30000 // 30 segundos para graceful shutdown
     }
   ],
 

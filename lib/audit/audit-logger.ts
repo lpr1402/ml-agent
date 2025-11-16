@@ -28,7 +28,7 @@ export async function auditLog(data: AuditLogData): Promise<void> {
     // Tenta obter IP e User-Agent do contexto da requisição
     let ipAddress = data.ipAddress
     let userAgent = data.userAgent
-    
+
     try {
       const headersList = await headers()
       ipAddress = ipAddress || headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown'
@@ -36,35 +36,59 @@ export async function auditLog(data: AuditLogData): Promise<void> {
     } catch {
       // Em contextos sem headers (jobs, etc), usa valores default
     }
-    
-    // Garante que organizationId está presente
-    if (!data.organizationId && data.mlAccountId) {
+
+    // ✅ FIX CRÍTICO: Garantir organizationId SEMPRE presente
+    let organizationId = data.organizationId
+
+    // Tentar buscar organizationId da conta ML
+    if (!organizationId && data.mlAccountId) {
       const mlAccount = await prisma.mLAccount.findUnique({
         where: { id: data.mlAccountId },
         select: { organizationId: true }
       })
       if (mlAccount?.organizationId) {
-        data.organizationId = mlAccount.organizationId
+        organizationId = mlAccount.organizationId
       }
     }
-    
-    // Cria o registro de audit
+
+    // ✅ FIX: Se ainda não tiver org, criar/buscar organização "system"
+    if (!organizationId || organizationId === 'system' || organizationId === 'unknown') {
+      let systemOrg = await prisma.organization.findFirst({
+        where: { username: '__system__' }
+      })
+
+      if (!systemOrg) {
+        // Criar organização system (executa uma vez apenas)
+        systemOrg = await prisma.organization.create({
+          data: {
+            username: '__system__',
+            organizationName: 'System Internal',
+            role: 'SUPER_ADMIN'
+          }
+        })
+        logger.info('[AUDIT] Created system organization', { id: systemOrg.id })
+      }
+
+      organizationId = systemOrg.id
+    }
+
+    // ✅ Criar registro de audit (organizationId SEMPRE presente agora)
     await prisma.auditLog.create({
       data: {
         action: data.action,
         entityType: data.entityType,
         entityId: data.entityId,
         mlAccountId: data.mlAccountId ?? null,
-        organizationId: data.organizationId!,
+        organizationId: organizationId, // ✅ Variável local garantida
         metadata: data.metadata || {},
         ipAddress: ipAddress || 'system',
         userAgent: userAgent || 'system',
         createdAt: new Date()
       }
     })
-    
+
     // Log também no console para monitoramento
-    logger.info(`[AUDIT] ${data.action} | Account: ${data.mlAccountId || 'system'} | Entity: ${data.entityType}:${data.entityId}`)
+    logger.info(`[AUDIT] ${data.action} | Org: ${organizationId} | Account: ${data.mlAccountId || 'system'} | Entity: ${data.entityType}:${data.entityId}`)
     
   } catch (error) {
     // Nunca falha silenciosamente - audit é crítico

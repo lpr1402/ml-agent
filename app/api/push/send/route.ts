@@ -186,13 +186,27 @@ export async function POST(request: NextRequest) {
               data: { isActive: false }
             })
           } else {
-            // Incrementar contador de falhas
+            // Incrementar contador de falhas e desativar após 3 falhas
+            const currentSub = await prisma.pushSubscription.findUnique({
+              where: { id: subscription.id },
+              select: { failureCount: true }
+            })
+
+            const newFailureCount = (currentSub?.failureCount || 0) + 1
+            const shouldDeactivate = newFailureCount >= 3
+
             await prisma.pushSubscription.update({
               where: { id: subscription.id },
-              data: {
-                failureCount: { increment: 1 }
-              }
+              data: shouldDeactivate
+                ? { failureCount: newFailureCount, isActive: false }
+                : { failureCount: newFailureCount }
             })
+
+            if (shouldDeactivate) {
+              logger.warn('[Push Send] Subscription deactivated after 3 failures', {
+                subscriptionId: subscription.id
+              })
+            }
           }
 
           return { success: false, subscriptionId: subscription.id, error: error.message }

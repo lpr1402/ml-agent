@@ -5,17 +5,11 @@
 
 import { logger } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
-import Redis from 'ioredis'
+import { getRedisClient } from '@/lib/redis'
 import crypto from 'crypto'
 
-// Redis instance para cache
-const redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', {
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => {
-    if (times > 3) return null
-    return Math.min(times * 100, 3000)
-  }
-})
+// ✅ FIX: Usar singleton Redis (evita duplicação de conexões)
+const redis = getRedisClient()
 
 // Configurações
 const CONFIG = {

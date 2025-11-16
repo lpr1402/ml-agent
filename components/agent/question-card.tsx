@@ -10,7 +10,6 @@ import {
   Clock,
   Edit2,
   AlertCircle,
-  Package,
   Sparkles,
   ExternalLink,
   Zap,
@@ -28,6 +27,10 @@ interface QuestionCardProps {
     mlAccount?: MLAccount & {
       mlUserId?: string
       thumbnail?: string | null
+    }
+    item?: {
+      title?: string
+      thumbnail?: string
     }
     mlAnswerId?: string | null // ID da resposta enviada ao ML
     sentToMLAt?: Date | string | null
@@ -84,6 +87,8 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
   const [canRetryNow, setCanRetryNow] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // 🎯 NOVO: Detectar perguntas travadas (sem dados após 5 minutos)
+  const [isStuckQuestion, setIsStuckQuestion] = useState(false)
 
   // 🔊 Helper: Reproduzir som de notificação
   const playNotificationSound = (type: 'success' | 'error' = 'error') => {
@@ -373,6 +378,59 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
       setIsProcessing(false)
     }
   }, [])
+
+  // 🎯 NOVO: Detectar perguntas travadas (sem dados após 5 minutos)
+  useEffect(() => {
+    // Verificar se a pergunta está travada:
+    // 1. Status RECEIVED ou PROCESSING
+    // 2. Sem resposta da IA
+    // 3. Recebida há mais de 5 minutos
+    // 4. Texto genérico (indica que não conseguiu buscar dados do ML)
+
+    const checkIfStuck = () => {
+      const isInLimboStatus = ['RECEIVED', 'PROCESSING'].includes(question.status)
+      const hasNoAiResponse = !question.aiSuggestion
+      const hasGenericText = question.text?.includes('Processando') ||
+                            question.text?.includes('dados pendentes') ||
+                            question.text?.includes('Clique em "Reprocessar"')
+
+      if (!isInLimboStatus || !hasNoAiResponse) {
+        setIsStuckQuestion(false)
+        return
+      }
+
+      // Calcular tempo desde que foi recebida
+      const receivedDate = question.receivedAt || question.dateCreated || question.createdAt
+      if (!receivedDate) {
+        setIsStuckQuestion(false)
+        return
+      }
+
+      const timeSinceReceived = Date.now() - new Date(receivedDate).getTime()
+      const fiveMinutesInMs = 5 * 60 * 1000
+
+      // Marcar como travada se passou 5 minutos
+      if (timeSinceReceived > fiveMinutesInMs || hasGenericText) {
+        setIsStuckQuestion(true)
+        logger.info('[Question Card] Detected stuck question', {
+          questionId: question.mlQuestionId,
+          status: question.status,
+          timeSinceReceived: Math.floor(timeSinceReceived / 1000 / 60) + ' minutes',
+          hasGenericText
+        })
+      } else {
+        setIsStuckQuestion(false)
+      }
+    }
+
+    // Verificar imediatamente
+    checkIfStuck()
+
+    // Verificar a cada 30 segundos
+    const interval = setInterval(checkIfStuck, 30000)
+
+    return () => clearInterval(interval)
+  }, [question.status, question.aiSuggestion, question.text, question.receivedAt, question.dateCreated, question.createdAt, question.mlQuestionId])
 
   // Status configuration with premium design
   const getStatusConfig = () => {
@@ -1065,12 +1123,22 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           <div className="relative w-full p-3 sm:p-4 rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/10 transition-all duration-300">
             <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-lg sm:rounded-xl" />
             <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
-              <div className="flex items-start gap-2 sm:gap-2.5 flex-1 min-w-0">
-                <div className="relative mt-0.5 flex-shrink-0">
-                  <div className="absolute inset-0 bg-gold/20 blur-sm" />
-                  <Package className="relative w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
+              <div className="flex items-start sm:items-center gap-2 sm:gap-2.5 flex-1 min-w-0">
+                {/* Product Image - Real thumbnail from Mercado Livre - ALINHAMENTO VERTICAL CENTRALIZADO NO DESKTOP */}
+                <div className="relative flex-shrink-0 self-start sm:self-center">
+                  <div className="absolute inset-0 bg-gold/10 blur-sm rounded" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={(question as any).itemThumbnail || question.item?.thumbnail || '/mlagent-logo-3d.svg'}
+                    alt={question.itemTitle || 'Produto'}
+                    className="relative w-8 h-8 sm:w-10 sm:h-10 rounded object-cover border border-gold/30 ring-1 ring-gold/20 shadow-md"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.src = '/mlagent-logo-3d.svg'
+                    }}
+                  />
                 </div>
-                <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-2">
+                <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-2 self-start sm:self-center">
                   {question.itemTitle || 'Produto'}
                 </h3>
               </div>
@@ -1280,40 +1348,30 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
           </div>
         )}
 
-        {/* ✅ Success Confirmation - Shows when successfully sent to ML */}
+        {/* ✅ Success Confirmation - Shows when successfully sent to ML - MINIMALISTA */}
         {question.status === 'RESPONDED' && question.sentToMLAt && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="mt-4"
           >
-            <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-green-500/10 border border-emerald-500/30 backdrop-blur-sm">
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex-shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <div className="px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg bg-gradient-to-br from-emerald-500/10 to-green-500/10 border border-emerald-500/30 backdrop-blur-sm">
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="p-1 rounded bg-emerald-500/20 border border-emerald-500/30 flex-shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-emerald-400 mb-2">
-                    Resposta Publicada no Mercado Livre
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 text-xs text-emerald-300/70">
-                    <span>
-                      {new Date(question.sentToMLAt).toLocaleString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                    {question.mlAnswerId && (
-                      <>
-                        <span className="hidden sm:inline">•</span>
-                        <span className="font-mono">
-                          ID: {question.mlAnswerId}
-                        </span>
-                      </>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xs sm:text-sm font-semibold text-emerald-400 truncate">
+                    Resposta Publicada no ML
+                  </span>
+                  <span className="text-[10px] sm:text-xs text-emerald-300/60 font-medium whitespace-nowrap">
+                    {new Date(question.sentToMLAt).toLocaleString('pt-BR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1503,9 +1561,11 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
             {/* Botões de ação - Esconder quando revisão está aberta ou status é REVISING - Mobile Optimized */}
             {!showRevisionInput && question.status !== 'REVISING' && question.status !== 'REVIEWING' && (
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 pt-3 sm:pt-4 border-t border-white/5">
-                {/* Mostrar botões se status é AWAITING_APPROVAL OU se tem aiSuggestion com status incorreto */}
+                {/* 🔴 FIX: Mostrar botões se TEM resposta E não foi enviada ao ML ainda */}
                 {((question.status === 'AWAITING_APPROVAL' && question.aiSuggestion) ||
-                  (question.status === 'PROCESSING' && question.aiSuggestion)) && (
+                  (question.status === 'PROCESSING' && question.aiSuggestion) ||
+                  (question.status === 'PENDING' && question.aiSuggestion) ||
+                  (question.status === 'RECEIVED' && question.aiSuggestion)) && (
                   <>
                     <Button
                       size="sm"
@@ -1545,8 +1605,81 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                   </>
                 )}
 
-          {/* Botão de Retry para perguntas com erro - SEM botão manual */}
-          {(question.status === 'FAILED' || question.status === 'TOKEN_ERROR' || question.status === 'ERROR' || question.status === 'TIMEOUT') && (
+          {/* 🎯 NOVO: Botão de reprocessar para perguntas travadas (sem dados após 5min) */}
+          {isStuckQuestion && !question.aiSuggestion && (
+            <div className="w-full space-y-3">
+              {/* Alerta visual de pergunta travada */}
+              <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-amber-400 mb-1">
+                      Pergunta Aguardando Processamento
+                    </p>
+                    <p className="text-xs text-amber-300/80">
+                      Esta pergunta está há mais de 5 minutos aguardando dados. Clique no botão abaixo para reprocessar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão de reprocessar */}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Button
+                  size="sm"
+                  onClick={handleReprocess}
+                  disabled={isProcessing || isReprocessing}
+                  className="
+                    w-full relative overflow-hidden group
+                    bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600
+                    hover:from-amber-500 hover:via-orange-500 hover:to-amber-500
+                    border border-amber-500/30 hover:border-amber-400/50
+                    text-white font-semibold
+                    shadow-xl shadow-amber-950/50
+                    transition-all duration-500
+                    backdrop-blur-sm
+                    h-10
+                  "
+                  title="Reprocessar pergunta para buscar dados do ML"
+                >
+                  {/* Glow effect on hover */}
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                    <div className="absolute inset-0 bg-gradient-to-r from-amber-400/20 via-orange-400/20 to-amber-400/20 blur-xl" />
+                  </div>
+
+                  {/* Premium animated background */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
+
+                  {/* Content */}
+                  <div className="relative flex items-center justify-center gap-2">
+                    {(isProcessing || isReprocessing) ? (
+                      <>
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <span className="text-sm font-semibold">Reprocessando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
+                        <span className="text-sm font-semibold">
+                          Reprocessar Pergunta
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </Button>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Botão de Retry para perguntas com erro */}
+          {(question.status === 'FAILED' || question.status === 'TOKEN_ERROR' || question.status === 'ERROR' || question.status === 'TIMEOUT') && !isStuckQuestion && (
             <>
               {/* Se não tem resposta da IA: botão de reprocessar (primeiro processamento) */}
               {!question.aiSuggestion && (

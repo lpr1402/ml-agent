@@ -86,15 +86,37 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   }, [])
 
   /**
-   * Get session token for authentication
+   * Get session token for authentication - 🚀 OTIMIZAÇÃO: Com cache
    */
   const getSessionToken = useCallback(async () => {
     try {
+      // 🚀 CACHE: Verificar sessionStorage primeiro (válido por 5min)
+      const cachedToken = sessionStorage.getItem('ws_auth_token')
+      const cachedTime = sessionStorage.getItem('ws_auth_token_time')
+
+      if (cachedToken && cachedTime) {
+        const age = Date.now() - parseInt(cachedTime)
+        if (age < 300000) { // 5 minutos
+          logger.debug('[WebSocket] Using cached token')
+          return cachedToken
+        }
+      }
+
+      // Buscar novo token
       const response = await fetch('/api/auth/session/token', {
         credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
+
+        // 🚀 CACHE: Salvar token com timestamp
+        try {
+          sessionStorage.setItem('ws_auth_token', data.token)
+          sessionStorage.setItem('ws_auth_token_time', Date.now().toString())
+        } catch (e) {
+          // Ignorar erros de storage
+        }
+
         return data.token
       }
     } catch (error) {

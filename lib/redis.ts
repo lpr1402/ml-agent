@@ -24,22 +24,27 @@ export function getRedisClient(): Redis {
 
     const config = {
       maxRetriesPerRequest: isBuildTime ? null : 3,
-      enableOfflineQueue: false,
+      enableOfflineQueue: true, // ✅ Ativado para permitir operações em fila quando offline
       lazyConnect: true,
       enableReadyCheck: !isBuildTime,
       retryStrategy: (times: number) => {
         if (isShuttingDown || isBuildTime) return null
-        const delay = Math.min(times * 50, 2000)
+        if (times > 10) return null // Limita tentativas
+        const delay = Math.min(times * 100, 3000)
         return delay
       },
       reconnectOnError: (err: Error) => {
         if (isShuttingDown || isBuildTime) return false
-        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT']
+        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED']
         if (targetErrors.some(e => err.message.includes(e))) {
           return true
         }
         return false
-      }
+      },
+      // Configurações de resiliência
+      connectTimeout: 10000,
+      keepAlive: 30000,
+      family: 4 // Force IPv4
     }
 
     redisClient = new Redis(REDIS_URL, config)

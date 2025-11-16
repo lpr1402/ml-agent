@@ -1,45 +1,25 @@
 "use client"
 
+/**
+ * ⚠️ DEPRECATED: Este componente não está sendo usado
+ * Use MetricsROIConversion no lugar
+ */
+
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   TrendingUp,
   DollarSign,
   Clock,
-  Zap,
-  Target,
   ArrowUp,
   CheckCircle,
   Activity,
   Timer,
   MessageSquare,
   Sparkles,
-  Award
+  BarChart3
 } from "lucide-react"
-import { Line } from "react-chartjs-2"
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from "chart.js"
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-)
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts'
 
 interface MetricsROIProps {
   accountId: string | null
@@ -131,54 +111,6 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
         }
         return ''
       })
-    }
-  }
-
-  const chartDataFormatted = {
-    labels: getChartLabels(),
-    datasets: [{
-      label: selectedPeriod === "24h" ? "Perguntas por Hora" : "Perguntas por Dia",
-      data: chartData.length > 0 ? chartData :
-        (selectedPeriod === "24h" ? Array(24).fill(0) :
-         selectedPeriod === "7d" ? Array(7).fill(0) :
-         Array(30).fill(0)),
-      fill: true,
-      backgroundColor: "rgba(255, 230, 0, 0.1)",
-      borderColor: "#FFE600",
-      borderWidth: 2,
-      tension: 0.4,
-      pointBackgroundColor: "#FFE600",
-      pointBorderColor: "#000",
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
-    }]
-  }
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: "rgba(0, 0, 0, 0.9)",
-        titleColor: "#FFE600",
-        bodyColor: "#FFF",
-        borderColor: "#FFE600",
-        borderWidth: 1,
-        padding: 12,
-        cornerRadius: 8
-      }
-    },
-    scales: {
-      x: {
-        grid: { color: "rgba(255, 255, 255, 0.05)" },
-        ticks: { color: "#666" }
-      },
-      y: {
-        grid: { color: "rgba(255, 255, 255, 0.05)" },
-        ticks: { color: "#666" }
-      }
     }
   }
 
@@ -288,7 +220,7 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
               </div>
             </motion.div>
 
-            {/* AI Efficiency Card - Real */}
+            {/* Crescimento de Demanda - MOSTRA EVOLUÇÃO DO NEGÓCIO */}
             <motion.div
               whileHover={{ scale: 1.02 }}
               className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
@@ -297,29 +229,31 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
 
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-2 sm:mb-3">
-                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
-                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-white/5 text-gray-400 font-semibold">
-                    IA
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
+                    CRESCIMENTO
                   </span>
                 </div>
                 <motion.p
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1"
+                  className={`text-xl sm:text-2xl lg:text-3xl font-bold mb-1 ${
+                    (metrics.growthPercentage || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}
                 >
-                  {Math.round(animatedValues.efficiency)}%
+                  {(metrics.growthPercentage || 0) >= 0 ? '+' : ''}{Math.round(metrics.growthPercentage || 0)}%
                 </motion.p>
-                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Eficiência</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">vs período anterior</p>
                 <div className="flex items-center gap-1 mt-1 sm:mt-2">
-                  <Award className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  <BarChart3 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
                   <span className="text-[9px] sm:text-xs text-gray-400">
-                    Sem edição
+                    Demanda aumentando
                   </span>
                 </div>
               </div>
             </motion.div>
 
-            {/* Auto-Approval Rate Card - More Valuable Metric */}
+            {/* Taxa de Resposta - % DE PERGUNTAS RESPONDIDAS */}
             <motion.div
               whileHover={{ scale: 1.02 }}
               className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.03] to-white/[0.01] backdrop-blur-sm border border-white/5 p-3 sm:p-4 lg:p-5 overflow-hidden group"
@@ -328,9 +262,9 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
 
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-2 sm:mb-3">
-                  <Target className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
-                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-white/5 text-gray-400 font-semibold">
-                    AUTO
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                  <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-gold/10 text-gold font-semibold">
+                    EFICIÊNCIA
                   </span>
                 </div>
                 <motion.p
@@ -338,13 +272,17 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
                   animate={{ opacity: 1, y: 0 }}
                   className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold mb-1"
                 >
-                  {Math.round(metrics.aiPerformance?.autoApprovalRate || 0)}%
+                  {(() => {
+                    const answered = metrics.aggregated?.answeredQuestions || 0
+                    const total = metrics.aggregated?.totalQuestions || 0
+                    return total > 0 ? Math.round((answered / total) * 100) : 0
+                  })()}%
                 </motion.p>
-                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Auto-aprovação</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Taxa de resposta</p>
                 <div className="flex items-center gap-1 mt-1 sm:mt-2">
-                  <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
+                  <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold" />
                   <span className="text-[9px] sm:text-xs text-gray-400 truncate">
-                    R$ {((metrics.roi?.currentPeriodCost || 500) / 30).toFixed(0)}/dia
+                    {metrics.aggregated?.answeredQuestions || 0} respondidas
                   </span>
                 </div>
               </div>
@@ -364,7 +302,25 @@ export function MetricsROIModern({ accountId, organizationId }: MetricsROIProps)
                 </span>
               </div>
               <div className="h-32 sm:h-40 lg:h-48">
-                <Line data={chartDataFormatted} options={chartOptions} />
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={chartData.map((value, index) => ({
+                      label: getChartLabels()[index],
+                      value: value
+                    }))}
+                    margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
+                    <XAxis dataKey="label" stroke="#666" style={{ fontSize: '10px' }} />
+                    <YAxis stroke="#666" style={{ fontSize: '10px' }} />
+                    <RechartsTooltip
+                      contentStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.9)', border: '1px solid #FFE600', borderRadius: '8px' }}
+                      labelStyle={{ color: '#FFE600' }}
+                      itemStyle={{ color: '#FFF' }}
+                    />
+                    <Line type="monotone" dataKey="value" stroke="#FFE600" strokeWidth={2} dot={{ fill: '#FFE600', r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
 

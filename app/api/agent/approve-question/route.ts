@@ -412,19 +412,67 @@ export async function POST(request: NextRequest) {
           status: mlResult.status
         })
 
-        // Emitir evento WebSocket de pergunta respondida com answer_id
-        const { emitQuestionUpdated } = require('@/lib/websocket/emit-events.js')
-        emitQuestionUpdated(
+        // ✅ FIX: Emitir evento WebSocket de pergunta respondida com answer_id
+        const { emitQuestionUpdate } = require('@/lib/websocket/emit-events.js')
+        emitQuestionUpdate(
           question.mlQuestionId,
           'RESPONDED',
           {
-            answeredAt: new Date(),
+            organizationId: question.mlAccount.organizationId,
+            answeredAt: new Date().toISOString(),
             mlResponseCode: mlResult.status || 200,
             mlAnswerId: mlAnswerId, // ID da resposta no ML
-            sentToMLAt: new Date()
-          },
-          question.mlAccount.organizationId
+            sentToMLAt: new Date().toISOString()
+          }
         )
+
+        // 🎮 GAMIFICATION: Award XP (event-driven, non-blocking)
+        setImmediate(async () => {
+          try {
+            const { XPService } = await import('@/lib/gamification/xp-service')
+
+            // Calcular tempo de resposta
+            const receivedAt = new Date(question.receivedAt)
+            const now = new Date()
+            const responseTimeMinutes = Math.round((now.getTime() - receivedAt.getTime()) / 60000)
+
+            // Award XP
+            const xpResult = await XPService.awardXPForResponse({
+              questionId: question.id,
+              mlAccountId: question.mlAccountId,
+              responseTimeMinutes,
+              firstApproval: !question.aiProcessedAt || question.status !== 'REVISING', // Primeira aprovação se não teve revisão
+              answerLength: finalResponse.length,
+              timestamp: now
+            })
+
+            // Emitir evento de XP ganho (para animação no frontend)
+            if (xpResult.success && xpResult.xpAwarded > 0) {
+              const { emitXPEarned } = require('@/lib/websocket/emit-events.js')
+              const { LevelCalculator } = await import('@/lib/gamification/level-calculator')
+
+              // Calcular level info para modal
+              const levelInfo = LevelCalculator.calculateLevel(xpResult.newTotalXP)
+
+              emitXPEarned(question.mlAccount.organizationId, {
+                mlAccountId: question.mlAccountId,
+                questionId: question.id,
+                xpAwarded: xpResult.xpAwarded,
+                newTotalXP: xpResult.newTotalXP,
+                oldLevel: xpResult.oldLevel,
+                newLevel: xpResult.newLevel,
+                leveledUp: xpResult.leveledUp,
+                levelName: levelInfo.name,
+                levelColor: levelInfo.color,
+                achievementsUnlocked: xpResult.achievementsUnlocked,
+                actionDescription: xpResult.actionDescription
+              })
+            }
+          } catch (xpError) {
+            // XP é não-crítico, apenas logar erro
+            logger.error('[Approve] XP award failed (non-critical)', { error: xpError, questionId })
+          }
+        })
       } catch (prismaError: unknown) {
         // 🔒 FIX: Error handling robusto com diagnóstico completo
         const error = prismaError as any

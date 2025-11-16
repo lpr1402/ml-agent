@@ -8,14 +8,15 @@ import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
 import { getValidMLToken } from './lib/ml-api/token-manager'
 import { getTokenRefreshManager } from './lib/ml-api/token-refresh-manager'
-import { mlAccountsUpdater } from './lib/jobs/update-ml-accounts'
+import { globalMLRateLimiter } from './lib/ml-api/global-rate-limiter'
+// import { mlAccountsUpdater } from './lib/jobs/update-ml-accounts' // ❌ DESATIVADO - causava excesso de chamadas ML
 import Redis from 'ioredis'
 
 // Configuração seguindo ML Best Practices
 const MAX_RETRIES = 3
 const BATCH_SIZE = 10
 const INSTANT_PROCESS_DELAY = 100 // 100ms para evitar race conditions
-const DELAY_BETWEEN_REQUESTS_MS = 500 // 500ms entre requisições (evita burst e 429)
+// const DELAY_BETWEEN_REQUESTS_MS = 500 // ❌ REMOVIDO - global rate limiter agora controla delays
 
 // Redis para receber notificações em tempo real
 const redisConfig: any = {
@@ -82,73 +83,80 @@ async function processQuestions(filterQuestionId?: string): Promise<boolean> {
           continue
         }
         
-        // Enviar resposta para ML
-        const response = await fetch('https://api.mercadolibre.com/answers', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            question_id: question.mlQuestionId,
-            text: question.aiSuggestion || question.answer || ''
-          })
+        // Enviar resposta para ML via Global Rate Limiter
+        const mlResponse = await globalMLRateLimiter.executeRequest({
+          mlAccountId: question.mlAccount.id,
+          organizationId: question.mlAccount.organizationId,
+          endpoint: '/answers',
+          priority: 'high', // Alta prioridade para envio de respostas
+          requestFn: async () => {
+            const response = await fetch('https://api.mercadolibre.com/answers', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify({
+                question_id: question.mlQuestionId,
+                text: question.aiSuggestion || question.answer || ''
+              })
+            })
+
+            if (!response.ok) {
+              const error: any = new Error(`ML API error ${response.status}`)
+              error.statusCode = response.status
+              error.body = await response.text()
+              throw error
+            }
+
+            return {
+              status: response.status,
+              text: await response.text()
+            }
+          }
         })
-        
-        if (response.ok) {
+
+        if (mlResponse) {
           // Sucesso - marcar como SENT_TO_ML, NÃO como COMPLETED
           await prisma.question.update({
             where: { id: question.id },
             data: {
               status: 'SENT_TO_ML', // Enviada ao ML, aguardando confirmação manual
               sentToMLAt: new Date(),
-              mlResponseCode: response.status,
-              mlResponseData: await response.text()
+              mlResponseCode: mlResponse.status,
+              mlResponseData: mlResponse.text
             }
           })
           logger.info(`[Worker] Question ${question.id} sent to ML successfully in ${Date.now() - startTime}ms`, {
-          mlAccountId: question.mlAccount.id,
-          organizationId: question.mlAccount.organizationId
-        })
-
-        // Emitir evento de sucesso via Redis
-        await redis.publish('question:sent_to_ml', JSON.stringify({
-          questionId: question.id,
-          mlQuestionId: question.mlQuestionId,
-          mlAccountId: question.mlAccount.id,
-          organizationId: question.mlAccount.organizationId,
-          status: 'SENT_TO_ML',
-          timestamp: new Date()
-        }))
-        } else {
-          // Erro
-          const errorText = await response.text()
-          await prisma.question.update({
-            where: { id: question.id },
-            data: {
-              status: 'FAILED', // Sempre FAILED, nunca RATE_LIMITED
-              retryCount: { increment: 1 },
-              mlResponseCode: response.status,
-              mlResponseData: errorText,
-              failedAt: new Date()
-            }
+            mlAccountId: question.mlAccount.id,
+            organizationId: question.mlAccount.organizationId
           })
-          logger.error(`[Worker] Question ${question.id} failed: ${response.status}`)
+
+          // Emitir evento de sucesso via Redis
+          await redis.publish('question:sent_to_ml', JSON.stringify({
+            questionId: question.id,
+            mlQuestionId: question.mlQuestionId,
+            mlAccountId: question.mlAccount.id,
+            organizationId: question.mlAccount.organizationId,
+            status: 'SENT_TO_ML',
+            timestamp: new Date()
+          }))
         }
-        
-        // Delay entre requisições para evitar burst (ML best practice)
-        // SEMPRE aplicar delay para distribuir requisições ao longo do tempo
-        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS_MS))
-        
-      } catch (error) {
+
+        // ✅ Rate limiter global agora controla delays - não precisa mais de delay manual entre requests
+
+      } catch (error: any) {
         logger.error(`[Worker] Error processing question ${question.id}:`, { error })
         await prisma.question.update({
           where: { id: question.id },
           data: {
             retryCount: { increment: 1 },
             status: 'FAILED',
-            failedAt: new Date()
+            failedAt: new Date(),
+            failureReason: error.message || 'Erro desconhecido',
+            mlResponseCode: error.statusCode || null,
+            mlResponseData: error.body || null
           }
         })
       }
@@ -230,9 +238,10 @@ async function main() {
   getTokenRefreshManager()
   logger.info('[Worker] TokenRefreshManager initialized - tokens will be refreshed automatically')
 
-  // Inicializar MLAccountsUpdater para atualizar dados das contas a cada 3 horas
-  mlAccountsUpdater.start()
-  logger.info('[Worker] MLAccountsUpdater initialized - account data will be updated every 3 hours')
+  // ❌ DESATIVADO: MLAccountsUpdater estava fazendo MUITAS chamadas ao ML
+  // Profile sync agora é feito pelo profile-sync-worker.ts via cron (mais eficiente)
+  // mlAccountsUpdater.start()
+  logger.info('[Worker] MLAccountsUpdater DISABLED - using profile-sync-worker instead for better rate limit control')
 
   // NOVO: Subscribe para processar APPROVED instantaneamente
   pubsub.subscribe('question:approved')
@@ -276,13 +285,13 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     logger.info('[Worker] Received SIGTERM, shutting down...')
-    mlAccountsUpdater.stop() // Para o job de atualização
+    // mlAccountsUpdater.stop() // ❌ DESATIVADO
     process.exit(0)
   })
 
   process.on('SIGINT', () => {
     logger.info('[Worker] Received SIGINT, shutting down...')
-    mlAccountsUpdater.stop() // Para o job de atualização
+    // mlAccountsUpdater.stop() // ❌ DESATIVADO
     process.exit(0)
   })
 }

@@ -5,7 +5,8 @@
  */
 
 // Versão do Service Worker - Production 2025
-const SW_VERSION = '4.1.1';
+// 🔴 v4.2.0: iOS/Windows notificações com som automático + requireInteraction
+const SW_VERSION = '4.2.0';
 const APP_NAME = 'ML Agent';
 const CACHE_NAME = `ml-agent-cache-v${SW_VERSION}`;
 const RUNTIME_CACHE = `ml-agent-runtime-v${SW_VERSION}`;
@@ -234,9 +235,21 @@ self.addEventListener('periodicsync', (event) => {
   }
 });
 
-// Push notification received - iOS optimized
+// Push notification received - iOS and Windows optimized
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push notification received - iOS optimized');
+  console.log('[SW] Push notification received - iOS/Windows optimized');
+
+  // 🔴 CRITICAL FIX: Tocar som de notificação automaticamente (iOS/Windows)
+  // Enviar mensagem para todos os clientes tocarem o som
+  clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+    windowClients.forEach(client => {
+      client.postMessage({
+        type: 'PLAY_NOTIFICATION_SOUND',
+        sound: '/notification-new.mp3',
+        timestamp: Date.now()
+      });
+    });
+  }).catch(err => console.log('[SW] Failed to send sound message:', err));
 
   let notificationData = {
     title: '🔔 ML Agent',
@@ -244,8 +257,9 @@ self.addEventListener('push', (event) => {
     icon: '/mlagent-logo-3d.png',
     badge: '/mlagent-logo-3d.png',
     tag: 'ml-notification',
-    requireInteraction: false,
-    silent: false,
+    requireInteraction: true, // 🔴 FIX: Windows - manter visível até usuário interagir
+    silent: false, // Som habilitado
+    renotify: true, // Re-notificar se tag já existe
     data: {}
   };
 
@@ -257,20 +271,34 @@ self.addEventListener('push', (event) => {
       // Customizar notificação baseado no tipo
       switch (payload.type) {
         case 'new_question':
+          // 🔴 FIX: Tocar som específico para perguntas
+          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            windowClients.forEach(client => {
+              client.postMessage({
+                type: 'PLAY_NOTIFICATION_SOUND',
+                sound: '/notification-new.mp3',
+                volume: 0.8, // 80% volume
+                timestamp: Date.now()
+              });
+            });
+          }).catch(err => console.log('[SW] Sound error:', err));
+
           notificationData = {
             title: `🔔 ${payload.sellerName || 'ML Agent'}`,
             body: `Um cliente perguntou: "${payload.questionText || 'Nova pergunta recebida'}"`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: `question-${payload.questionId}`,
-            requireInteraction: false, // iOS não suporta requireInteraction
-            silent: false,
-            vibrate: [200, 100, 200],
+            requireInteraction: true, // 🔴 FIX: Windows - persistir até interação
+            silent: false, // Som habilitado no sistema
+            renotify: true, // Re-notificar se houver update
+            vibrate: [300, 100, 300, 100, 300], // 🔴 FIX: Vibração personalizada mais longa
             data: {
               type: 'question',
               questionId: payload.questionId,
               accountId: payload.accountId,
-              url: payload.url || '/agente'
+              url: payload.url || '/agente',
+              sound: '/notification-new.mp3' // Som específico
             },
             actions: [
               {
@@ -288,36 +316,66 @@ self.addEventListener('push', (event) => {
           break;
 
         case 'batch_questions':
+          // Som para múltiplas perguntas
+          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            windowClients.forEach(client => {
+              client.postMessage({
+                type: 'PLAY_NOTIFICATION_SOUND',
+                sound: '/notification-new.mp3',
+                volume: 0.9,
+                timestamp: Date.now()
+              });
+            });
+          }).catch(err => console.log('[SW] Sound error:', err));
+
           notificationData = {
             title: `🔔 ${payload.sellerName || 'ML Agent'}`,
             body: `Você tem ${payload.count} ${payload.count === 1 ? 'nova pergunta' : 'novas perguntas'} de clientes aguardando resposta`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: 'questions-batch',
-            requireInteraction: true,
-            vibrate: [200, 100, 200, 100, 200],
+            requireInteraction: true, // 🔴 FIX: Persistir até interação
+            silent: false,
+            renotify: true,
+            vibrate: [300, 150, 300, 150, 300], // 🔴 FIX: Vibração mais intensa
             data: {
               type: 'batch',
               count: payload.count,
-              url: '/agente'
+              url: '/agente',
+              sound: '/notification-new.mp3'
             }
           };
           break;
 
         case 'urgent_question':
+          // 🔴 FIX: Som urgente repetido 2x
+          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            windowClients.forEach(client => {
+              client.postMessage({
+                type: 'PLAY_NOTIFICATION_SOUND',
+                sound: '/notification-new.mp3',
+                volume: 1.0, // Volume máximo
+                repeat: 2, // Tocar 2 vezes
+                timestamp: Date.now()
+              });
+            });
+          }).catch(err => console.log('[SW] Sound error:', err));
+
           notificationData = {
             title: `⚠️ PERGUNTA URGENTE - ${payload.sellerName}`,
             body: `Cliente aguardando há ${payload.hours}h: "${payload.questionText}"`,
             icon: '/mlagent-logo-3d.png',
             badge: '/mlagent-logo-3d.png',
             tag: `urgent-${payload.questionId}`,
-            requireInteraction: true,
+            requireInteraction: true, // 🔴 FIX: OBRIGATÓRIO fechar manualmente
             silent: false,
-            vibrate: [500, 250, 500], // Vibração mais longa para urgente
+            renotify: true,
+            vibrate: [500, 250, 500, 250, 500, 250, 500], // 🔴 FIX: Vibração mais longa urgente
             data: {
               type: 'urgent',
               questionId: payload.questionId,
-              url: payload.url || '/agente'
+              url: payload.url || '/agente',
+              sound: '/notification-new.mp3'
             },
             actions: [
               {
@@ -345,15 +403,31 @@ self.addEventListener('push', (event) => {
           break;
 
         case 'error':
+          // Som de erro/aviso
+          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            windowClients.forEach(client => {
+              client.postMessage({
+                type: 'PLAY_NOTIFICATION_SOUND',
+                sound: '/notification.mp3', // Som diferente para erro
+                volume: 0.7,
+                timestamp: Date.now()
+              });
+            });
+          }).catch(err => console.log('[SW] Sound error:', err));
+
           notificationData = {
             title: '⚠️ Atenção Necessária',
             body: payload.message || 'Ocorreu um erro ao processar sua solicitação. Verifique o painel.',
             icon: '/icons/icon-192x192.png',
             badge: '/icons/icon-72x72.png',
             tag: 'error',
-            requireInteraction: true,
+            requireInteraction: true, // 🔴 FIX: Erro deve persistir até usuário ver
+            silent: false,
+            renotify: true,
+            vibrate: [200, 100, 200], // Vibração mais suave para erro
             data: {
-              type: 'error'
+              type: 'error',
+              sound: '/notification.mp3'
             }
           };
           break;

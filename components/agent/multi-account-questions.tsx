@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { apiClient } from '@/lib/api-client'
 import { logger } from '@/lib/logger'
+import { getValidAvatarUrl } from '@/lib/utils/avatar-utils'
 import { useWebSocket } from '@/hooks/use-websocket'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { motion } from 'framer-motion'
@@ -11,25 +12,21 @@ import Image from 'next/image'
 import { QuestionStatus } from '@/lib/constants/question-status'
 import {
   MessageSquare,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CheckCircle,
-  Users2
+  Check,
+  User,
+  Building2
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { QuestionCard } from './question-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
+import { LevelUpModal } from '@/components/gamification/level-up-modal'
+import { AchievementUnlockedModal } from '@/components/gamification/achievement-unlocked-modal'
+import { XPEarnedToast } from '@/components/gamification/xp-earned-toast'
 
 interface QuestionWithAccount {
   id: string
@@ -39,6 +36,7 @@ interface QuestionWithAccount {
   itemPrice: number
   itemId: string
   itemPermalink?: string | null
+  itemThumbnail?: string | null
   status: string
   aiSuggestion?: string | null
   answer?: string | null
@@ -85,7 +83,8 @@ interface Props {
   pageKey?: string // Unique key for pagination state
 }
 
-export function MultiAccountQuestions({
+// 🚀 ENTERPRISE: Memoização para evitar re-renders desnecessários (componente mais pesado: 1270 linhas)
+export const MultiAccountQuestions = memo(function MultiAccountQuestions({
   selectedAccountId,
   filterStatus = 'pending',
   showFilters = true,
@@ -95,7 +94,6 @@ export function MultiAccountQuestions({
   // WebSocket connection
   const {
     isConnected,
-    connectionStatus,
     approveQuestion: wsApproveQuestion,
     reviseQuestion: wsReviseQuestion,
     editQuestion: wsEditQuestion
@@ -135,6 +133,16 @@ export function MultiAccountQuestions({
   const notifiedQuestionsRef = useRef<Set<string>>(new Set())
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
   const [lastApprovedQuestion, setLastApprovedQuestion] = useState<QuestionWithAccount | null>(null)
+  const [showErrorAnimation, setShowErrorAnimation] = useState(false)
+  const [lastError, setLastError] = useState<{question: QuestionWithAccount | null, message: string} | null>(null)
+
+  // 🎮 Gamification states
+  const [showXPToast, setShowXPToast] = useState(false)
+  const [xpToastData, setXPToastData] = useState<{xp: number, description: string}>({ xp: 0, description: '' })
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false)
+  const [levelUpData, setLevelUpData] = useState<any>(null)
+  const [showAchievementModal, setShowAchievementModal] = useState(false)
+  const [achievementData, setAchievementData] = useState<any>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -145,6 +153,7 @@ export function MultiAccountQuestions({
       setAccountFilter(selectedAccountId || 'all')
     }
   }, [selectedAccountId])
+
 
   // Função para buscar perguntas do banco
   const fetchQuestions = useCallback(async (showLoadingState = true) => {
@@ -172,15 +181,17 @@ export function MultiAccountQuestions({
         throw new Error('No response from API')
       }
 
-      const { questions: fetchedQuestions = [], accountsSummary = [] } = response
+      // 🚀 ENTERPRISE FIX: Corrigir nome do campo da API
+      const { questions: fetchedQuestions = [], accountSummary: accountsSummaryData = [] } = response
 
       // Atualizar estado com dados do banco
       setQuestions(fetchedQuestions)
-      setAccountSummary(accountsSummary)
+      setAccountSummary(accountsSummaryData)
 
       logger.info('[Multi Questions] Data loaded', {
-        count: fetchedQuestions.length,
-        accounts: accountsSummary.length
+        questionsCount: fetchedQuestions.length,
+        accountsCount: accountsSummaryData.length,
+        accounts: accountsSummaryData.map((a: AccountSummary) => a.nickname)
       })
 
     } catch (error) {
@@ -455,6 +466,56 @@ export function MultiAccountQuestions({
       }))
     }
 
+    // 🎮 Handler para XP ganho (gamificação real-time)
+    const handleXPEarned = (event: CustomEvent) => {
+      const { xpAwarded, actionDescription, leveledUp, newLevel, oldLevel, achievementsUnlocked } = event.detail.data || {}
+
+      logger.info('[Multi Questions] XP earned received', {
+        xpAwarded,
+        leveledUp,
+        achievementsCount: achievementsUnlocked?.length || 0
+      })
+
+      // Mostrar toast de +XP
+      if (xpAwarded > 0 && actionDescription) {
+        setXPToastData({ xp: xpAwarded, description: actionDescription })
+        setShowXPToast(true)
+
+        // Vibração haptic
+        try {
+          if (navigator.vibrate) {
+            navigator.vibrate([50, 30, 50])
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      // Mostrar modal de level up
+      if (leveledUp && newLevel && oldLevel) {
+        setTimeout(() => {
+          setLevelUpData(event.detail.data)
+          setShowLevelUpModal(true)
+        }, 3500) // Delay para não sobrepor com toast
+      }
+
+      // Mostrar modais de achievements (um por vez)
+      if (achievementsUnlocked && achievementsUnlocked.length > 0) {
+        achievementsUnlocked.forEach((achievement: any, index: number) => {
+          setTimeout(() => {
+            setAchievementData(achievement)
+            setShowAchievementModal(true)
+          }, 6000 + (index * 6500)) // Delay progressivo
+        })
+      }
+
+      // Refresh ranking data após XP ganho
+      setTimeout(() => {
+        // Dispatch event para refresh do dashboard de gamificação
+        window.dispatchEvent(new CustomEvent('gamification:refresh'))
+      }, 1000)
+    }
+
     // Add event listeners
     window.addEventListener('websocket:question:new' as any, handleNewQuestion)
     window.addEventListener('websocket:question:updated' as any, handleQuestionUpdate)
@@ -462,6 +523,7 @@ export function MultiAccountQuestions({
     window.addEventListener('websocket:question:revision-error' as any, handleRevisionError)
     window.addEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
     window.addEventListener('websocket:questions:initial' as any, handleInitialQuestions)
+    window.addEventListener('websocket:xp:earned' as any, handleXPEarned) // 🎮 XP events
 
     // Cleanup
     return () => {
@@ -471,20 +533,22 @@ export function MultiAccountQuestions({
       window.removeEventListener('websocket:question:revision-error' as any, handleRevisionError)
       window.removeEventListener('websocket:question:answer-edited' as any, handleAnswerEdited)
       window.removeEventListener('websocket:questions:initial' as any, handleInitialQuestions)
+      window.removeEventListener('websocket:xp:earned' as any, handleXPEarned) // 🎮 XP events
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, fetchQuestions, hasPermission, sendQuestionNotification]) // Removed 'questions' from deps to prevent infinite loop
 
-  // Polling controlado - atualizar a cada 30 segundos (apenas se não estiver conectado ao WebSocket)
+  // 🚀 OTIMIZAÇÃO ENTERPRISE: Polling apenas como fallback de emergência (WebSocket disconnected)
+  // Real-time updates vêm via WebSocket, polling só para reconexão
   useEffect(() => {
     if (!mounted || isConnected) return // Só fazer polling se WebSocket estiver desconectado
 
     const interval = setInterval(() => {
       if (!isFetchingRef.current) {
-        logger.info('[Multi Questions] Periodic refresh (WebSocket disconnected)')
+        logger.info('[Multi Questions] Emergency fallback refresh (WebSocket disconnected)')
         fetchQuestions(false)
       }
-    }, 30000) // 30 segundos
+    }, 300000) // 5 minutos (apenas fallback de emergência)
 
     return () => clearInterval(interval)
   }, [mounted, isConnected, fetchQuestions])
@@ -531,7 +595,7 @@ export function MultiAccountQuestions({
       const response = await apiClient.post(endpoint, payload)
 
       if (response.success) {
-        // Optimistic update
+        // 🚀 ENTERPRISE: Optimistic update APENAS com confirmação do ML
         setQuestions(prev => prev.map(q => {
           if (q.id === questionId) {
             if (action === 'edit') {
@@ -541,47 +605,107 @@ export function MultiAccountQuestions({
                 status: 'AWAITING_APPROVAL',
                 aiSuggestion: data?.answer || q.aiSuggestion
               } as QuestionWithAccount
-            } else {
-              // Para outras ações, comportamento original
+            } else if (action === 'approve') {
+              // ✅ CRITICAL: Para aprovação, SÓ marcar RESPONDED se tiver mlAnswerId
+              // Sem mlAnswerId = envio falhou ou em processamento
+              const hasMLConfirmation = response.mlAnswerId
               return {
                 ...q,
-                status: action === 'approve' ? 'RESPONDED' : 'REVIEWING',
+                status: hasMLConfirmation ? 'RESPONDED' : 'APPROVED', // APPROVED = enviando ao ML
                 answer: data?.answer || q.answer,
-                approvedAt: action === 'approve' ? new Date().toISOString() : (q.approvedAt || null),
-                approvalType: action === 'approve' ? 'AUTO' : (q.approvalType || null)
+                approvedAt: new Date().toISOString(),
+                approvalType: 'MANUAL',
+                mlAnswerId: response.mlAnswerId || q.mlAnswerId
+              } as QuestionWithAccount
+            } else {
+              // Para revisão
+              return {
+                ...q,
+                status: 'REVIEWING',
+                answer: data?.answer || q.answer
               } as QuestionWithAccount
             }
           }
           return q
         }))
 
-        // Mostrar animação de sucesso apenas para aprovação (não para edição)
-        if (action === 'approve') {
+        // ✅ MOSTRAR ANIMAÇÃO DE SUCESSO APENAS SE REALMENTE ENVIOU AO ML
+        // Verificar: success=true E mlAnswerId presente (confirmação do ML)
+        if (action === 'approve' && response.mlAnswerId) {
           const approvedQuestion = questions.find(q => q.id === questionId)
           if (approvedQuestion) {
-            setLastApprovedQuestion(approvedQuestion)
+            // Adicionar mlAnswerId à pergunta aprovada
+            setLastApprovedQuestion({
+              ...approvedQuestion,
+              mlAnswerId: response.mlAnswerId
+            } as QuestionWithAccount)
             setShowSuccessAnimation(true)
-            setTimeout(() => setShowSuccessAnimation(false), 2300)
+            setTimeout(() => {
+              setShowSuccessAnimation(false)
+              setLastApprovedQuestion(null)
+            }, 3000)
           }
         }
 
-        // Toast removido - usando apenas animação visual personalizada
-        // toast.success(
-        //   action === 'approve' ? '✅ Resposta enviada ao Mercado Livre!' :
-        //   action === 'revise' ? '🔄 Revisão solicitada!' :
-        //   '✏️ Resposta editada e enviada!',
-        //   {
-        //     duration: 4000,
-        //     description: action === 'approve' || action === 'edit'
-        //       ? 'O cliente receberá a resposta em breve'
-        //       : 'O ML Agent está revisando a resposta'
-        //   }
-        // )
+        // Se for aprovação mas SEM mlAnswerId, não mostrar sucesso (pode ser erro silencioso)
+        if (action === 'approve' && !response.mlAnswerId && response.success) {
+          logger.warn('[Multi Questions] Approval returned success but no mlAnswerId', {
+            questionId,
+            response
+          })
+        }
+      } else {
+        // ❌ ERRO: Falha ao enviar ao ML
+        if (action === 'approve') {
+          const failedQuestion = questions.find(q => q.id === questionId)
+          if (failedQuestion) {
+            const errorMessage = response.error ||
+              (response.isRateLimit ? 'Rate limit do Mercado Livre atingido. Aguarde alguns minutos.' :
+              'Falha ao enviar resposta ao Mercado Livre')
+
+            setLastError({
+              question: failedQuestion,
+              message: errorMessage
+            })
+            setShowErrorAnimation(true)
+            setTimeout(() => {
+              setShowErrorAnimation(false)
+              setLastError(null)
+            }, 4000)
+
+            // Também mostrar toast com opção de retry
+            toast.error('Erro ao enviar resposta', {
+              description: errorMessage,
+              duration: 6000,
+              action: response.canRetry ? {
+                label: 'Tentar novamente',
+                onClick: () => handleQuestionAction(questionId, action, data)
+              } : undefined
+            })
+          }
+        }
       }
 
       return response
     } catch (error) {
       logger.error('[Multi Questions] Error processing action:', { error, action, questionId })
+
+      // Mostrar erro visual para aprovações
+      if (action === 'approve') {
+        const failedQuestion = questions.find(q => q.id === questionId)
+        if (failedQuestion) {
+          setLastError({
+            question: failedQuestion,
+            message: 'Erro de conexão. Verifique sua internet e tente novamente.'
+          })
+          setShowErrorAnimation(true)
+          setTimeout(() => {
+            setShowErrorAnimation(false)
+            setLastError(null)
+          }, 4000)
+        }
+      }
+
       toast.error('Erro ao processar ação', {
         description: 'Tente novamente em alguns instantes'
       })
@@ -590,20 +714,40 @@ export function MultiAccountQuestions({
   }
 
 
-  // Filtrar perguntas baseado nos filtros ativos
+  // 🚀 ENTERPRISE-GRADE: Filtros com lógica de negócio perfeita
   const filteredQuestions = questions.filter(q => {
     // Filtro de status
     if (statusFilter === 'pending') {
-      // Pendentes: perguntas aguardando ação (incluindo ERROS)
-      if (!['PENDING', 'RECEIVED', 'PROCESSING', 'AWAITING_APPROVAL', 'REVIEWING', 'REVISING', 'FAILED', 'ERROR', 'TIMEOUT'].includes(q.status)) {
+      // ✅ PENDENTES: Perguntas ANTES de serem APROVADAS pelo usuário
+      // = Tudo que ainda precisa de AÇÃO do vendedor na plataforma
+      // Inclui: RECEIVED, PROCESSING, AWAITING_APPROVAL, REVIEWING, REVISING, FAILED, ERROR, TIMEOUT
+      // EXCLUI: RESPONDED, COMPLETED, SENT_TO_ML, APPROVED (já aprovadas/enviadas)
+      const pendingStatuses = [
+        'RECEIVED',        // Recebida do ML, ainda não processada
+        'PROCESSING',      // Sendo processada pela IA
+        'AWAITING_APPROVAL', // IA respondeu, aguardando aprovação do usuário
+        'REVIEWING',       // Usuário pediu revisão
+        'REVISING',        // IA está revisando
+        'FAILED',          // Falhou no processamento
+        'ERROR',           // Erro genérico
+        'TIMEOUT',         // Timeout no processamento
+        'PENDING'          // Status genérico de pendente
+      ]
+
+      const isPending = pendingStatuses.includes(q.status)
+      if (!isPending) {
         return false
       }
     } else if (statusFilter === 'completed') {
-      // Respondidas: perguntas já enviadas ao ML (excluindo erros)
-      if (!['RESPONDED', 'COMPLETED', 'APPROVED', 'SENT_TO_ML'].includes(q.status)) {
+      // ✅ COMPLETADAS: Perguntas já ENVIADAS e CONFIRMADAS pelo Mercado Livre
+      // = Perguntas que já foram respondidas com sucesso (com mlAnswerId)
+      const completedStatuses = ['RESPONDED', 'COMPLETED', 'SENT_TO_ML', 'APPROVED']
+      const isCompleted = completedStatuses.includes(q.status)
+      if (!isCompleted) {
         return false
       }
     }
+    // 'all' = TODAS as perguntas (sem filtro de status)
 
     // Filtro de conta
     if (accountFilter && accountFilter !== 'all' && q.mlAccount.id !== accountFilter) {
@@ -644,172 +788,481 @@ export function MultiAccountQuestions({
     )
   }
 
-  // Componente de Filtros - Design Padronizado com ROI e Análise
-  const FiltersComponent = () => (
-    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-      {/* Filtros de Status - Apenas Pendentes e Respondidas */}
-      <div className="flex gap-1.5 sm:gap-2 bg-black/50 p-1 rounded-lg sm:rounded-xl">
-        <button
-          onClick={() => setStatusFilter('pending')}
-          className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 ${
-            statusFilter === 'pending'
-              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
-              : 'text-gray-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          Pendentes
-        </button>
-        <button
-          onClick={() => setStatusFilter('completed')}
-          className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 ${
-            statusFilter === 'completed'
-              ? 'bg-gradient-to-r from-gold to-gold-light text-black shadow-lg shadow-gold/30'
-              : 'text-gray-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          Respondidas
-        </button>
-      </div>
+  // Componente de Filtros - Design PREMIUM 2025 Mobile-First + Layout Responsivo
+  const FiltersComponent = () => {
+    const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false)
+    const dropdownButtonRef = useRef<HTMLButtonElement>(null)
+    const [dropdownPosition, setDropdownPosition] = useState<'bottom' | 'top'>('bottom')
 
-      {/* Account Filter - Design Aprimorado e Responsivo */}
-      {accountSummary.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative rounded-lg bg-black/50 hover:bg-white/5 text-gray-400 hover:text-white transition-all duration-300 gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 h-auto group">
-              <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold/60 group-hover:text-gold flex-shrink-0" />
-              <span className="text-xs sm:text-sm font-semibold truncate max-w-[100px] sm:max-w-none">
-                {accountFilter === 'all' ? (
-                  <>
-                    {/* Mobile: apenas número */}
-                    <span className="sm:hidden">Todas ({accountSummary.length})</span>
-                    {/* Desktop: texto completo */}
-                    <span className="hidden sm:inline">Todas ({accountSummary.length})</span>
-                  </>
-                ) : (
-                  <>
-                    {/* Mobile: nome curto */}
-                    <span className="sm:hidden">{accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 8) || 'Conta'}</span>
-                    {/* Desktop: nome completo */}
-                    <span className="hidden sm:inline">{accountSummary.find(a => a.accountId === accountFilter)?.nickname?.substring(0, 15) || 'Conta'}</span>
-                  </>
-                )}
-              </span>
-              {accountFilter !== 'all' && (
-                <span className="absolute -top-1 -right-1 bg-gold text-black text-[9px] sm:text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shadow-lg">
-                  {accountSummary.find(a => a.accountId === accountFilter)?.pendingQuestions || 0}
-                </span>
-              )}
-              <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-60 flex-shrink-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-[280px] sm:w-[320px] lg:w-[360px] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-xl border border-white/10 max-h-[70vh] sm:max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 shadow-2xl"
-          >
-            <DropdownMenuLabel className="text-gold font-semibold flex items-center gap-2 text-sm sm:text-base py-2 sm:py-3 sticky top-0 bg-gray-900/95 backdrop-blur-lg z-10">
-              <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-              <span className="hidden sm:inline">Filtrar por Conta ML</span>
-              <span className="sm:hidden">Filtrar Conta</span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-white/10" />
+    // Get selected account info
+    const selectedAccount = accountSummary.find(acc => acc.accountId === accountFilter)
+    const totalPending = accountSummary.reduce((sum, acc) => sum + acc.pendingQuestions, 0)
 
-            {/* Opção Todas - Mobile Optimized */}
-            <DropdownMenuItem
-              onClick={() => setAccountFilter('all')}
-              className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-2.5 sm:py-3 mx-1"
+    // 🎯 MOBILE-FIRST: Calcular posição ideal do dropdown para não cortar na tela
+    useEffect(() => {
+      if (isAccountDropdownOpen && dropdownButtonRef.current) {
+        const buttonRect = dropdownButtonRef.current.getBoundingClientRect()
+        const viewportHeight = window.innerHeight
+        const spaceBelow = viewportHeight - buttonRect.bottom
+        const dropdownEstimatedHeight = Math.min(280, accountSummary.length * 48 + 100)
+
+        // Se não tiver espaço embaixo, abre para cima
+        if (spaceBelow < dropdownEstimatedHeight && buttonRect.top > dropdownEstimatedHeight) {
+          setDropdownPosition('top')
+        } else {
+          setDropdownPosition('bottom')
+        }
+      }
+    }, [isAccountDropdownOpen, accountSummary.length])
+
+    return (
+      <div className="w-full" role="region" aria-label="Filtros de perguntas">
+        {/* 🎯 MOBILE: 3 botões na mesma linha | DESKTOP: Layout original */}
+        <div className="flex flex-col gap-2">
+          {/* 📱 Mobile: Todos os 3 botões na mesma linha */}
+          <div className="flex sm:hidden items-stretch gap-1 bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm p-0.5 rounded-lg border border-white/5 shadow-md">
+            {/* Botão Pendentes */}
+            <button
+              onClick={() => setStatusFilter('pending')}
+              aria-pressed={statusFilter === 'pending'}
+              aria-label="Pendentes"
+              className={`flex items-center justify-center gap-0.5 h-[30px] px-2 rounded-md text-[10px] font-semibold transition-all duration-200 whitespace-nowrap flex-1 ${
+                statusFilter === 'pending'
+                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-md shadow-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
             >
-              <div className="flex items-center gap-2 sm:gap-3 w-full">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-r from-gold/20 to-yellow-500/20 flex items-center justify-center flex-shrink-0">
-                  <Users2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-white font-medium text-sm sm:text-base block">Todas as Contas</span>
-                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                    <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
-                      {accountSummary.reduce((acc, a) => acc + a.pendingQuestions, 0)} pendentes
-                    </span>
-                    <span className="text-[10px] text-gray-600 hidden sm:inline">|</span>
-                    <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
-                      {accountSummary.length} {accountSummary.length === 1 ? 'conta' : 'contas'}
-                    </span>
-                  </div>
-                </div>
-                {accountFilter === 'all' && (
-                  <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-gold" />
-                  </div>
-                )}
-              </div>
-            </DropdownMenuItem>
+              <MessageSquare className="w-3 h-3 flex-shrink-0" />
+              <span>Pend.</span>
+            </button>
 
-            <DropdownMenuSeparator className="bg-white/5 my-1" />
+            {/* Botão Todas */}
+            <button
+              onClick={() => setStatusFilter('all')}
+              aria-pressed={statusFilter === 'all'}
+              aria-label="Todas"
+              className={`flex items-center justify-center gap-0.5 h-[30px] px-2 rounded-md text-[10px] font-semibold transition-all duration-200 whitespace-nowrap flex-1 ${
+                statusFilter === 'all'
+                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-md shadow-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <CheckCircle className="w-3 h-3 flex-shrink-0" />
+              <span>Todas</span>
+            </button>
 
-            {/* Contas Individuais - Mobile Optimized */}
-            {accountSummary.map((account) => (
-              <DropdownMenuItem
-                key={account.accountId}
-                onClick={() => setAccountFilter(account.accountId)}
-                className="hover:bg-gold/10 focus:bg-gold/10 cursor-pointer py-2.5 sm:py-3 mx-1"
+            {/* Botão Todas as Contas - Mobile */}
+            <div className="relative flex-1">
+              <button
+                ref={dropdownButtonRef}
+                onClick={() => accountSummary.length > 0 && setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                disabled={accountSummary.length === 0}
+                className={`group relative flex items-center justify-center gap-0.5 h-[30px] px-1.5 rounded-md transition-all duration-300 w-full ${
+                  accountSummary.length === 0
+                    ? 'opacity-50 cursor-not-allowed text-gray-500'
+                    : 'hover:bg-white/5 text-gray-300 active:scale-95'
+                }`}
               >
-                <div className="flex items-center gap-2 sm:gap-3 w-full">
-                  <Avatar className="h-7 w-7 sm:h-8 sm:w-8 border border-gold/20 flex-shrink-0">
-                    {account.thumbnail ? (
-                      <AvatarImage src={account.thumbnail} alt={account.nickname} />
-                    ) : (
-                      <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900 text-gold text-[10px] sm:text-xs font-bold">
-                        {account.nickname.substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-white text-xs sm:text-sm font-medium block truncate">{account.nickname}</span>
-                    <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
-                      {account.pendingQuestions > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
-                          <span className="text-[9px] sm:text-[10px] text-yellow-500 font-bold">
-                            {account.pendingQuestions}
-                          </span>
-                          <span className="text-[9px] sm:text-[10px] text-yellow-500/70 hidden sm:inline">pendente{account.pendingQuestions > 1 ? 's' : ''}</span>
-                          <span className="text-[9px] sm:hidden text-yellow-500/70">pend.</span>
+                <div className="flex items-center gap-0.5 flex-1 min-w-0 justify-center">
+                  {accountSummary.length === 0 ? (
+                    <>
+                      <Building2 className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                    </>
+                  ) : accountFilter === 'all' ? (
+                    <>
+                      <Building2 className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-[10px] font-semibold text-gray-300 truncate">Contas</span>
+                      {totalPending > 0 && (
+                        <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-bold flex-shrink-0">
+                          {totalPending}
                         </span>
-                      ) : (
-                        <span className="text-[9px] sm:text-[10px] text-gray-500">Sem pendentes</span>
                       )}
-                    </div>
-                  </div>
-                  {accountFilter === account.accountId && (
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-gold" />
-                    </div>
+                    </>
+                  ) : selectedAccount ? (
+                    <>
+                      <Avatar className="h-3 w-3 ring-1 ring-white/10 flex-shrink-0">
+                        {getValidAvatarUrl(selectedAccount.thumbnail) ? (
+                          <AvatarImage
+                            src={getValidAvatarUrl(selectedAccount.thumbnail) || ''}
+                            alt=""
+                            className="object-cover"
+                          />
+                        ) : (
+                          <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
+                            <User className="h-1.5 w-1.5" />
+                          </AvatarFallback>
+                        )}
+                      </Avatar>
+                      {selectedAccount.pendingQuestions > 0 && (
+                        <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-bold flex-shrink-0">
+                          {selectedAccount.pendingQuestions}
+                        </span>
+                      )}
+                    </>
+                  ) : null}
+                  {accountSummary.length > 0 && (
+                    <ChevronDown
+                      className={`w-2.5 h-2.5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
+                        isAccountDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    />
                   )}
                 </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+              </button>
 
-      {/* Connection Status - Design Padronizado - Hidden on Mobile */}
-      <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/50">
-        {isConnected ? (
-          <>
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-            <span className="text-xs text-gray-500 font-semibold">Online</span>
-          </>
-        ) : connectionStatus === 'connecting' ? (
-          <>
-            <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
-            <span className="text-xs text-gray-500 font-semibold">Conectando</span>
-          </>
-        ) : (
-          <>
-            <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-            <span className="text-xs text-gray-500 font-semibold">Offline</span>
-          </>
-        )}
+              {/* Dropdown Menu - Mobile - SUPER RESPONSIVO */}
+              {isAccountDropdownOpen && accountSummary.length > 0 && (
+                <>
+                  {/* Backdrop com blur suave */}
+                  <div
+                    className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-sm animate-in fade-in-0 duration-200"
+                    onClick={() => setIsAccountDropdownOpen(false)}
+                  />
+
+                  {/* Dropdown Content - Posicionamento Dinâmico */}
+                  <div
+                    className={`fixed sm:absolute z-[70]
+                      ${dropdownPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'}
+                      left-0 right-0 mx-3 sm:mx-0 sm:left-0 sm:right-0
+                      bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98
+                      backdrop-blur-2xl border border-white/10 rounded-xl sm:rounded-lg
+                      shadow-2xl shadow-black/50 overflow-hidden
+                      animate-in ${dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}
+                      fade-in-0 duration-200`}
+                    style={{
+                      // 🎯 MOBILE: Altura máxima adaptável (nunca ultrapassar 60% da viewport)
+                      maxHeight: 'min(280px, 60vh)',
+                      // Garantir que não saia da tela
+                      maxWidth: 'calc(100vw - 24px)'
+                    }}
+                  >
+                    {/* Glow Effect Suave */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/8 via-transparent to-gold/8 opacity-40 pointer-events-none" />
+
+                    {/* Scroll Container Otimizado para Touch */}
+                    <div
+                      className="relative overflow-y-auto overscroll-contain"
+                      style={{
+                        WebkitOverflowScrolling: 'touch',
+                        maxHeight: 'min(260px, calc(60vh - 20px))',
+                        // Adicionar padding no iOS para safe area
+                        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+                      }}
+                    >
+                      <div className="p-2 space-y-1">
+                        {/* Todas as contas - Mobile Otimizado */}
+                        <button
+                          onClick={() => {
+                            setAccountFilter('all')
+                            setIsAccountDropdownOpen(false)
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-all duration-200 active:scale-[0.98] ${
+                            accountFilter === 'all'
+                              ? 'bg-gradient-to-r from-gold/25 via-gold/15 to-gold/5 border border-gold/40 text-white shadow-lg shadow-gold/10'
+                              : 'hover:bg-white/5 active:bg-white/10 text-gray-300'
+                          }`}
+                        >
+                          <Building2 className="w-4 h-4 flex-shrink-0" />
+                          <span className="text-sm font-semibold flex-1">Todas as contas</span>
+                          {accountFilter === 'all' && (
+                            <Check className="w-4 h-4 text-gold flex-shrink-0" />
+                          )}
+                          {totalPending > 0 && accountFilter !== 'all' && (
+                            <span className="px-1.5 py-1 rounded-md bg-gray-700 text-gray-200 text-[10px] font-bold">
+                              {totalPending}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Separator Premium */}
+                        <div className="my-1.5 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+
+                        {/* Contas individuais - Mobile Otimizado */}
+                        {accountSummary.map(account => {
+                          const accountImage = getValidAvatarUrl(account.thumbnail)
+                          const isSelected = accountFilter === account.accountId
+
+                          return (
+                            <button
+                              key={account.accountId}
+                              onClick={() => {
+                                setAccountFilter(account.accountId)
+                                setIsAccountDropdownOpen(false)
+                              }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200 active:scale-[0.98] ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-gold/25 via-gold/15 to-gold/5 border border-gold/40 shadow-lg shadow-gold/10'
+                                  : 'hover:bg-white/5 active:bg-white/10'
+                              }`}
+                            >
+                              {/* Avatar maior para melhor touch target */}
+                              <Avatar className={`h-7 w-7 ring-2 flex-shrink-0 ${isSelected ? 'ring-gold/50' : 'ring-white/10'}`}>
+                                {accountImage ? (
+                                  <AvatarImage
+                                    src={accountImage}
+                                    alt={account.nickname}
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
+                                    <User className="h-3.5 w-3.5" />
+                                  </AvatarFallback>
+                                )}
+                              </Avatar>
+
+                              {/* Nome da conta */}
+                              <span className={`text-sm font-semibold flex-1 truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                                {account.nickname}
+                              </span>
+
+                              {/* Check mark */}
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-gold flex-shrink-0" />
+                              )}
+
+                              {/* Badge de pendentes */}
+                              {account.pendingQuestions > 0 && !isSelected && (
+                                <span className="px-1.5 py-1 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold flex-shrink-0 shadow-md">
+                                  {account.pendingQuestions}
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Indicador de scroll (se houver mais contas) */}
+                    {accountSummary.length > 5 && (
+                      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 🖥️ Desktop: Layout original com todos os filtros juntos */}
+          <div className="hidden sm:flex items-stretch bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm p-1 rounded-xl border border-white/5 shadow-lg sm:w-auto">
+            {/* 📱 Account Filter - Desktop */}
+            <div className="relative flex-1 sm:flex-initial sm:max-w-[140px] md:max-w-[160px]">
+              <button
+                onClick={() => accountSummary.length > 0 && setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                disabled={accountSummary.length === 0}
+                className={`group relative flex items-center justify-between gap-1 h-[30px] sm:h-[44px] px-2.5 sm:px-3 py-1 sm:py-2 rounded-md sm:rounded-lg transition-all duration-300 w-full ${
+                  accountSummary.length === 0
+                    ? 'opacity-50 cursor-not-allowed text-gray-500'
+                    : 'hover:bg-white/5 text-gray-300'
+                }`}
+            >
+              <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0">
+                {accountSummary.length === 0 ? (
+                  <>
+                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500 flex-shrink-0" />
+                    <span className="text-[10px] sm:text-xs font-semibold text-gray-500 truncate">
+                      Sem contas
+                    </span>
+                  </>
+                ) : accountFilter === 'all' ? (
+                  <>
+                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
+                    <span className="text-[10px] sm:text-xs font-semibold text-gray-300 truncate">
+                      Todas
+                    </span>
+                    {totalPending > 0 && (
+                      <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] sm:text-[9px] font-bold flex-shrink-0">
+                        {totalPending}
+                      </span>
+                    )}
+                  </>
+                ) : selectedAccount ? (
+                  <>
+                    <Avatar className="h-3 w-3 sm:h-4 sm:w-4 ring-1 ring-white/10 flex-shrink-0">
+                      {getValidAvatarUrl(selectedAccount.thumbnail) ? (
+                        <AvatarImage
+                          src={getValidAvatarUrl(selectedAccount.thumbnail) || ''}
+                          alt=""
+                          className="object-cover"
+                        />
+                      ) : (
+                        <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
+                          <User className="h-1.5 w-1.5 sm:h-2 sm:w-2" />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <span className="text-[10px] sm:text-xs font-semibold text-white truncate">
+                      {selectedAccount.nickname}
+                    </span>
+                    {selectedAccount.pendingQuestions > 0 && (
+                      <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] sm:text-[9px] font-bold flex-shrink-0">
+                        {selectedAccount.pendingQuestions}
+                      </span>
+                    )}
+                  </>
+                ) : null}
+              </div>
+              {accountSummary.length > 0 && (
+                <ChevronDown
+                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
+                    isAccountDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              )}
+              </button>
+
+              {/* Dropdown Menu - Desktop Otimizado */}
+              {isAccountDropdownOpen && accountSummary.length > 0 && (
+                <>
+                  {/* Backdrop com blur suave */}
+                  <div
+                    className="fixed inset-0 z-[60] bg-black/10 backdrop-blur-sm animate-in fade-in-0 duration-200"
+                    onClick={() => setIsAccountDropdownOpen(false)}
+                  />
+
+                  {/* Dropdown Content */}
+                  <div className={`absolute z-[70]
+                    ${dropdownPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'}
+                    left-0 right-auto min-w-[260px]
+                    bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98
+                    backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl shadow-black/30 overflow-hidden
+                    animate-in ${dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}
+                    fade-in-0 duration-200`}
+                    style={{
+                      maxHeight: 'min(360px, 70vh)'
+                    }}
+                  >
+                    {/* Glow Effect Suave */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/8 via-transparent to-gold/8 opacity-40 pointer-events-none" />
+
+                    {/* Scroll Container */}
+                    <div
+                      className="relative overflow-y-auto custom-scrollbar"
+                      style={{ maxHeight: 'min(340px, calc(70vh - 20px))' }}
+                    >
+                      <div className="p-2 space-y-1">
+                        {/* Todas as contas - Desktop */}
+                        <button
+                          onClick={() => {
+                            setAccountFilter('all')
+                            setIsAccountDropdownOpen(false)
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200 active:scale-[0.98] ${
+                            accountFilter === 'all'
+                              ? 'bg-gradient-to-r from-gold/25 via-gold/15 to-gold/5 border border-gold/40 text-white shadow-lg shadow-gold/10'
+                              : 'hover:bg-white/5 active:bg-white/10 text-gray-300'
+                          }`}
+                        >
+                          <Building2 className="w-4 h-4 flex-shrink-0" />
+                          <span className="text-sm font-semibold flex-1">Todas as contas</span>
+                          {accountFilter === 'all' && (
+                            <Check className="w-4 h-4 text-gold flex-shrink-0" />
+                          )}
+                          {totalPending > 0 && accountFilter !== 'all' && (
+                            <span className="px-1.5 py-1 rounded-md bg-gray-700 text-gray-200 text-[10px] font-bold">
+                              {totalPending}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Separator Premium */}
+                        <div className="my-1.5 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+
+                        {/* Contas individuais - Desktop */}
+                        {accountSummary.map(account => {
+                          const accountImage = getValidAvatarUrl(account.thumbnail)
+                          const isSelected = accountFilter === account.accountId
+
+                          return (
+                            <button
+                              key={account.accountId}
+                              onClick={() => {
+                                setAccountFilter(account.accountId)
+                                setIsAccountDropdownOpen(false)
+                              }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200 active:scale-[0.98] ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-gold/25 via-gold/15 to-gold/5 border border-gold/40 shadow-lg shadow-gold/10'
+                                  : 'hover:bg-white/5 active:bg-white/10'
+                              }`}
+                            >
+                              {/* Avatar */}
+                              <Avatar className={`h-6 w-6 ring-2 flex-shrink-0 ${isSelected ? 'ring-gold/50' : 'ring-white/10'}`}>
+                                {accountImage ? (
+                                  <AvatarImage
+                                    src={accountImage}
+                                    alt={account.nickname}
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
+                                    <User className="h-3 w-3" />
+                                  </AvatarFallback>
+                                )}
+                              </Avatar>
+
+                              {/* Nome da conta */}
+                              <span className={`text-sm font-semibold flex-1 truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                                {account.nickname}
+                              </span>
+
+                              {/* Check mark */}
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-gold flex-shrink-0" />
+                              )}
+
+                              {/* Badge de pendentes */}
+                              {account.pendingQuestions > 0 && !isSelected && (
+                                <span className="px-1.5 py-1 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold flex-shrink-0 shadow-md">
+                                  {account.pendingQuestions}
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Indicador de scroll (se houver mais contas) */}
+                    {accountSummary.length > 6 && (
+                      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 🎯 Status Filters - Desktop only - Botões Grudados no mesmo container */}
+            <button
+              onClick={() => setStatusFilter('pending')}
+              aria-pressed={statusFilter === 'pending'}
+              aria-label="Mostrar apenas perguntas pendentes"
+              className={`hidden sm:flex items-center justify-center gap-1.5 h-[44px] px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
+                statusFilter === 'pending'
+                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-lg shadow-gold/40'
+                  : 'text-gray-300 hover:text-white hover:bg-white/5 active:scale-[0.98]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" aria-hidden="true" />
+              <span>Pendentes</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('all')}
+              aria-pressed={statusFilter === 'all'}
+              aria-label="Mostrar todas as perguntas"
+              className={`hidden sm:flex items-center justify-center gap-1.5 h-[44px] px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
+                statusFilter === 'all'
+                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-lg shadow-gold/40'
+                  : 'text-gray-300 hover:text-white hover:bg-white/5 active:scale-[0.98]'
+              }`}
+            >
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" aria-hidden="true" />
+              <span>Todas</span>
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // Render principal
   return (
@@ -905,6 +1358,91 @@ export function MultiAccountQuestions({
         </motion.div>
       )}
 
+      {/* ❌ Animação de Erro - Feedback Visual Premium */}
+      {showErrorAnimation && lastError && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+        >
+          {/* Backdrop suave */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, type: 'spring', stiffness: 300, damping: 25 }}
+            className="relative bg-gradient-to-br from-gray-900/95 via-black/95 to-gray-900/95 backdrop-blur-xl rounded-2xl border border-red-500/30 p-6 shadow-2xl shadow-red-500/20 max-w-sm mx-4"
+          >
+            {/* Glow Effect - Vermelho */}
+            <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 via-transparent to-orange-500/10 rounded-2xl opacity-50 pointer-events-none" />
+
+            <div className="relative flex flex-col items-center gap-5 text-center">
+              {/* Logo ML Agent com tom de erro */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-full blur-[40px] scale-[1.5] animate-pulse" />
+                <Image
+                  src="/mlagent-logo-3d.svg"
+                  alt="ML Agent"
+                  width={56}
+                  height={56}
+                  className="relative drop-shadow-2xl opacity-90"
+                  style={{
+                    filter: 'drop-shadow(0 15px 40px rgba(239, 68, 68, 0.3)) grayscale(20%)',
+                  }}
+                  priority
+                />
+              </div>
+
+              {/* Ícone de Erro */}
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.2, duration: 0.5, type: 'spring' }}
+                className="relative"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-full blur-xl" />
+                <div className="relative bg-gradient-to-br from-red-600/30 to-orange-600/30 rounded-full p-3 border border-red-500/60 backdrop-blur-sm">
+                  <svg className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              </motion.div>
+
+              {/* Mensagem de Erro */}
+              <div className="space-y-2.5">
+                <h3 className="text-xl font-semibold text-red-400">
+                  Falha no Envio
+                </h3>
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  {lastError.message}
+                </p>
+                {lastError.question && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Pergunta #{lastError.question.sequentialId || 'N/A'} - {lastError.question.mlAccount.nickname}
+                  </p>
+                )}
+                <div className="mt-3 px-3 py-2 rounded-lg bg-gradient-to-br from-orange-900/20 to-red-900/20 border border-orange-500/30">
+                  <p className="text-xs text-orange-300/90 font-medium">
+                    💡 Tente novamente em alguns instantes
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress Bar Animation - Vermelho */}
+              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: '0%' }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 3.5, ease: 'easeOut' }}
+                  className="h-full bg-gradient-to-r from-red-500 via-orange-500 to-red-500"
+                />
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       {/* Render filters in portal if specified */}
       {mounted && showFilters && renderFiltersTo && (
         <>
@@ -954,6 +1492,7 @@ export function MultiAccountQuestions({
           </button>
         </div>
       )}
+
 
       {/* Questions List */}
       <div className="space-y-4">
@@ -1055,6 +1594,34 @@ export function MultiAccountQuestions({
           </div>
         )}
       </div>
+
+      {/* 🎮 Gamification Modals & Toasts */}
+      <XPEarnedToast
+        isVisible={showXPToast}
+        onClose={() => setShowXPToast(false)}
+        xpAmount={xpToastData.xp}
+        actionDescription={xpToastData.description}
+      />
+
+      {levelUpData && (
+        <LevelUpModal
+          isOpen={showLevelUpModal}
+          onClose={() => setShowLevelUpModal(false)}
+          oldLevel={levelUpData.oldLevel}
+          newLevel={levelUpData.newLevel}
+          levelName={levelUpData.levelName || 'Novo Nível'}
+          levelColor={levelUpData.levelColor || 'from-gold to-yellow-500'}
+          totalXP={levelUpData.newTotalXP || 0}
+        />
+      )}
+
+      {achievementData && (
+        <AchievementUnlockedModal
+          isOpen={showAchievementModal}
+          onClose={() => setShowAchievementModal(false)}
+          achievement={achievementData}
+        />
+      )}
     </>
   )
-}
+})

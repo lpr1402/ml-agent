@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ================== Keyframes ================== */
+@keyframes pulse-gold {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.5);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* ================== Custom Utilities ================== */
+@layer utilities {
+  .bg-gradient-dark {
+    background-image: linear-gradient(180deg, #0A0A0A 0%, #111111 100%);
+  }
+
+  .bg-gradient-card {
+    background-image: linear-gradient(135deg, rgba(26, 26, 26, 0.8) 0%, rgba(17, 17, 17, 0.6) 100%);
+  }
+}
+
 /* ================== Global Styles ================== */
 html {
   background-color: #000000;
@@ -124,31 +154,29 @@ body {
   --color-black-soft: #0A0A0A;
   --color-black-medium: #111111;
   --color-black-light: #1A1A1A;
-  
-  --color-gold: #FFE600;
-  --color-gold-light: #FFF4B3;
-  --color-gold-dark: #FFC700;
-  --color-gold-darker: #FFB300;
-  
+
+  --color-gold: #D4AF37;
+  --color-gold-light: #F4E4C1;
+  --color-gold-dark: #B8941E;
+  --color-gold-darker: #9C7A19;
+
   /* Gradients */
   --gradient-background: linear-gradient(180deg, #0A0A0A 0%, #111111 100%);
-  --gradient-gold: linear-gradient(135deg, #FFE600 0%, #FFC700 100%);
-  --gradient-gold-subtle: linear-gradient(135deg, rgba(255, 230, 0, 0.1) 0%, rgba(255, 199, 0, 0.05) 100%);
   --gradient-card: linear-gradient(135deg, rgba(26, 26, 26, 0.8) 0%, rgba(17, 17, 17, 0.6) 100%);
   --gradient-header: linear-gradient(135deg, #1A1A1A 0%, #111111 100%);
-  
+
   /* Glassmorphism */
   --glass-background: rgba(26, 26, 26, 0.6);
-  --glass-border: rgba(255, 230, 0, 0.1);
+  --glass-border: rgba(212, 175, 55, 0.15);
   --glass-blur: 12px;
-  
+
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
-  --shadow-gold: 0 0 30px rgba(255, 230, 0, 0.2);
-  --shadow-gold-intense: 0 0 50px rgba(255, 230, 0, 0.3);
+  --shadow-gold: 0 0 30px rgba(212, 175, 55, 0.25);
+  --shadow-gold-intense: 0 0 50px rgba(212, 175, 55, 0.35);
   
   /* Borders */
   --border-radius-sm: 6px;
@@ -240,9 +268,9 @@ body::before {
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(circle at 20% 50%, rgba(255, 230, 0, 0.03) 0%, transparent 50%),
-              radial-gradient(circle at 80% 80%, rgba(255, 199, 0, 0.02) 0%, transparent 50%),
-              radial-gradient(circle at 40% 20%, rgba(255, 230, 0, 0.01) 0%, transparent 50%);
+  background: radial-gradient(circle at 20% 50%, rgba(212, 175, 55, 0.02) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(212, 175, 55, 0.015) 0%, transparent 50%),
+              radial-gradient(circle at 40% 20%, rgba(212, 175, 55, 0.01) 0%, transparent 50%);
   pointer-events: none;
   z-index: 1;
 }
@@ -256,7 +284,7 @@ body::before {
 /* ================== CUSTOM SCROLLBAR ================== */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 230, 0, 0.3) rgba(255, 255, 255, 0.05);
+  scrollbar-color: rgba(212, 175, 55, 0.4) rgba(255, 255, 255, 0.05);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -270,13 +298,13 @@ body::before {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, rgba(255, 230, 0, 0.4), rgba(255, 230, 0, 0.2));
+  background: rgba(212, 175, 55, 0.5);
   border-radius: 3px;
   transition: background 0.3s ease;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, rgba(255, 230, 0, 0.6), rgba(255, 230, 0, 0.3));
+  background: rgba(212, 175, 55, 0.7);
 }
 
 /* ================== PREMIUM COMPONENTS ================== */
@@ -317,7 +345,7 @@ body::before {
 
 /* Premium Buttons */
 .premium-button {
-  background: var(--gradient-gold);
+  background: var(--color-gold);
   color: var(--color-black);
   font-weight: 600;
   border-radius: var(--border-radius-md);
@@ -336,14 +364,15 @@ body::before {
   left: 50%;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
   transform: translate(-50%, -50%) scale(0);
   transition: transform var(--transition-base);
 }
 
 .premium-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(255, 230, 0, 0.3);
+  box-shadow: 0 10px 20px rgba(212, 175, 55, 0.4);
+  background: var(--color-gold-dark);
 }
 
 .premium-button:hover::before {
@@ -356,7 +385,7 @@ body::before {
 
 /* Premium Badge */
 .premium-badge {
-  background: var(--gradient-gold-subtle);
+  background: rgba(212, 175, 55, 0.1);
   color: var(--color-gold);
   border: 1px solid var(--glass-border);
   padding: 0.25rem 0.75rem;
@@ -370,7 +399,7 @@ body::before {
 }
 
 .premium-badge:hover {
-  background: var(--gradient-gold);
+  background: var(--color-gold);
   color: var(--color-black);
   border-color: var(--color-gold);
 }
@@ -388,7 +417,7 @@ body::before {
 
 /* Premium Tabs */
 .premium-tabs {
-  background: rgba(255, 230, 0, 0.05);
+  background: rgba(212, 175, 55, 0.08);
   border: 1px solid var(--glass-border);
   border-radius: var(--border-radius-md);
   padding: 0.25rem;
@@ -406,35 +435,27 @@ body::before {
 
 .premium-tab-trigger:hover {
   color: var(--color-gold);
-  background: rgba(255, 230, 0, 0.05);
+  background: rgba(212, 175, 55, 0.08);
 }
 
 .premium-tab-trigger[data-state="active"] {
   color: var(--color-black);
-  background: var(--gradient-gold);
+  background: var(--color-gold);
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(255, 230, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.35);
 }
 
 /* Glow Effects */
 .glow-gold {
-  box-shadow: 0 0 20px rgba(255, 230, 0, 0.3),
-              0 0 40px rgba(255, 230, 0, 0.2),
-              0 0 60px rgba(255, 230, 0, 0.1);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.35),
+              0 0 40px rgba(212, 175, 55, 0.25),
+              0 0 60px rgba(212, 175, 55, 0.15);
 }
 
 .glow-gold-intense {
-  box-shadow: 0 0 30px rgba(255, 230, 0, 0.5),
-              0 0 60px rgba(255, 230, 0, 0.3),
-              0 0 90px rgba(255, 230, 0, 0.2);
-}
-
-/* Text Gradients */
-.text-gradient-gold {
-  background: var(--gradient-gold);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.5),
+              0 0 60px rgba(212, 175, 55, 0.35),
+              0 0 90px rgba(212, 175, 55, 0.2);
 }
 
 /* Animations */
@@ -464,9 +485,9 @@ body::before {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 230, 0, 0.1) 20%,
-    rgba(255, 230, 0, 0.2) 50%,
-    rgba(255, 230, 0, 0.1) 80%,
+    rgba(212, 175, 55, 0.12) 20%,
+    rgba(212, 175, 55, 0.2) 50%,
+    rgba(212, 175, 55, 0.12) 80%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -556,14 +577,14 @@ body::before {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--color-gold), var(--color-gold-dark));
+  background: var(--color-gold);
   border-radius: 5px;
   border: 2px solid var(--color-black-medium);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-gold);
-  box-shadow: 0 0 10px rgba(255, 230, 0, 0.5);
+  background: var(--color-gold-dark);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
 }
 
 /* Focus States */
@@ -575,7 +596,7 @@ body::before {
 
 /* Selection */
 ::selection {
-  background: rgba(255, 230, 0, 0.3);
+  background: rgba(212, 175, 55, 0.35);
   color: white;
 }
 
@@ -709,13 +730,13 @@ body::before {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(255, 230, 0, 0.3), rgba(255, 230, 0, 0.1));
+    background: rgba(212, 175, 55, 0.4);
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, rgba(255, 230, 0, 0.5), rgba(255, 230, 0, 0.2));
+    background: rgba(212, 175, 55, 0.6);
   }
 
   /* Animation Delays for Modal */

@@ -266,3 +266,83 @@ export async function emitMetricsUpdate(organizationId: string, _metrics: any) {
     logger.error('[WebSocket Events] Failed to emit metrics', { error })
   }
 }
+
+/**
+ * ⚡ Emitir atualização de estoque Full
+ * Real-time updates para UI
+ */
+export async function emitStockUpdate(organizationId: string, stockData: any) {
+  try {
+    // Use the CommonJS module to emit
+    websocketEvents.emitStockUpdate(organizationId, stockData)
+
+    logger.info('[WebSocket Events] Stock update broadcasted', {
+      organizationId,
+      inventoryId: stockData.inventory_id,
+      operationType: stockData.operation_type,
+      availableChange: stockData.available_change
+    })
+  } catch (error) {
+    logger.error('[WebSocket Events] Failed to emit stock update', { error })
+  }
+}
+
+/**
+ * ⚡ Emitir alerta crítico de estoque
+ */
+export async function emitStockAlert(
+  organizationId: string,
+  alert: {
+    inventoryId: string
+    itemId: string
+    itemTitle: string
+    alertLevel: 'critical' | 'warning' | 'ok'
+    message: string
+    daysOfCover: number
+    currentStock: number
+    recommendedQty: number
+  }
+) {
+  try {
+    websocketEvents.emitStockAlert(organizationId, alert)
+
+    logger.info('[WebSocket Events] Stock alert broadcasted', {
+      organizationId,
+      inventoryId: alert.inventoryId,
+      alertLevel: alert.alertLevel
+    })
+  } catch (error) {
+    logger.error('[WebSocket Events] Failed to emit stock alert', { error })
+  }
+}
+
+/**
+ * 🎮 Emitir evento de XP ganho (gamificação)
+ */
+export function emitXPEarned(
+  organizationId: string,
+  data: {
+    mlAccountId: string
+    questionId: string
+    xpAwarded: number
+    newTotalXP: number
+    newLevel: number
+    leveledUp: boolean
+    achievementsUnlocked: Array<{ id: string; title: string; xpReward: number }>
+    actionDescription: string
+  }
+) {
+  try {
+    websocketEvents.emitXPEarned(organizationId, data)
+
+    logger.info('[WebSocket Events] XP earned broadcasted', {
+      organizationId,
+      mlAccountId: data.mlAccountId,
+      xpAwarded: data.xpAwarded,
+      leveledUp: data.leveledUp,
+      achievementsCount: data.achievementsUnlocked.length
+    })
+  } catch (error) {
+    logger.error('[WebSocket Events] Failed to emit XP earned', { error })
+  }
+}

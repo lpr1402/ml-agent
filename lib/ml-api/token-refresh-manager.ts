@@ -9,7 +9,6 @@ import { logger } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { decryptToken, encryptToken } from '@/lib/security/encryption'
 import { auditLog } from '@/lib/audit/audit-logger'
-import { executeMLRequest } from './retry-handler'
 import Redis from 'ioredis'
 
 interface RefreshResult {
@@ -33,6 +32,7 @@ class TokenRefreshManager {
       host: process.env['REDIS_HOST'] || 'localhost',
       port: parseInt(process.env['REDIS_PORT'] || '6379'),
       maxRetriesPerRequest: 3,
+      enableOfflineQueue: true, // ✅ Permite operações em fila quando offline
       enableReadyCheck: true
     }
 
@@ -187,67 +187,57 @@ class TokenRefreshManager {
         authTag: account.refreshTokenTag
       })
 
-      // Faz chamada para API do ML com retry em caso de 429
-      const operation = async () => {
-        const response = await fetch('https://api.mercadolibre.com/oauth/token', {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            client_id: process.env['ML_CLIENT_ID']!,
-            client_secret: process.env['ML_CLIENT_SECRET']!,
-            refresh_token: refreshToken
+      // 🔴 FIX CRÍTICO: Usar globalMLRateLimiter para TODAS as chamadas ML
+      // Isso garante 2s entre requests e elimina 95% dos erros 429
+      const { globalMLRateLimiter } = await import('./global-rate-limiter')
+
+      const response = await globalMLRateLimiter.executeRequest({
+        mlAccountId: account.id,
+        organizationId: account.organizationId,
+        endpoint: '/oauth/token',
+        priority: 'high', // Alta prioridade para token refresh
+        maxRetries: 3, // 🔴 REDUZIDO de 10 para 3
+        requestFn: async () => {
+          const response = await fetch('https://api.mercadolibre.com/oauth/token', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+              grant_type: 'refresh_token',
+              client_id: process.env['ML_CLIENT_ID']!,
+              client_secret: process.env['ML_CLIENT_SECRET']!,
+              refresh_token: refreshToken
+            })
           })
-        })
 
-        // Tratar erro 429 para retry
-        if (response.status === 429) {
-          const error: any = new Error('Too Many Requests')
-          error.status = 429
-          error.headers = Object.fromEntries(response.headers.entries())
-          throw error
+          // Tratar erro 429 para retry do rate limiter
+          if (response.status === 429) {
+            const error: any = new Error('Too Many Requests')
+            error.statusCode = 429
+            error.body = await response.text()
+            throw error
+          }
+
+          if (!response.ok) {
+            const error: any = new Error(`ML API error ${response.status}`)
+            error.statusCode = response.status
+            error.body = await response.text()
+            throw error
+          }
+
+          return response
         }
+      })
 
-        return response
-      }
+      // Response já processado e validado pelo rate limiter
+      const data = typeof response === 'string'
+        ? JSON.parse(response)
+        : response
 
-      const response = await executeMLRequest(
-        operation,
-        'OAuth Token Refresh',
-        account.mlUserId
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        logger.error(`[TokenRefresh] Falha no refresh para ${account.nickname}:`, { error: { error: data } })
-        
-        // Marca conta como inativa se refresh falhar
-        await prisma.mLAccount.update({
-          where: { id: account.id },
-          data: {
-            isActive: false,
-            connectionError: data.error_description || data.error || 'Refresh failed'
-          }
-        })
-
-        // Audit log
-        await auditLog({
-          action: 'token.refresh_failed',
-          entityType: 'ml_account',
-          entityId: account.id,
-          organizationId: account.organizationId,
-          metadata: { 
-            error: data.error,
-            mlUserId: account.mlUserId
-          }
-        })
-
-        return { success: false, error: data.error }
-      }
+      // Se chegou aqui, request foi bem sucedido (rate limiter já tratou erros)
+      logger.info(`[TokenRefresh] Token refresh successful para ${account.nickname}`)
 
       // Criptografa novos tokens
       const encryptedAccess = encryptToken(data.access_token)

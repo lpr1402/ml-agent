@@ -18,8 +18,8 @@ class MLRetryHandler {
 
   private config: RetryConfig = {
     initialDelay: 2000,       // 2 segundos inicial
-    maxDelay: 300000,         // 5 minutos máximo
-    maxRetries: 10,           // 10 tentativas (mais que suficiente)
+    maxDelay: 60000,          // 🔴 1 minuto máximo (reduzido de 5min)
+    maxRetries: 3,            // 🔴 3 tentativas (reduzido de 10)
     backoffMultiplier: 2      // Dobra o tempo a cada tentativa
   }
 

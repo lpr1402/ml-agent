@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthenticatedAccount } from "@/lib/api/session-auth"
 import { logger } from "@/lib/logger"
+import { ensureHttps } from "@/lib/utils/ensure-https"
 
 interface QuestionWithAccount {
   id: string
@@ -11,6 +12,7 @@ interface QuestionWithAccount {
   itemPrice: number
   itemId: string
   itemPermalink?: string | null
+  itemThumbnail?: string | null
   status: string
   aiSuggestion?: string | null
   finalResponse?: string | null
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
       itemPrice: q.itemPrice || 0,
       itemId: q.itemId,
       itemPermalink: q.itemPermalink,
+      itemThumbnail: ensureHttps((q as any).itemThumbnail) || null,
       status: q.status,
       aiSuggestion: q.aiSuggestion,
       finalResponse: q.answer,
@@ -133,7 +136,7 @@ export async function GET(request: NextRequest) {
         id: q.mlAccount.id,
         mlUserId: q.mlAccount.mlUserId,
         nickname: q.mlAccount.nickname,
-        thumbnail: q.mlAccount.thumbnail,
+        thumbnail: ensureHttps(q.mlAccount.thumbnail) ?? null,
         siteId: q.mlAccount.siteId
       }
     }))

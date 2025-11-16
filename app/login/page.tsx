@@ -20,8 +20,12 @@ export default async function LoginPage() {
     })
 
     if (session && session.expiresAt > new Date()) {
-      // Sessão válida - redirecionar para dashboard
-      redirect("/agente")
+      // 🚀 ENTERPRISE FIX: Redirecionar baseado em role
+      if (session.organization.role === 'SUPER_ADMIN') {
+        redirect("/admin/dashboard") // Admin vai para painel administrativo
+      } else {
+        redirect("/agente") // Cliente vai para painel normal
+      }
     }
 
     // Sessão expirada - limpar cookie

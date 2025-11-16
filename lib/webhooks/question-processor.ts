@@ -21,6 +21,7 @@ interface MLAccount {
   id: string
   mlUserId: string
   organizationId: string
+  siteId: string // ✅ FIX: Adicionar siteId para permalink correto
 }
 
 /**
@@ -45,10 +46,26 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
     resource: data.resource
   })
 
+  // ✅ FIX CRÍTICO: Usar singleton Redis (evita memory leak)
+  const { getRedisClient } = await import('@/lib/redis')
+  const redis = getRedisClient()
+
+  const lockKey = `webhook:lock:question:${questionId}`
+  const lockValue = `${Date.now()}_${Math.random().toString(36).substring(7)}`
+  const lockTTL = 30000 // 30 segundos
+
+  // Tentar adquirir lock (NX = only if not exists)
+  const lockAcquired = await redis.set(lockKey, lockValue, 'PX', lockTTL, 'NX')
+
+  if (!lockAcquired) {
+    logger.info(`[QuestionProcessor] ✓ Question ${questionId} already being processed, skipping`)
+    // ✅ FIX: NÃO fechar redis - singleton é gerenciado centralmente
+    return
+  }
+
   try {
-    // 🔒 FIX: Usar UPSERT atômico para evitar race condition P2002
-    // Se webhook duplicado chegar simultaneamente, apenas um cria e outro atualiza vazio
-    const existingQuestion = await prisma.question.upsert({
+    // 🔒 UPSERT atômico para garantir criação única
+    const initialQuestion = await prisma.question.upsert({
       where: { mlQuestionId: questionId },
       update: {}, // Não fazer nada se já existir
       create: {
@@ -64,21 +81,18 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
     })
 
     // Se já existia, retornar sem processar novamente
-    if (existingQuestion.status !== 'RECEIVED' || existingQuestion.text !== 'Processando pergunta recebida do Mercado Livre') {
+    if (initialQuestion.status !== 'RECEIVED' || initialQuestion.text !== 'Processando pergunta recebida do Mercado Livre') {
       logger.info(`[QuestionProcessor] ✓ Question ${questionId} already processed, skipping duplicate webhook`)
       return
     }
 
     logger.info(`[QuestionProcessor] ✅ Question ${questionId} SAVED with RECEIVED status`)
 
-    // Agora tentar processar completamente
-    try {
+    // Obter token válido para a conta
+    const accessToken = await getValidMLToken(mlAccount.id)
 
-      // Obter token válido para a conta
-      const accessToken = await getValidMLToken(mlAccount.id)
-
-      if (!accessToken) {
-        logger.error(`[QuestionProcessor] Failed to get valid token for account ${mlAccount.id}`)
+    if (!accessToken) {
+      logger.error(`[QuestionProcessor] Failed to get valid token for account ${mlAccount.id}`)
         // Atualizar pergunta com status FAILED se não tiver token
         await prisma.question.update({
           where: { mlQuestionId: questionId },
@@ -100,7 +114,7 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       // Buscar direto da API - SEM DELAYS ARTIFICIAIS
       // O retry handler cuidará de 429 automaticamente
 
-      // Buscar dados da pergunta com APENAS 1 RETRY
+      // 🔴 CRÍTICO: Buscar dados da pergunta com RETRY de 4 MINUTOS em caso de 429
       let retries = 0
       while (!questionDetails && retries <= 1) { // MÁXIMO 1 RETRY
         try {
@@ -110,13 +124,13 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
             break
           }
           retries++
-          const retryDelay = 30000 // FIXO 30 segundos para retry
-          logger.info(`[QuestionProcessor] Retry ${retries}/3 in ${retryDelay/1000}s for question ${questionId}`)
+          const retryDelay = 240000 // 🔴 FIX: 4 MINUTOS (240 segundos) conforme requisito
+          logger.info(`[QuestionProcessor] Retry ${retries}/1 in ${retryDelay/1000}s for question ${questionId}`)
           await new Promise(resolve => setTimeout(resolve, retryDelay))
         } catch (fetchErr: any) {
           if (fetchErr.message?.includes('429') && retries < 1) {
-            const backoffDelay = 60000 // FIXO 60 segundos em caso de rate limit
-            logger.warn(`[QuestionProcessor] Rate limited, backing off for ${backoffDelay/1000}s...`)
+            const backoffDelay = 240000 // 🔴 FIX: 4 MINUTOS para rate limit 429
+            logger.warn(`[QuestionProcessor] ⚠️ RATE LIMIT 429 - Aguardando ${backoffDelay/1000}s antes de retry...`)
             await new Promise(resolve => setTimeout(resolve, backoffDelay))
             retries++
           } else {
@@ -127,16 +141,57 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
 
       if (!questionDetails) {
         logger.error(`[QuestionProcessor] Could not fetch question details for ${questionId} after ${retries} retries`)
-        // Atualizar pergunta com status FAILED
+
+        // 🎯 CRÍTICO: Extrair ID do item do resource path como fallback
+        // Resource format: /questions/QUESTION_ID ou pode ter item info
+        const fallbackItemId = data.resource.includes('/items/')
+          ? data.resource.split('/items/')[1]?.split('/')[0]
+          : ''
+
+        // Atualizar pergunta com dados mínimos mas VISÍVEIS na UI
         await prisma.question.update({
           where: { mlQuestionId: questionId },
           data: {
+            itemId: fallbackItemId || 'UNKNOWN',
+            itemTitle: fallbackItemId ? `Produto ${fallbackItemId}` : 'Pergunta recebida - dados pendentes',
+            text: 'Não foi possível carregar o texto da pergunta. Clique em "Reprocessar" para tentar novamente.',
             status: 'FAILED',
             failedAt: new Date(),
-            failureReason: 'Não foi possível buscar detalhes da pergunta na API do Mercado Livre'
+            failureReason: 'Rate limit ou timeout ao buscar dados do ML. Você pode reprocessar manualmente.'
           }
         })
-        logger.info(`[QuestionProcessor] Question ${questionId} marked as FAILED - no details from ML API`)
+
+        logger.info(`[QuestionProcessor] Question ${questionId} marked as FAILED with fallback data for UI visibility`)
+
+        // EMITIR EVENTO WEBSOCKET para mostrar na UI imediatamente
+        try {
+          const { emitNewQuestion } = require('@/lib/websocket/emit-events.js')
+          const account = await prisma.mLAccount.findUnique({
+            where: { id: mlAccount.id },
+            select: { nickname: true, thumbnail: true, siteId: true }
+          })
+
+          const questionForUI = await prisma.question.findUnique({
+            where: { mlQuestionId: questionId }
+          })
+
+          if (questionForUI) {
+            emitNewQuestion({
+              ...questionForUI,
+              organizationId: mlAccount.organizationId,
+              mlAccount: {
+                id: mlAccount.id,
+                mlUserId: mlAccount.mlUserId,
+                nickname: account?.nickname || 'Conta',
+                thumbnail: account?.thumbnail,
+                siteId: account?.siteId
+              }
+            })
+          }
+        } catch (wsError) {
+          logger.error('[QuestionProcessor] Failed to emit WebSocket event for failed question', { error: wsError })
+        }
+
         return
       }
 
@@ -161,13 +216,13 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
               break
             }
             itemRetries++
-            const retryDelay = 20000 // FIXO 20 segundos para retry de item
-            logger.info(`[QuestionProcessor] Item retry ${itemRetries}/3 in ${retryDelay/1000}s`)
+            const retryDelay = 240000 // 🔴 FIX: 4 MINUTOS para retry de item
+            logger.info(`[QuestionProcessor] Item retry ${itemRetries}/1 in ${retryDelay/1000}s`)
             await new Promise(resolve => setTimeout(resolve, retryDelay))
           } catch (itemErr: any) {
             if (itemErr.message?.includes('429') && itemRetries < 1) {
-              const backoffDelay = 45000 // FIXO 45 segundos em caso de rate limit
-              logger.warn(`[QuestionProcessor] Rate limited on item, backing off for ${backoffDelay/1000}s...`)
+              const backoffDelay = 240000 // 🔴 FIX: 4 MINUTOS para rate limit 429
+              logger.warn(`[QuestionProcessor] ⚠️ RATE LIMIT 429 on item - Aguardando ${backoffDelay/1000}s...`)
               await new Promise(resolve => setTimeout(resolve, backoffDelay))
               itemRetries++
             } else {
@@ -179,12 +234,23 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
 
         if (!itemDetails) {
           logger.warn(`[QuestionProcessor] Could not fetch item details for ${questionDetails.item_id}, using fallback`)
-          // Usar dados básicos do questionDetails como fallback
+          // ✅ FIX: Usar mlAccount.siteId ao invés de mlUserId (que não tem prefixo)
+          // mlUserId = "1377558007" (número)
+          // siteId = "MLB" (correto)
+          const siteId = mlAccount.siteId || 'MLB'
+          const itemIdClean = questionDetails.item_id.replace(`${siteId}-`, '')
+
           itemDetails = {
             title: `Produto ${questionDetails.item_id}`,
             price: 0,
-            permalink: `https://produto.mercadolivre.com.br/MLB-${questionDetails.item_id}`
+            permalink: `https://produto.mercadolivre.com.br/${siteId}-${itemIdClean}`
           }
+
+          logger.debug(`[QuestionProcessor] Fallback permalink created`, {
+            siteId,
+            itemId: questionDetails.item_id,
+            permalink: itemDetails.permalink
+          })
         }
 
         logger.info(`[QuestionProcessor] Item details ready`, {
@@ -313,55 +379,103 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         text: savedQuestion.text.substring(0, 50)
       })
 
-      // ENVIAR PUSH NOTIFICATION para dispositivos PWA
-      try {
-        logger.info(`[QuestionProcessor] Sending push notification for question ${savedQuestion.mlQuestionId}`)
+      // 🔴 CRÍTICO: VALIDAR DADOS ANTES DE ENVIAR PUSH/WHATSAPP
+      // NUNCA enviar notificações com dados mockados, incompletos ou zerados
+      const hasValidDataForNotification = (
+        savedQuestion.text &&
+        savedQuestion.text !== 'Processando pergunta recebida do Mercado Livre' &&
+        savedQuestion.text !== 'Pergunta sem texto' &&
+        savedQuestion.text !== 'Erro ao processar pergunta' &&
+        !savedQuestion.text.includes('Não foi possível carregar o texto') &&
+        !savedQuestion.text.includes('dados pendentes') &&
+        savedQuestion.itemId &&
+        savedQuestion.itemId !== '' &&
+        savedQuestion.itemId !== 'UNKNOWN'
+      )
 
-        // Preparar payload da notificação
-        const pushPayload = {
-          type: 'new_question' as const,
-          questionId: savedQuestion.mlQuestionId,
-          sequentialId: savedQuestion.sequentialId,
-          questionText: savedQuestion.text,
-          productTitle: savedQuestion.itemTitle || 'Produto',
-          productImage: itemDetails?.thumbnail || null,
-          sellerName: account?.nickname || 'ML Agent',
-          accountId: mlAccount.id,
-          url: `/agente?questionId=${savedQuestion.mlQuestionId}`
-        }
-
-        // Enviar push para todos os dispositivos da organização
-        const pushResponse = await fetch(`${process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'}/api/push/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            payload: pushPayload,
-            organizationId: mlAccount.organizationId,
-            broadcast: true
+      if (hasValidDataForNotification) {
+        // ✅ DADOS VÁLIDOS - Enviar notificações PWA/WhatsApp
+        try {
+          logger.info(`[QuestionProcessor] ✅ Enviando push notification com dados válidos`, {
+            questionId: savedQuestion.mlQuestionId,
+            text: savedQuestion.text.substring(0, 50)
           })
+
+          // Preparar payload da notificação
+          const pushPayload = {
+            type: 'new_question' as const,
+            questionId: savedQuestion.mlQuestionId,
+            sequentialId: savedQuestion.sequentialId,
+            questionText: savedQuestion.text,
+            productTitle: savedQuestion.itemTitle || 'Produto',
+            productImage: itemDetails?.thumbnail || null,
+            sellerName: account?.nickname || 'ML Agent',
+            accountId: mlAccount.id,
+            url: `/agente?questionId=${savedQuestion.mlQuestionId}`
+          }
+
+          // Enviar push para todos os dispositivos da organização
+          const pushResponse = await fetch(`${process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'}/api/push/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              payload: pushPayload,
+              organizationId: mlAccount.organizationId,
+              broadcast: true
+            })
+          })
+
+          if (pushResponse.ok) {
+            const result = await pushResponse.json()
+            logger.info(`[QuestionProcessor] ✅ Push notifications sent`, {
+              questionId: savedQuestion.mlQuestionId,
+              sent: result.sent,
+              failed: result.failed
+            })
+          } else {
+            logger.warn(`[QuestionProcessor] Push notification request failed`, {
+              status: pushResponse.status
+            })
+          }
+
+        } catch (pushError) {
+          // Log mas não falhar se push notification tiver problema
+          logger.error(`[QuestionProcessor] Push notification error (non-fatal):`, { data: pushError })
+        }
+      } else {
+        // ❌ DADOS INCOMPLETOS - Enviar notificação de AVISO
+        logger.warn(`[QuestionProcessor] ⚠️ Dados incompletos - enviando notificação de aviso`, {
+          questionId: savedQuestion.mlQuestionId,
+          text: savedQuestion.text
         })
 
-        if (pushResponse.ok) {
-          const result = await pushResponse.json()
-          logger.info(`[QuestionProcessor] ✅ Push notifications sent`, {
+        try {
+          const warningPayload = {
+            type: 'error' as const,
             questionId: savedQuestion.mlQuestionId,
-            sent: result.sent,
-            failed: result.failed
-          })
-        } else {
-          logger.warn(`[QuestionProcessor] Push notification request failed`, {
-            status: pushResponse.status
-          })
-        }
+            message: `⚠️ Pergunta recebida no Mercado Livre mas o processamento falhou. Tentando novamente em 4 minutos...`,
+            sellerName: account?.nickname || 'ML Agent',
+            url: `/agente?questionId=${savedQuestion.mlQuestionId}`
+          }
 
-      } catch (pushError) {
-        // Log mas não falhar se push notification tiver problema
-        logger.error(`[QuestionProcessor] Push notification error (non-fatal):`, { data: pushError })
+          await fetch(`${process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'}/api/push/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              payload: warningPayload,
+              organizationId: mlAccount.organizationId,
+              broadcast: true
+            })
+          })
+        } catch (warningError) {
+          logger.error(`[QuestionProcessor] Failed to send warning notification`, { error: warningError })
+        }
       }
 
-      console.log('[QuestionProcessor] 🚀 Real-time event emitted:', {
+      // ✅ FIX: Usar logger consistentemente ao invés de console.log
+      logger.info('[QuestionProcessor] Real-time event emitted', {
         questionId: savedQuestion.mlQuestionId,
-        org: mlAccount.organizationId,
+        organizationId: mlAccount.organizationId,
         status: savedQuestion.status
       })
     } catch (sseError) {
@@ -429,8 +543,32 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       return
     }
     
-    // Enviar para N8N processar a resposta
-    if (questionDetails.status === 'UNANSWERED') {
+    // 🔴 CRÍTICO: VALIDAR DADOS ANTES DE ENVIAR AO N8N
+    // NUNCA enviar perguntas com dados mockados, incompletos ou zerados
+    const hasValidData = (
+      questionDetails.status === 'UNANSWERED' &&
+      savedQuestion.text &&
+      savedQuestion.text !== 'Processando pergunta recebida do Mercado Livre' &&
+      savedQuestion.text !== 'Pergunta sem texto' &&
+      savedQuestion.text !== 'Erro ao processar pergunta' &&
+      !savedQuestion.text.includes('Não foi possível carregar o texto') &&
+      savedQuestion.itemId &&
+      savedQuestion.itemId !== '' &&
+      savedQuestion.itemId !== 'UNKNOWN' &&
+      savedQuestion.itemTitle &&
+      savedQuestion.itemTitle !== 'Produto' &&
+      !savedQuestion.itemTitle.includes('dados pendentes')
+    )
+
+    if (hasValidData) {
+      // ✅ Dados válidos - enviar para processamento
+      logger.info(`[QuestionProcessor] ✅ Dados válidos - enviando para N8N`, {
+        questionId,
+        text: savedQuestion.text.substring(0, 50),
+        itemId: savedQuestion.itemId,
+        itemTitle: savedQuestion.itemTitle
+      })
+
       await sendToN8NProcessingOptimized(
         savedQuestion,
         {
@@ -440,6 +578,25 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
           buyerData
         }
       )
+    } else {
+      // ❌ Dados incompletos - NÃO ENVIAR
+      logger.warn(`[QuestionProcessor] ❌ DADOS INCOMPLETOS - NÃO enviando ao N8N`, {
+        questionId,
+        text: savedQuestion.text,
+        itemId: savedQuestion.itemId,
+        itemTitle: savedQuestion.itemTitle,
+        status: questionDetails.status
+      })
+
+      // Marcar pergunta como FAILED para permitir reprocessamento
+      await prisma.question.update({
+        where: { id: savedQuestion.id },
+        data: {
+          status: 'FAILED',
+          failedAt: new Date(),
+          failureReason: 'Dados incompletos - não foi possível processar. Clique em Reprocessar para tentar novamente.'
+        }
+      })
     }
     
     // Registrar no audit log
@@ -457,28 +614,10 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         }
       }
     })
-    
-    } catch (innerError) {
-      // Se falhar o processamento interno, garantir que a pergunta está salva como FAILED
-      logger.error(`[QuestionProcessor] Error during processing for ${questionId}:`, { error: innerError })
 
-      try {
-        await prisma.question.update({
-          where: { mlQuestionId: questionId },
-          data: {
-            status: 'FAILED',
-            failedAt: new Date(),
-            failureReason: 'Erro durante processamento - será reprocessado'
-          }
-        })
-      } catch (updateErr) {
-        logger.error(`[QuestionProcessor] Failed to update question status:`, { error: updateErr })
-      }
-    }
-
-  } catch (outerError) {
-    // ÚLTIMA GARANTIA: Se tudo falhar, ainda assim salvar a pergunta
-    logger.error(`[QuestionProcessor] CRITICAL ERROR for question ${questionId}:`, { error: outerError })
+  } catch (error) {
+    // ✅ FIX: Catch único para todos os erros do processamento principal
+    logger.error(`[QuestionProcessor] Error processing question ${questionId}:`, { error })
 
     try {
       // Verificar se conseguimos pelo menos salvar
@@ -506,7 +645,18 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
       }
     } catch (emergencyError) {
       logger.error(`[QuestionProcessor] EMERGENCY SAVE FAILED:`, { error: emergencyError })
-      // Aqui poderíamos enviar para uma fila de dead letter ou notificar admin
+    }
+  } finally {
+    // ✅ SEMPRE liberar o lock Redis (mesmo em caso de erro)
+    try {
+      const currentLockValue = await redis.get(lockKey)
+      if (currentLockValue === lockValue) {
+        await redis.del(lockKey)
+        logger.debug(`[QuestionProcessor] Lock released for question ${questionId}`)
+      }
+      // ✅ FIX: NÃO fechar redis.quit() - singleton é gerenciado centralmente
+    } catch (lockErr) {
+      logger.warn('[QuestionProcessor] Failed to release lock', { error: lockErr })
     }
   }
 }
@@ -556,9 +706,9 @@ async function fetchQuestionDetails(questionId: string, accessToken: string) {
         headers: Object.fromEntries(response.headers.entries())
       })
 
-      // Usar retry-after do header ou delay fixo de 60s
-      const rateLimitDelay = retryAfter ? parseInt(retryAfter) * 1000 : 60000
-      logger.info(`[QuestionProcessor] ⏳ Waiting ${Math.round(rateLimitDelay/1000)}s due to rate limit`)
+      // 🔴 FIX: Usar retry-after do header ou delay fixo de 4 MINUTOS
+      const rateLimitDelay = retryAfter ? parseInt(retryAfter) * 1000 : 240000
+      logger.info(`[QuestionProcessor] ⏳ AGUARDANDO ${Math.round(rateLimitDelay/1000)}s (${Math.round(rateLimitDelay/60000)} minutos) devido a rate limit 429`)
       await new Promise(resolve => setTimeout(resolve, rateLimitDelay))
       const retryResponse = await fetch(`https://api.mercadolibre.com/questions/${questionId}`, {
         headers: {
@@ -609,27 +759,8 @@ async function fetchItemDetails(itemId: string, accessToken: string) {
     }
 
     if (response.status === 429) {
-      logger.warn(`[QuestionProcessor] Rate limited when fetching item ${itemId}, will retry`)
-      // OTIMIZAÇÃO: Aguardar mais tempo para items (10-15 segundos)
-      const rateLimitDelay = Math.random() * 5000 + 10000 // 10-15 segundos
-      logger.info(`[QuestionProcessor] Waiting ${Math.round(rateLimitDelay/1000)}s due to item rate limit`)
-      await new Promise(resolve => setTimeout(resolve, rateLimitDelay))
-
-      const retryResponse = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      })
-
-      if (retryResponse.ok) {
-        logger.info(`[QuestionProcessor] Successfully fetched item ${itemId} on retry`)
-        const data = await retryResponse.json()
-      logger.info(`[QuestionProcessor] Data fetched after retry`, data)
-      return data
-      }
-
-      logger.error(`[QuestionProcessor] Failed to fetch item ${itemId} after retry: ${retryResponse.status}`)
+      // ✅ FIX: Rate limit 429 - retornar null para permitir retry externo
+      logger.warn(`[QuestionProcessor] Rate limited when fetching item ${itemId}`)
       return null
     }
 
@@ -800,11 +931,15 @@ async function sendToN8NProcessingOptimized(
           descriptionLength: itemDescription?.plain_text?.length || 0
         })
         
+        // ✅ ENTERPRISE FIX: Registrar timestamp EXATO de envio ao N8N
+        const sentToAITimestamp = new Date()
+
         await prisma.question.update({
           where: { id: question.id },
-          data: { 
+          data: {
             status: 'PROCESSING',
-            processedAt: new Date()
+            sentToAIAt: sentToAITimestamp, // ⚡ NOVO: Timestamp de envio ao N8N
+            processedAt: sentToAITimestamp // Compatibilidade
           }
         })
       } else {

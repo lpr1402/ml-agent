@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma"
 import { logger } from "@/lib/logger"
 import { decryptToken } from "@/lib/security/encryption"
 import { getAuthenticatedAccount } from "@/lib/api/session-auth"
+import { redis } from "@/lib/redis"
+
+// 🚀 ENTERPRISE: Cache de 5 minutos para evitar chamadas excessivas ao ML
+const CACHE_TTL = 300 // 5 minutos
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +18,18 @@ export async function GET(request: NextRequest) {
     }
 
     const organizationId = auth.organizationId
+
+    // 🚀 CRITICAL: Verificar cache primeiro
+    const cacheKey = `ml-accounts-metrics:${organizationId}`
+    try {
+      const cached = await redis.get(cacheKey)
+      if (cached) {
+        logger.info('[ML Accounts Metrics] Cache hit', { organizationId })
+        return NextResponse.json(JSON.parse(cached))
+      }
+    } catch (error) {
+      logger.warn('[ML Accounts Metrics] Cache read failed, continuing without cache', { error })
+    }
 
     // Get period filter from query params
     const searchParams = request.nextUrl.searchParams
@@ -211,11 +227,21 @@ export async function GET(request: NextRequest) {
     // Sort by total questions by default
     accountsWithMetrics.sort((a, b) => b.totalQuestions - a.totalQuestions)
 
-    return NextResponse.json({
+    const responseData = {
       accounts: accountsWithMetrics,
       totalAccounts: accountsWithMetrics.length,
       organizationId: organizationId
-    })
+    }
+
+    // 🚀 CRITICAL: Salvar no cache para próximas requisições (5min)
+    try {
+      await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(responseData))
+      logger.info('[ML Accounts Metrics] Cache saved', { organizationId, ttl: CACHE_TTL })
+    } catch (error) {
+      logger.warn('[ML Accounts Metrics] Cache write failed, continuing without cache', { error })
+    }
+
+    return NextResponse.json(responseData)
 
   } catch (error) {
     logger.error("Error fetching ML accounts metrics", {

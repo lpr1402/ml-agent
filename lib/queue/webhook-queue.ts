@@ -273,7 +273,8 @@ class WebhookQueueManager {
         select: {
           id: true,
           mlUserId: true,
-          organizationId: true
+          organizationId: true,
+          siteId: true // ✅ FIX: Adicionar siteId para processamento correto
         }
       })
       

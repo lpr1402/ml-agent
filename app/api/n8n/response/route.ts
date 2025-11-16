@@ -20,12 +20,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
     
-    // Update question with AI response
+    // ✅ ENTERPRISE FIX: Calcular tempo REAL de processamento (sentToAIAt → aiProcessedAt)
+    const aiProcessedTimestamp = new Date()
+
     const question = await prisma.question.update({
       where: { mlQuestionId: questionId },
       data: {
         aiSuggestion: output,
-        aiProcessedAt: new Date(),
+        aiProcessedAt: aiProcessedTimestamp,
         status: "AWAITING_APPROVAL"
       },
       include: {
@@ -38,7 +40,36 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    }) as any // Type assertion to include all fields
+    }) as any
+
+    // ⚡ CRITICAL: Calcular processingTimeMs (tempo que N8N levou para processar)
+    // Tempo desde que enviamos (sentToAIAt) até agora (aiProcessedAt)
+    let processingTimeMs = 0
+    if (question.sentToAIAt) {
+      const sentAt = new Date(question.sentToAIAt)
+      processingTimeMs = aiProcessedTimestamp.getTime() - sentAt.getTime()
+
+      // Atualizar campo de metrics
+      await prisma.question.update({
+        where: { id: question.id },
+        data: {
+          processingTimeMs: Math.max(0, processingTimeMs) // Garantir não-negativo
+        }
+      })
+
+      logger.info('[N8N Response] ⚡ Processing time calculated', {
+        questionId,
+        processingTimeMs,
+        processingTimeSec: (processingTimeMs / 1000).toFixed(2),
+        sentToAIAt: question.sentToAIAt,
+        aiProcessedAt: aiProcessedTimestamp
+      })
+    } else {
+      logger.warn('[N8N Response] ⚠️ sentToAIAt not found - cannot calculate processing time', {
+        questionId,
+        note: 'Question may have been created before sentToAIAt field was added'
+      })
+    }
 
     // Buscar dados completos da conta ML e organização
     const mlAccount = await prisma.mLAccount.findUnique({

@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
-    
     /* STRICT MODE - MÁXIMA SEGURANÇA */
     "strict": true,
     "noImplicitAny": true,
@@ -15,7 +18,6 @@
     "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
     "alwaysStrict": true,
-    
     /* ADDITIONAL CHECKS */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -27,7 +29,6 @@
     "noPropertyAccessFromIndexSignature": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
-    
     /* MODULE RESOLUTION */
     "noEmit": true,
     "esModuleInterop": true,
@@ -35,19 +36,37 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "forceConsistentCasingInFileNames": true,
-    
     "plugins": [
       {
         "name": "next"
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "check-*.ts",
+    "diagnose-*.ts",
+    "force-*.ts",
+    "get-*.ts",
+    "send-*.ts",
+    "sync-*.ts",
+    "test-*.ts",
+    "verify-*.ts",
+    "approve-*.ts"
+  ]
 }
