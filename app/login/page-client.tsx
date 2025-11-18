@@ -222,6 +222,8 @@ export default function LoginClient() {
             >
               <Image
                 src="/mlagent-logo-3d.svg"
+                loading="eager"
+                priority
                 alt="ML Agent"
                 width={320}
                 height={320}

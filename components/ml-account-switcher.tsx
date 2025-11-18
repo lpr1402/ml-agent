@@ -355,30 +355,33 @@ export function MLAccountSwitcher() {
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
 
                 <div className="relative flex flex-col gap-2 sm:gap-3">
-                  <div className="flex items-center gap-2 sm:gap-3">
+                  {/* Top Row - Botão + Texto + Número */}
+                  <div className="flex items-center gap-2">
+                    {/* Botão + (Menor e Compacto) */}
                     <div className="relative flex-shrink-0">
-                      <div className="absolute inset-0 bg-gold/30 blur-xl animate-pulse" />
-                      <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-xl">
-                        <Plus className="h-5 w-5 sm:h-6 sm:w-6 text-black" />
+                      <div className="absolute inset-0 bg-gold/30 blur-lg animate-pulse" />
+                      <div className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-lg">
+                        <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-black" />
                       </div>
                     </div>
+
+                    {/* Texto com Gradiente Metálico (ao lado do botão) */}
                     <div className="flex-1 min-w-0">
-                      {/* Mobile: Texto curto */}
-                      <span className="text-xs sm:text-sm font-bold text-gold block sm:hidden leading-tight">
-                        Conecte mais contas ML
-                      </span>
-                      {/* Desktop: Texto completo */}
-                      <span className="hidden sm:block text-sm font-bold text-gold leading-tight">
-                        Conecte mais contas do Mercado Livre
+                      <span className="text-[11px] sm:text-xs font-semibold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent block leading-tight">
+                        Conecte mais contas do ML
                       </span>
                     </div>
+
+                    {/* Número de contas disponíveis */}
                     <div className="text-right flex-shrink-0">
-                      <span className="text-lg sm:text-xl font-bold text-gold block leading-none">
-                        {organizationInfo.maxAccounts - accounts.length}
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-gray-500 block mt-0.5">
-                        disponíveis
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent leading-none">
+                          {organizationInfo.maxAccounts - accounts.length}
+                        </span>
+                        <span className="text-[10px] text-gray-500 mt-0">
+                          disponíveis
+                        </span>
+                      </div>
                     </div>
                   </div>
 

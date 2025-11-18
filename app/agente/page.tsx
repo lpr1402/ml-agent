@@ -14,13 +14,15 @@ import {
   MessageSquare,
   Activity,
   LogOut,
-  Trophy
+  Trophy,
+  Settings
 } from 'lucide-react'
 
 // 🚀 ENTERPRISE: Lazy loading de componentes pesados para initial load rápido
 const MLAgentDashboardModern = lazy(() => import('@/components/dashboard/ml-agent-dashboard-modern').then(mod => ({ default: mod.MLAgentDashboardModern })))
 const MultiAccountQuestions = lazy(() => import('@/components/agent/multi-account-questions').then(mod => ({ default: mod.MultiAccountQuestions })))
 const GamificationDashboard = lazy(() => import('@/components/gamification/gamification-dashboard').then(mod => ({ default: mod.GamificationDashboard })))
+const OrganizationSettings = lazy(() => import('@/components/settings/organization-settings').then(mod => ({ default: mod.OrganizationSettings })))
 
 // Componente de loading
 const ComponentLoader = () => (
@@ -69,6 +71,7 @@ export default function AgenteMultiConta() {
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false)
   const [accountsCount, setAccountsCount] = useState(0)
   const [showProModal, setShowProModal] = useState(false)
+  const [activeSection, setActiveSection] = useState<'atendimento' | 'performance' | 'ranking' | 'configuracoes' | null>(null)
 
 
   // Verificar autenticação
@@ -142,6 +145,81 @@ export default function AgenteMultiConta() {
     }
   }, [])
 
+  // Auto-detect active section based on scroll position
+  useEffect(() => {
+    const handleScroll = () => {
+      const sections = [
+        { id: 'central-atendimento', name: 'atendimento' as const },
+        { id: 'dashboard-section', name: 'performance' as const },
+        { id: 'configuracoes-section', name: 'configuracoes' as const }
+      ]
+
+      // Get current scroll position with offset for sticky header
+      const scrollY = window.scrollY + 200 // Offset for header height
+
+      // Check if we're at the top (before first section)
+      const firstSectionConfig = sections[0]
+      if (firstSectionConfig) {
+        const firstSection = document.getElementById(firstSectionConfig.id)
+        if (firstSection && scrollY < firstSection.offsetTop) {
+          setActiveSection(null)
+          return
+        }
+      }
+
+      // Find which section is currently in view
+      let foundSection = false
+      for (const section of sections) {
+        const element = document.getElementById(section.id)
+        if (element) {
+          const { offsetTop, offsetHeight } = element
+          if (scrollY >= offsetTop && scrollY < offsetTop + offsetHeight) {
+            // Special handling for dashboard section - check active tab
+            if (section.name === 'performance' && activeTab === 'gamification') {
+              setActiveSection('ranking')
+            } else {
+              setActiveSection(section.name)
+            }
+            foundSection = true
+            break
+          }
+        }
+      }
+
+      // If no section found and we're past the last section, keep the last one active
+      if (!foundSection) {
+        const lastSectionConfig = sections[sections.length - 1]
+        if (lastSectionConfig) {
+          const lastElement = document.getElementById(lastSectionConfig.id)
+          if (lastElement && scrollY >= lastElement.offsetTop) {
+            setActiveSection(lastSectionConfig.name)
+          }
+        }
+      }
+    }
+
+    // Throttle scroll events for performance
+    let ticking = false
+    const throttledScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll()
+          ticking = false
+        })
+        ticking = true
+      }
+    }
+
+    window.addEventListener('scroll', throttledScroll, { passive: true })
+
+    // Initial check
+    handleScroll()
+
+    return () => {
+      window.removeEventListener('scroll', throttledScroll)
+    }
+  }, [activeTab])
+
   const handleLogout = async () => {
     try {
       const response = await apiClient.post('/api/auth/logout')
@@ -155,12 +233,57 @@ export default function AgenteMultiConta() {
     }
   }
 
+  // Navegação entre seções com scroll suave
+  const handleSectionChange = (section: 'atendimento' | 'performance' | 'ranking' | 'configuracoes') => {
+    // Atualizar seção ativa
+    setActiveSection(section)
+
+    // Scroll suave para a seção
+    const sectionId = section === 'atendimento' ? 'central-atendimento' :
+                      section === 'performance' ? 'dashboard-section' :
+                      section === 'ranking' ? 'dashboard-section' :
+                      'configuracoes-section'
+
+    const element = document.getElementById(sectionId)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    // Se for performance ou ranking, mudar a tab ativa
+    if (section === 'performance') {
+      setActiveTab('performance')
+    } else if (section === 'ranking') {
+      setActiveTab('gamification')
+    }
+  }
+
   if (loading) {
     return <PremiumLoader isPro={isPro} />
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-black via-gray-950 to-black" role="main">
+    <div className="min-h-screen min-h-[100dvh] relative overflow-x-hidden" role="main">
+      {/* Premium Metallic Background - Multi-Layer Effect */}
+
+      {/* Base Layer - Dark gradient */}
+      <div className="fixed inset-0 bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 -z-10" />
+
+      {/* Metallic Shine Layer - Creates depth */}
+      <div className="fixed inset-0 bg-gradient-to-br from-gray-800/20 via-transparent to-gray-800/20 -z-10" />
+
+      {/* Gold Accent Layer - Subtle premium glow */}
+      <div className="fixed inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none -z-10" />
+
+      {/* Radial Glow - Spotlight effect */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.08),transparent_50%)] pointer-events-none -z-10" />
+
+      {/* Noise Texture - Adds metallic grain */}
+      <div className="fixed inset-0 opacity-[0.015] pointer-events-none -z-10"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' /%3E%3C/svg%3E")`,
+          backgroundRepeat: 'repeat'
+        }}
+      />
       {/* Ultra Modern Header 2025 - Mobile Optimized with iOS Safe Area */}
       <header className="sticky top-0 z-50 bg-black">
         {/* iOS Safe Area Top - Black Background */}
@@ -238,54 +361,198 @@ export default function AgenteMultiConta() {
         </div>
       </header>
 
-      {/* Main Content Area - Mobile Optimized */}
-      <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-10 space-y-4 sm:space-y-6 lg:space-y-10">
-        {/* Central de Atendimento Section - Mobile Optimized */}
-        <section className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-2xl border border-white/5 shadow-2xl overflow-hidden">
-          {/* Background Glow */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
+      {/* Navigation Breadcrumbs - Ultra Modern Mobile-First Single Line */}
+      <div className="sticky top-[64px] sm:top-[80px] lg:top-[96px] z-40 bg-gradient-to-b from-black via-black/95 to-transparent backdrop-blur-xl border-b border-white/[0.02]">
+        <div className="w-full px-2 sm:px-4 md:px-6 lg:container lg:mx-auto py-2 sm:py-3">
+          {/* Compact Scrollable Navigation - 4 Always in Line */}
+          <nav
+            className="relative flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-hide
+                       [-webkit-overflow-scrolling:touch] [scroll-behavior:smooth]
+                       after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0
+                       after:w-8 after:bg-gradient-to-l after:from-black after:to-transparent after:pointer-events-none
+                       md:after:hidden md:justify-center"
+            aria-label="Navegação de seções"
+          >
+            {/* Atendimento */}
+            <button
+              onClick={() => handleSectionChange('atendimento')}
+              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
+                         flex items-center justify-center gap-1.5 sm:gap-2
+                         px-3 sm:px-4 md:px-5 lg:px-6
+                         h-10 sm:h-11 md:h-11
+                         rounded-xl
+                         transition-all duration-300 ease-out
+                         active:scale-[0.97]
+                         whitespace-nowrap
+                         ${activeSection === 'atendimento'
+                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
+                         }`}
+            >
+              <MessageSquare className={`w-4 h-4 flex-shrink-0
+                                       transition-all duration-300 group-hover:scale-110
+                                       ${activeSection === 'atendimento' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
+                             strokeWidth={2.5} />
+              <span className={`text-xs sm:text-sm font-medium
+                              transition-colors duration-300
+                              ${activeSection === 'atendimento' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
+                Atendimento
+              </span>
+              {/* Active Indicator */}
+              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
+                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
+                            transition-all duration-300
+                            ${activeSection === 'atendimento' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
+            </button>
 
-          <div className="relative z-10 p-4 sm:p-6 lg:p-8">
-            {/* Header Section - Title + Filters Inline on Mobile */}
-            <div className="mb-4 sm:mb-6 lg:mb-8">
-              {/* Mobile: Title Left + Filters Right in same row */}
-              <div className="flex items-start justify-between gap-2 mb-3 sm:mb-0">
-                {/* Title Section - Left Side */}
-                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                    <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold">
-                      <span className="lg:hidden">Atendimento</span>
-                      <span className="hidden lg:inline">Central de Atendimento</span>
-                    </h3>
-                    <p className="text-xs sm:text-sm text-gray-400 hidden lg:block">
-                      Responda rapidamente para manter sua reputação em alta
-                    </p>
-                  </div>
+            {/* Performance */}
+            <button
+              onClick={() => handleSectionChange('performance')}
+              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
+                         flex items-center justify-center gap-1.5 sm:gap-2
+                         px-3 sm:px-4 md:px-5 lg:px-6
+                         h-10 sm:h-11 md:h-11
+                         rounded-xl
+                         transition-all duration-300 ease-out
+                         active:scale-[0.97]
+                         whitespace-nowrap
+                         ${activeSection === 'performance'
+                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
+                         }`}
+            >
+              <Activity className={`w-4 h-4 flex-shrink-0
+                                  transition-all duration-300 group-hover:scale-110
+                                  ${activeSection === 'performance' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
+                        strokeWidth={2.5} />
+              <span className={`text-xs sm:text-sm font-medium
+                              transition-colors duration-300
+                              ${activeSection === 'performance' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
+                Performance
+              </span>
+              {/* Active Indicator */}
+              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
+                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
+                            transition-all duration-300
+                            ${activeSection === 'performance' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
+            </button>
+
+            {/* Ranking */}
+            <button
+              onClick={() => handleSectionChange('ranking')}
+              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
+                         flex items-center justify-center gap-1.5 sm:gap-2
+                         px-3 sm:px-4 md:px-5 lg:px-6
+                         h-10 sm:h-11 md:h-11
+                         rounded-xl
+                         transition-all duration-300 ease-out
+                         active:scale-[0.97]
+                         whitespace-nowrap
+                         ${activeSection === 'ranking'
+                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
+                         }`}
+            >
+              <Trophy className={`w-4 h-4 flex-shrink-0
+                                transition-all duration-300 group-hover:scale-110
+                                ${activeSection === 'ranking' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
+                      strokeWidth={2.5} />
+              <span className={`text-xs sm:text-sm font-medium
+                              transition-colors duration-300
+                              ${activeSection === 'ranking' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
+                Ranking
+              </span>
+              {/* Active Indicator */}
+              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
+                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
+                            transition-all duration-300
+                            ${activeSection === 'ranking' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
+            </button>
+
+            {/* Configurações */}
+            <button
+              onClick={() => handleSectionChange('configuracoes')}
+              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
+                         flex items-center justify-center gap-1.5 sm:gap-2
+                         px-3 sm:px-4 md:px-5 lg:px-6
+                         h-10 sm:h-11 md:h-11
+                         rounded-xl
+                         transition-all duration-300 ease-out
+                         active:scale-[0.97]
+                         whitespace-nowrap
+                         ${activeSection === 'configuracoes'
+                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
+                         }`}
+            >
+              <Settings className={`w-4 h-4 flex-shrink-0
+                                  transition-all duration-300 group-hover:scale-110
+                                  ${activeSection === 'configuracoes' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
+                        strokeWidth={2.5} />
+              <span className={`text-xs sm:text-sm font-medium
+                              transition-colors duration-300
+                              ${activeSection === 'configuracoes' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
+                Config
+              </span>
+              {/* Active Indicator */}
+              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
+                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
+                            transition-all duration-300
+                            ${activeSection === 'configuracoes' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
+            </button>
+          </nav>
+        </div>
+
+        {/* Bottom Gradient Line - Same as Header */}
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gold/30 to-transparent" />
+      </div>
+
+      {/* Main Content Area - Mobile-First Optimized */}
+      <main className="w-full px-3 sm:px-4 md:px-6 lg:container lg:mx-auto py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 lg:space-y-10">
+        {/* Central de Atendimento Section - No Container, Direct Content */}
+        <section id="central-atendimento" className="relative">
+          {/* Header Section - Mobile Optimized */}
+          <div className="mb-5 sm:mb-6">
+            <div className="flex items-start justify-between gap-3 sm:gap-4">
+              {/* Title Section - Perfect Mobile Size */}
+              <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-lg shadow-gold/20">
+                  <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 text-black" strokeWidth={2.5} />
                 </div>
-
-                {/* Filters Container - Right Side (Mobile and Desktop) */}
-                <div id="questions-filters-container" className="flex-shrink-0 relative z-50" />
+                <div>
+                  <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold tracking-tight">
+                    <span className="lg:hidden">Atendimento</span>
+                    <span className="hidden lg:inline">Central de Atendimento</span>
+                  </h3>
+                  <p className="text-xs text-gray-400 hidden sm:block lg:text-sm mt-0.5">
+                    Responda rapidamente para manter sua reputação
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <Suspense fallback={<ComponentLoader />}>
-              <MultiAccountQuestions
-                key={refreshKey}
-                selectedAccountId={null}
-                filterStatus="pending"
-                showFilters={true}
-                renderFiltersTo="questions-filters-container"
-                pageKey="central-atendimento"
-              />
-            </Suspense>
+              {/* Filters Container - Responsive */}
+              <div id="questions-filters-container" className="flex-shrink-0 relative z-50" />
+            </div>
           </div>
+
+          {/* Questions List - Direct Content */}
+          <Suspense fallback={<ComponentLoader />}>
+            <MultiAccountQuestions
+              key={refreshKey}
+              selectedAccountId={null}
+              filterStatus={null} // Mostrar TODAS as perguntas (pending, failed, answered)
+              showFilters={true}
+              renderFiltersTo="questions-filters-container"
+              pageKey="central-atendimento"
+            />
+          </Suspense>
         </section>
 
         {/* Dashboard Tabs Section - Ultra Modern 2025 Glassmorphism Fixed Height */}
-        <section className="relative">
+        <section
+          id="dashboard-section"
+          className="relative transition-all duration-500"
+        >
           <Tabs defaultValue="performance" value={activeTab} onValueChange={setActiveTab} className="relative">
             {/* Tab Navigation - Pill Style with Fixed Container Height */}
             <div className="relative flex justify-center mb-5 sm:mb-6">
@@ -376,16 +643,9 @@ export default function AgenteMultiConta() {
               </div>
             </div>
 
-            {/* Content Container - Matching Glassmorphism */}
-            <div className="relative rounded-2xl sm:rounded-3xl
-              bg-black/40 backdrop-blur-2xl
-              border border-white/[0.08]
-              shadow-[0_8px_32px_rgba(0,0,0,0.4)]
-              before:absolute before:inset-0 before:rounded-2xl sm:before:rounded-3xl before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none
-              after:absolute after:inset-0 after:rounded-2xl sm:after:rounded-3xl after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none
-              overflow-hidden">
-
-              <TabsContent value="performance" className="relative z-10 p-4 sm:p-6 lg:p-8 m-0
+            {/* Content - Direct, No Container */}
+            <div className="relative">
+              <TabsContent value="performance" className="m-0
                 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-2
                 data-[state=inactive]:animate-out data-[state=inactive]:fade-out-0 data-[state=inactive]:slide-out-to-top-2
                 duration-500">
@@ -394,7 +654,7 @@ export default function AgenteMultiConta() {
                 </Suspense>
               </TabsContent>
 
-              <TabsContent value="gamification" className="relative z-10 p-4 sm:p-6 lg:p-8 m-0
+              <TabsContent value="gamification" className="m-0
                 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-2
                 data-[state=inactive]:animate-out data-[state=inactive]:fade-out-0 data-[state=inactive]:slide-out-to-top-2
                 duration-500">
@@ -404,6 +664,29 @@ export default function AgenteMultiConta() {
               </TabsContent>
             </div>
           </Tabs>
+        </section>
+
+        {/* Configurações Section - Direct Content */}
+        <section id="configuracoes-section" className="relative">
+          {/* Header - Mobile Optimized */}
+          <div className="flex items-center gap-3 sm:gap-4 mb-5 sm:mb-6">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-lg shadow-gold/20">
+              <Settings className="w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 text-black" strokeWidth={2.5} />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gold tracking-tight">
+                Configurações da Organização
+              </h3>
+              <p className="text-xs text-gray-400 hidden sm:block lg:text-sm mt-0.5">
+                Gerencie dados da organização, segurança e preferências
+              </p>
+            </div>
+          </div>
+
+          {/* Settings Content - Direct */}
+          <Suspense fallback={<ComponentLoader />}>
+            <OrganizationSettings />
+          </Suspense>
         </section>
       </main>
 

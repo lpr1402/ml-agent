@@ -20,7 +20,7 @@ Avatar.displayName = "Avatar"
 const AvatarImage = React.forwardRef<
   HTMLImageElement,
   React.ImgHTMLAttributes<HTMLImageElement>
->(({ className, alt = "", src, onError, width, height, ...props }) => {
+>(({ className, alt = "", src, onError, width, height, ...props }, ref) => {
   const [error, setError] = React.useState(false)
 
   if (!src || error) return null
@@ -29,21 +29,23 @@ const AvatarImage = React.forwardRef<
   const imageSrc = typeof src === 'string' ? src : ''
 
   return (
-    <Image
-      src={imageSrc}
-      alt={alt}
-      width={width as number || 40}
-      height={height as number || 40}
-      className={cn("aspect-square h-full w-full object-cover", className)}
-      unoptimized
-      onError={(e) => {
-        setError(true)
-        if (onError) {
-          onError(e as any)
-        }
-      }}
-      {...props}
-    />
+    <div ref={ref as any} className={cn("aspect-square h-full w-full", className)}>
+      <Image
+        src={imageSrc}
+        alt={alt}
+        width={width as number || 40}
+        height={height as number || 40}
+        className="h-full w-full object-cover"
+        unoptimized
+        onError={(e) => {
+          setError(true)
+          if (onError) {
+            onError(e as any)
+          }
+        }}
+        {...props}
+      />
+    </div>
   )
 })
 AvatarImage.displayName = "AvatarImage"
