@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger'
 import { approvalTokenService } from '@/lib/services/approval-token-service'
 import { getValidMLToken } from '@/lib/ml-api/token-manager'
 import { sanitizeAnswerText } from '@/lib/security/input-validator'
-import { zapsterService } from '@/lib/services/zapster-whatsapp'
+import { evolutionWhatsAppService } from '@/lib/services/evolution-whatsapp'
 
 export async function POST(request: NextRequest) {
   try {
@@ -134,8 +134,8 @@ export async function POST(request: NextRequest) {
       
       // Enviar confirmação WhatsApp
       try {
-        await zapsterService.sendApprovalConfirmation({
-          sequentialId: parseInt(question.id.slice(-6), 16) || 0,
+        await evolutionWhatsAppService.sendApprovalConfirmation({
+          sequentialId: question.sequentialId || '00/0000', // ✅ Usar ID salvo no banco
           questionText: question.text,
           finalAnswer: sanitizedResponse,
           productTitle: question.itemTitle || 'Produto',
@@ -193,8 +193,8 @@ export async function POST(request: NextRequest) {
         
         // Enviar novo link via WhatsApp
         try {
-          await zapsterService.sendApprovalConfirmation({
-            sequentialId: parseInt(question.id.slice(-6), 16) || 0,
+          await evolutionWhatsAppService.sendApprovalConfirmation({
+            sequentialId: question.sequentialId || '00/0000', // ✅ Usar ID salvo no banco
             questionText: question.text,
             finalAnswer: userResponse,
             productTitle: question.itemTitle || 'Produto',

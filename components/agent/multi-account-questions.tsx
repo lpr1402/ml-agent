@@ -18,7 +18,8 @@ import {
   CheckCircle,
   Check,
   User,
-  Building2
+  Building2,
+  Users
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { QuestionCard } from './question-card'
@@ -819,61 +820,62 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
       <div className="w-full" role="region" aria-label="Filtros de perguntas">
         {/* 🎯 MOBILE: 3 botões ultra compactos | DESKTOP: Layout original */}
         <div className="flex flex-col gap-2">
-          {/* 📱 Mobile: Todos os 3 botões minimalistas */}
-          <div className="flex sm:hidden items-stretch gap-1 bg-black/40 backdrop-blur-sm p-0.5 rounded-lg border border-white/5">
-            {/* Botão Pendentes */}
+          {/* 📱 Mobile: Visual Premium - SEMPRE VISÍVEIS */}
+          <div className="flex sm:hidden relative items-center bg-black/40 backdrop-blur-2xl p-1 gap-1 rounded-xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)] before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none after:absolute after:inset-0 after:rounded-xl after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none h-10">
+            {/* Botão Pendentes - Premium */}
             <button
               onClick={() => setStatusFilter('pending')}
               aria-pressed={statusFilter === 'pending'}
               aria-label="Pendentes"
-              className={`flex items-center justify-center gap-0.5 h-[28px] px-1.5 rounded-md text-[10px] font-medium transition-all duration-200 whitespace-nowrap flex-1 ${
+              className={`relative z-10 flex items-center justify-center gap-1 px-3 h-full rounded-lg text-[10px] font-medium transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-[70px] border border-transparent ${
                 statusFilter === 'pending'
-                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5 active:bg-white/10'
+                  ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/[0.03] active:scale-[0.98]'
               }`}
             >
-              <MessageSquare className="w-2.5 h-2.5 flex-shrink-0" />
-              <span>Pend.</span>
+              <MessageSquare className={`w-2.5 h-2.5 flex-shrink-0 transition-all duration-300 ${statusFilter === 'pending' ? 'text-gold' : 'opacity-60'}`} strokeWidth={2.5} />
+              <span className="font-semibold tracking-wide">Pend.</span>
             </button>
 
-            {/* Botão Todas */}
+            {/* Botão Todas - Premium */}
             <button
               onClick={() => setStatusFilter('all')}
               aria-pressed={statusFilter === 'all'}
               aria-label="Todas"
-              className={`flex items-center justify-center gap-0.5 h-[28px] px-1.5 rounded-md text-[10px] font-medium transition-all duration-200 whitespace-nowrap flex-1 ${
+              className={`relative z-10 flex items-center justify-center gap-1 px-3 h-full rounded-lg text-[10px] font-medium transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-[70px] border border-transparent ${
                 statusFilter === 'all'
-                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5 active:bg-white/10'
+                  ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/[0.03] active:scale-[0.98]'
               }`}
             >
-              <CheckCircle className="w-2.5 h-2.5 flex-shrink-0" />
-              <span>Todas</span>
+              <CheckCircle className={`w-2.5 h-2.5 flex-shrink-0 transition-all duration-300 ${statusFilter === 'all' ? 'text-gold' : 'opacity-60'}`} strokeWidth={2.5} />
+              <span className="font-semibold tracking-wide">Todas</span>
             </button>
 
-            {/* Botão Todas as Contas - Mobile Minimalista */}
-            <div className="relative flex-1">
+            {/* Botão Todas as Contas - Minimalista */}
+            <div className="relative flex-1 min-w-0 overflow-hidden">
               <button
                 ref={dropdownButtonRef}
                 onClick={() => accountSummary.length > 0 && setIsAccountDropdownOpen(!isAccountDropdownOpen)}
                 disabled={accountSummary.length === 0}
-                className={`group relative flex items-center justify-center gap-0.5 h-[28px] px-1 rounded-md transition-all duration-200 w-full ${
+                className={`group relative z-10 flex items-center justify-center gap-1.5 px-2 lg:px-3 h-full rounded-lg text-[10px] lg:text-xs font-medium transition-all duration-300 w-full min-w-0 border border-transparent ${
                   accountSummary.length === 0
                     ? 'opacity-50 cursor-not-allowed text-gray-500'
-                    : 'hover:bg-white/5 text-gray-300 active:bg-white/10'
+                    : 'text-gray-400 hover:text-white hover:bg-white/[0.03] active:scale-95'
                 }`}
               >
-                <div className="flex items-center gap-0.5 flex-1 min-w-0 justify-center">
+                <div className="flex items-center gap-1 min-w-0 max-w-full justify-center overflow-hidden">
                   {accountSummary.length === 0 ? (
-                    <Building2 className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+                    <Users className="w-3 h-3 text-gray-500 flex-shrink-0 transition-all duration-300 opacity-60" strokeWidth={2.5} />
                   ) : accountFilter === 'all' ? (
                     <>
-                      <Building2 className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
-                      <span className="text-[9px] font-medium text-gray-300 truncate">Contas</span>
+                      {/* Mobile: só ícone | Desktop: ícone + texto */}
+                      <Users className="w-3 h-3 lg:w-3.5 lg:h-3.5 flex-shrink-0 transition-all duration-300 text-gold/70 group-hover:text-gold" strokeWidth={2.5} />
+                      <span className="hidden lg:inline font-semibold tracking-wide truncate">Contas</span>
                     </>
                   ) : selectedAccount ? (
                     <>
-                      <Avatar className="h-3 w-3 ring-1 ring-white/10 flex-shrink-0">
+                      <Avatar className="h-4 w-4 lg:h-4.5 lg:w-4.5 ring-1 ring-gold/20 flex-shrink-0">
                         {getValidAvatarUrl(selectedAccount.thumbnail) ? (
                           <AvatarImage
                             src={getValidAvatarUrl(selectedAccount.thumbnail) || ''}
@@ -881,23 +883,20 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
                             className="object-cover"
                           />
                         ) : (
-                          <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
-                            <User className="h-1.5 w-1.5" />
+                          <AvatarFallback className="bg-gradient-to-br from-gold/20 to-gold/10">
+                            <User className="h-2 w-2 text-gold" />
                           </AvatarFallback>
                         )}
                       </Avatar>
-                      {selectedAccount.pendingQuestions > 0 && (
-                        <span className="px-0.5 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-bold flex-shrink-0 min-w-[14px] text-center">
-                          {selectedAccount.pendingQuestions}
-                        </span>
-                      )}
+                      <span className="hidden lg:inline font-semibold tracking-wide truncate text-[10px]">{selectedAccount.nickname.substring(0, 10)}</span>
                     </>
                   ) : null}
                   {accountSummary.length > 0 && (
                     <ChevronDown
-                      className={`w-2 h-2 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
-                        isAccountDropdownOpen ? 'rotate-180' : ''
+                      className={`w-3 h-3 lg:w-3.5 lg:h-3.5 text-gold/60 transition-all duration-300 flex-shrink-0 ${
+                        isAccountDropdownOpen ? 'rotate-180 text-gold' : 'group-hover:text-gold'
                       }`}
+                      strokeWidth={2.5}
                     />
                   )}
                 </div>
@@ -1033,42 +1032,68 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
             </div>
           </div>
 
-          {/* 🖥️ Desktop: Layout original com todos os filtros juntos */}
-          <div className="hidden sm:flex items-stretch bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm p-1 rounded-xl border border-white/5 shadow-lg sm:w-auto">
-            {/* 📱 Account Filter - Desktop */}
-            <div className="relative flex-1 sm:flex-initial sm:max-w-[140px] md:max-w-[160px]">
+          {/* 🖥️ Desktop/Tablet: Visual Premium Matching Mobile */}
+          <div className="hidden sm:flex items-center bg-black/40 backdrop-blur-2xl p-1 sm:p-1.5 gap-1 sm:gap-1.5 rounded-xl sm:rounded-2xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)] before:absolute before:inset-0 before:rounded-xl sm:before:rounded-2xl before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none after:absolute after:inset-0 after:rounded-xl sm:after:rounded-2xl after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none relative h-11 md:h-12">
+            {/* Botão Pendentes - Desktop/Tablet */}
+            <button
+              onClick={() => setStatusFilter('pending')}
+              aria-pressed={statusFilter === 'pending'}
+              aria-label="Mostrar apenas perguntas pendentes"
+              className={`group relative z-10 flex items-center justify-center gap-1.5 px-4 md:px-5 lg:px-6 h-full rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-300 whitespace-nowrap border border-transparent ${
+                statusFilter === 'pending'
+                  ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/[0.03] active:scale-[0.98]'
+              }`}
+            >
+              <MessageSquare className={`w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 transition-all duration-300 ${statusFilter === 'pending' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`} strokeWidth={2.5} />
+              <span className="font-semibold tracking-wide">Pendentes</span>
+            </button>
+
+            {/* Botão Todas - Desktop/Tablet */}
+            <button
+              onClick={() => setStatusFilter('all')}
+              aria-pressed={statusFilter === 'all'}
+              aria-label="Mostrar todas as perguntas"
+              className={`group relative z-10 flex items-center justify-center gap-1.5 px-4 md:px-5 lg:px-6 h-full rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-300 whitespace-nowrap border border-transparent ${
+                statusFilter === 'all'
+                  ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/[0.03] active:scale-[0.98]'
+              }`}
+            >
+              <CheckCircle className={`w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 transition-all duration-300 ${statusFilter === 'all' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`} strokeWidth={2.5} />
+              <span className="font-semibold tracking-wide">Todas</span>
+            </button>
+
+            {/* Botão Todas as Contas - Desktop/Tablet */}
+            <div className="relative">
               <button
+                ref={dropdownButtonRef}
                 onClick={() => accountSummary.length > 0 && setIsAccountDropdownOpen(!isAccountDropdownOpen)}
                 disabled={accountSummary.length === 0}
-                className={`group relative flex items-center justify-between gap-1 h-[30px] sm:h-[44px] px-2.5 sm:px-3 py-1 sm:py-2 rounded-md sm:rounded-lg transition-all duration-300 w-full ${
+                className={`group relative z-10 flex items-center gap-2 px-3 sm:px-4 h-full rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-300 whitespace-nowrap border border-transparent ${
                   accountSummary.length === 0
                     ? 'opacity-50 cursor-not-allowed text-gray-500'
-                    : 'hover:bg-white/5 text-gray-300'
+                    : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
                 }`}
             >
-              <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
                 {accountSummary.length === 0 ? (
                   <>
                     <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500 flex-shrink-0" />
-                    <span className="text-[10px] sm:text-xs font-semibold text-gray-500 truncate">
+                    <span className="text-xs sm:text-sm font-semibold text-gray-500 truncate tracking-wide">
                       Sem contas
                     </span>
                   </>
                 ) : accountFilter === 'all' ? (
                   <>
-                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
-                    <span className="text-[10px] sm:text-xs font-semibold text-gray-300 truncate">
-                      Todas
+                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 transition-all duration-300 opacity-60 group-hover:opacity-100" />
+                    <span className="text-xs sm:text-sm font-semibold tracking-wide truncate">
+                      Contas
                     </span>
-                    {totalPending > 0 && (
-                      <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] sm:text-[9px] font-bold flex-shrink-0">
-                        {totalPending}
-                      </span>
-                    )}
                   </>
                 ) : selectedAccount ? (
                   <>
-                    <Avatar className="h-3 w-3 sm:h-4 sm:w-4 ring-1 ring-white/10 flex-shrink-0">
+                    <Avatar className="h-4 w-4 sm:h-5 sm:w-5 ring-1 ring-white/10 flex-shrink-0">
                       {getValidAvatarUrl(selectedAccount.thumbnail) ? (
                         <AvatarImage
                           src={getValidAvatarUrl(selectedAccount.thumbnail) || ''}
@@ -1077,24 +1102,19 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
                         />
                       ) : (
                         <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
-                          <User className="h-1.5 w-1.5 sm:h-2 sm:w-2" />
+                          <User className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
                         </AvatarFallback>
                       )}
                     </Avatar>
-                    <span className="text-[10px] sm:text-xs font-semibold text-white truncate">
+                    <span className="text-xs sm:text-sm font-semibold text-white truncate tracking-wide">
                       {selectedAccount.nickname}
                     </span>
-                    {selectedAccount.pendingQuestions > 0 && (
-                      <span className="px-1 py-0.5 rounded bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] sm:text-[9px] font-bold flex-shrink-0">
-                        {selectedAccount.pendingQuestions}
-                      </span>
-                    )}
                   </>
                 ) : null}
               </div>
               {accountSummary.length > 0 && (
                 <ChevronDown
-                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
+                  className={`w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 transition-transform duration-300 flex-shrink-0 ${
                     isAccountDropdownOpen ? 'rotate-180' : ''
                   }`}
                 />
@@ -1110,10 +1130,10 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
                     onClick={() => setIsAccountDropdownOpen(false)}
                   />
 
-                  {/* Dropdown Content */}
+                  {/* Dropdown Content - Alinhado à Esquerda */}
                   <div className={`absolute z-[70]
                     ${dropdownPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'}
-                    left-0 right-auto min-w-[260px]
+                    right-0 left-auto min-w-[260px]
                     bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98
                     backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl shadow-black/30 overflow-hidden
                     animate-in ${dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}
@@ -1221,34 +1241,6 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
                 </>
               )}
             </div>
-
-            {/* 🎯 Status Filters - Desktop only - Botões Grudados no mesmo container */}
-            <button
-              onClick={() => setStatusFilter('pending')}
-              aria-pressed={statusFilter === 'pending'}
-              aria-label="Mostrar apenas perguntas pendentes"
-              className={`hidden sm:flex items-center justify-center gap-1.5 h-[44px] px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
-                statusFilter === 'pending'
-                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-lg shadow-gold/40'
-                  : 'text-gray-300 hover:text-white hover:bg-white/5 active:scale-[0.98]'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" aria-hidden="true" />
-              <span>Pendentes</span>
-            </button>
-            <button
-              onClick={() => setStatusFilter('all')}
-              aria-pressed={statusFilter === 'all'}
-              aria-label="Mostrar todas as perguntas"
-              className={`hidden sm:flex items-center justify-center gap-1.5 h-[44px] px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
-                statusFilter === 'all'
-                  ? 'bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-lg shadow-gold/40'
-                  : 'text-gray-300 hover:text-white hover:bg-white/5 active:scale-[0.98]'
-              }`}
-            >
-              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" aria-hidden="true" />
-              <span>Todas</span>
-            </button>
           </div>
         </div>
       </div>

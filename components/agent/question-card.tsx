@@ -476,9 +476,9 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
       case 'REVIEWING':
       case 'REVISING': // Legado
         return {
-          gradient: 'from-purple-500/20 to-violet-500/20',
-          border: 'border-purple-500/30',
-          text: 'text-purple-400',
+          gradient: 'from-gold/20 to-gold-light/20',
+          border: 'border-gold/30',
+          text: 'text-gold',
           icon: Sparkles,
           label: 'ML Agent Revisando',
           pulse: true,
@@ -972,14 +972,17 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
   return (
     <Card className={`
       relative overflow-hidden
-      bg-gradient-to-br from-white/[0.03] to-white/[0.01]
-      border border-white/5
-      backdrop-blur-sm
-      hover:bg-white/[0.04]
+      bg-gradient-to-br from-white/[0.04] to-white/[0.02]
+      border border-white/[0.08]
+      backdrop-blur-xl
+      hover:bg-white/[0.05]
+      hover:border-white/[0.12]
       transition-all duration-300
       group
-      rounded-xl
-      ${statusConfig.glow ? 'shadow-lg shadow-gold/20 border-gold/20' : ''}
+      rounded-xl lg:rounded-2xl
+      shadow-[0_4px_16px_rgba(0,0,0,0.2)]
+      hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]
+      ${statusConfig.glow ? 'shadow-xl shadow-gold/30 border-gold/30' : ''}
       ${false ? 'scale-[0.98] opacity-90' : ''}
     `}>
 
@@ -1037,16 +1040,16 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent opacity-50 pointer-events-none" />
       )}
 
-      {/* Main Content - Mobile Optimized */}
-      <div className="relative p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4">
+      {/* Main Content - Premium Responsive */}
+      <div className="relative p-4 lg:p-5 space-y-3 lg:space-y-4">
         {/* Premium Header Section - Mobile Responsive */}
         <div className="space-y-4">
           {/* Top Info Bar - Seller, Date & Status Badges */}
-          <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
+          <div className="flex items-center justify-between gap-3 pb-3 lg:pb-4 border-b border-white/[0.06]">
             {/* Seller Info with Date */}
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {question.mlAccount && (
-                <div className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-black/40 to-black/20 border border-white/5">
+                <div className="flex items-center gap-2 lg:gap-2.5 px-2.5 lg:px-3 py-1.5 rounded-lg lg:rounded-xl bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.08]">
                   {/* Seller Profile Photo - Smaller on Mobile */}
                   <div className="relative flex-shrink-0">
                     <div className="absolute inset-0 bg-gradient-to-br from-gold/30 to-gold/10 blur-sm rounded-full" />
@@ -1129,7 +1132,7 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                   <div className="absolute inset-0 bg-gold/10 blur-sm rounded" />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={(question as any).itemThumbnail || question.item?.thumbnail || '/mlagent-logo-3d.svg'}
+                    src={question.itemThumbnail || '/mlagent-logo-3d.svg'}
                     alt={question.itemTitle || 'Produto'}
                     className="relative w-8 h-8 sm:w-10 sm:h-10 rounded object-cover border border-gold/30 ring-1 ring-gold/20 shadow-md"
                     onError={(e) => {
@@ -1190,17 +1193,17 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
 
                 {/* Content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  {/* Icon with glow effect - Using ML Agent icon in white */}
+                  {/* Icon with glow effect - Dourado */}
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/40 to-violet-500/40 rounded-full blur-xl scale-150 animate-pulse" />
-                    <div className="relative bg-gradient-to-br from-purple-900/80 to-violet-900/80 rounded-full p-4 border border-purple-500/30">
-                      {/* ML Agent icon in white */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-gold/40 to-gold-light/40 rounded-full blur-xl scale-150 animate-pulse" />
+                    <div className="relative bg-gradient-to-br from-black/80 to-gray-900/80 rounded-full p-4 border border-gold/30">
+                      {/* ML Agent icon */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src="/icone-amarelo.svg"
+                        src="/mlagent-logo-3d.svg"
                         alt="ML Agent"
-                        className="w-8 h-8 brightness-0 invert"
-                        style={{ filter: 'brightness(0) invert(1)' }}
+                        className="w-8 h-8"
+                        style={{ filter: 'drop-shadow(0 0 10px rgba(212,175,55,0.4))' }}
                       />
                     </div>
                   </div>
@@ -1214,7 +1217,7 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                     {/* Progress bar */}
                     <div className="w-48 h-0.5 bg-white/10 rounded-full overflow-hidden">
                       <motion.div
-                        className="h-full bg-gradient-to-r from-purple-500 via-violet-400 to-purple-500 rounded-full"
+                        className="h-full bg-gradient-to-r from-gold via-gold-light to-gold rounded-full"
                         animate={{
                           x: ['-100%', '100%']
                         }}
@@ -1297,29 +1300,37 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
 
             {isEditing ? (
               <div className="space-y-3">
-                <Textarea
-                  value={editedResponse}
-                  onChange={(e) => setEditedResponse(e.target.value)}
-                  className="min-h-[120px] bg-black/30 border-white/10 text-gray-100 focus:border-gold/30 focus:ring-gold/20"
-                  placeholder="Edite a resposta..."
-                />
+                <div className="relative">
+                  <Textarea
+                    value={editedResponse}
+                    onChange={(e) => setEditedResponse(e.target.value)}
+                    className="min-h-[140px] lg:min-h-[160px] bg-black/40 border-white/[0.08] text-gray-100 text-sm lg:text-base focus:border-gold/40 focus:ring-2 focus:ring-gold/20 rounded-xl placeholder:text-gray-600 resize-none"
+                    placeholder="Edite sua resposta aqui..."
+                  />
+                  {/* Character count */}
+                  <div className="absolute bottom-2 right-2 text-[10px] text-gray-600 font-mono">
+                    {editedResponse.length}/2000 caracteres
+                  </div>
+                </div>
+
+                {/* Action buttons - Premium */}
                 <div className="flex gap-2">
                   <Button
                     size="sm"
                     onClick={handleSaveEdit}
                     disabled={isProcessing || !editedResponse.trim()}
-                    className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-semibold shadow-lg shadow-emerald-500/10"
+                    className="flex-1 bg-gradient-to-br from-gold to-gold-light hover:shadow-xl hover:shadow-gold/40 text-black font-bold text-sm rounded-xl transition-all active:scale-95"
                   >
                     {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        Salvando...
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Salvando...</span>
+                      </div>
                     ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 mr-1" />
-                        Salvar Alterações
-                      </>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4" strokeWidth={2.5} />
+                        <span>Salvar</span>
+                      </div>
                     )}
                   </Button>
                   <Button
@@ -1327,10 +1338,9 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                     variant="outline"
                     onClick={() => {
                       setIsEditing(false)
-                      // Restaura para a sugestão atual
                       setEditedResponse(question.aiSuggestion || '')
                     }}
-                    className="border-white/10 text-gray-400 hover:bg-white/5 hover:text-white"
+                    className="border-white/[0.08] text-gray-400 hover:text-white hover:bg-white/[0.05] hover:border-white/20 rounded-xl transition-all"
                   >
                     Cancelar
                   </Button>
@@ -1338,8 +1348,8 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
               </div>
             ) : (
               <div className="space-y-2">
-                {/* Smooth transition when AI response arrives - Mobile Optimized */}
-                <div className="text-xs sm:text-sm text-gray-100 leading-relaxed bg-white/[0.02] p-2 sm:p-3 rounded-lg border border-white/5 transition-all duration-300">
+                {/* AI Response - Premium display */}
+                <div className="text-sm lg:text-base text-gray-100 leading-relaxed bg-white/[0.03] border border-white/[0.06] p-3 lg:p-4 rounded-xl lg:rounded-2xl transition-all duration-300">
                   {question.aiSuggestion || 'Aguardando resposta da IA...'}
                 </div>
               </div>
@@ -1518,30 +1528,49 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
         {/* Action Buttons Section e Revision Input */}
         {!isEditing && (
           <>
-            {/* Revision Input Modal - Mobile Optimized */}
+            {/* Revision Input - Premium */}
             {showRevisionInput && question.status !== 'REVISING' && question.status !== 'REVIEWING' && (
-              <div className="mt-4 p-3 sm:p-4 rounded-xl bg-gradient-to-br from-purple-900/10 via-violet-900/10 to-purple-900/10 border border-purple-500/20 backdrop-blur-sm">
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                  <span className="text-xs sm:text-sm font-medium text-purple-400 leading-tight">
-                    Como você gostaria de melhorar a resposta?
+              <div className="mt-4 p-4 lg:p-5 rounded-xl lg:rounded-2xl bg-gradient-to-br from-purple-500/8 to-violet-500/5 border border-purple-500/20 backdrop-blur-sm">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-500/10 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-purple-400" strokeWidth={2.5} />
+                  </div>
+                  <span className="text-sm lg:text-base font-semibold text-purple-300">
+                    Como posso melhorar?
                   </span>
                 </div>
-                <Textarea
-                  value={revisionFeedback}
-                  onChange={(e) => setRevisionFeedback(e.target.value)}
-                  className="w-full min-h-[80px] bg-black/30 border-purple-500/20 text-gray-100 focus:border-purple-400 focus:ring-purple-400/20 placeholder:text-gray-500 text-xs sm:text-sm"
-                  placeholder="Ex: 'Adicione mais detalhes técnicos', 'Seja mais amigável'..."
-                />
-                <div className="flex flex-col sm:flex-row gap-2 mt-3">
+
+                <div className="relative">
+                  <Textarea
+                    value={revisionFeedback}
+                    onChange={(e) => setRevisionFeedback(e.target.value)}
+                    className="w-full min-h-[100px] lg:min-h-[120px] bg-black/40 border-purple-500/20 text-gray-100 text-sm lg:text-base focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 rounded-xl placeholder:text-gray-600 resize-none"
+                    placeholder="Ex: 'Adicione informações técnicas', 'Seja mais cordial', 'Inclua prazos'..."
+                  />
+                  {/* Character hint */}
+                  <div className="absolute bottom-2 right-2 text-[10px] text-gray-600 font-mono">
+                    {revisionFeedback.length} caracteres
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-3">
                   <Button
                     size="sm"
                     onClick={handleRevision}
-                    disabled={isProcessing}
-                    className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold text-xs sm:text-sm"
+                    disabled={isProcessing || !revisionFeedback.trim()}
+                    className="flex-1 bg-gradient-to-br from-purple-500 to-violet-600 hover:shadow-xl hover:shadow-purple-500/40 text-white font-bold text-sm rounded-xl transition-all active:scale-95"
                   >
-                    <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                    Revisar com ML Agent
+                    {isProcessing ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Processando...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" strokeWidth={2.5} />
+                        <span>Revisar</span>
+                      </div>
+                    )}
                   </Button>
                   <Button
                     size="sm"
@@ -1550,7 +1579,7 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                       setShowRevisionInput(false)
                       setRevisionFeedback('')
                     }}
-                    className="w-full sm:w-auto border-white/10 text-gray-400 hover:bg-white/5 hover:text-white text-xs sm:text-sm"
+                    className="border-white/[0.08] text-gray-400 hover:text-white hover:bg-white/[0.05] hover:border-white/20 rounded-xl transition-all"
                   >
                     Cancelar
                   </Button>
@@ -1558,50 +1587,73 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
               </div>
             )}
 
-            {/* Botões de ação - Esconder quando revisão está aberta ou status é REVISING - Mobile Optimized */}
+            {/* Botões de ação - Premium Mobile First */}
             {!showRevisionInput && question.status !== 'REVISING' && question.status !== 'REVIEWING' && (
-              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 pt-3 sm:pt-4 border-t border-white/5">
+              <div className="space-y-2 pt-3 sm:pt-4 border-t border-white/[0.06]">
                 {/* 🔴 FIX: Mostrar botões se TEM resposta E não foi enviada ao ML ainda */}
                 {((question.status === 'AWAITING_APPROVAL' && question.aiSuggestion) ||
                   (question.status === 'PROCESSING' && question.aiSuggestion) ||
                   (question.status === 'PENDING' && question.aiSuggestion) ||
                   (question.status === 'RECEIVED' && question.aiSuggestion)) && (
                   <>
-                    <Button
-                      size="sm"
-                      onClick={handleApprove}
-                      disabled={isProcessing}
-                      className="w-full sm:w-auto text-xs sm:text-sm bg-gradient-to-r from-gold via-gold-light to-gold hover:from-gold-dark hover:via-gold hover:to-gold-dark text-black font-bold shadow-lg shadow-gold/20 transition-all duration-300 py-2 sm:py-1.5"
-                    >
-                      <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                      Aprovar e Enviar
-                    </Button>
+                    {/* Container dos botões - Desktop/Tablet: mesma linha | Mobile: stacked */}
+                    <div className="space-y-2">
+                      {/* Linha principal de ações */}
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        {/* 3 botões principais - Mobile: grid | Desktop: flex */}
+                        <div className="grid grid-cols-3 md:flex md:flex-wrap gap-1.5 md:gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleApprove}
+                            disabled={isProcessing}
+                            className="flex items-center justify-center bg-gradient-to-br from-gold to-gold-light hover:shadow-xl hover:shadow-gold/40 text-black font-bold text-[10px] md:text-sm px-1.5 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl transition-all active:scale-95 border-none gap-1 md:gap-1.5"
+                          >
+                            <CheckCircle2 className="w-3 h-3 md:w-4 md:h-4 flex-shrink-0" strokeWidth={2.5} />
+                            <span className="leading-tight truncate">Aprovar</span>
+                          </Button>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setIsEditing(true)
-                        // Inicia edição com a resposta salva se existir
-                        setEditedResponse(question.aiSuggestion || '')
-                      }}
-                      disabled={isProcessing}
-                      className="w-full sm:w-auto text-xs sm:text-sm border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-300 transition-all duration-300 py-2 sm:py-1.5"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                      Editar Resposta
-                    </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setIsEditing(true)
+                              setEditedResponse(question.aiSuggestion || '')
+                            }}
+                            disabled={isProcessing}
+                            className="flex items-center justify-center border-white/[0.08] text-gray-400 hover:text-white hover:bg-white/[0.05] hover:border-gold/30 text-[10px] md:text-sm px-1.5 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl transition-all active:scale-95 gap-1 md:gap-1.5"
+                          >
+                            <Edit2 className="w-3 h-3 md:w-4 md:h-4 flex-shrink-0" strokeWidth={2.5} />
+                            <span className="leading-tight truncate">Editar</span>
+                          </Button>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowRevisionInput(true)}
-                      disabled={isProcessing}
-                      className="w-full sm:w-auto text-xs sm:text-sm border-purple-500/20 text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/30 hover:text-purple-300 transition-all duration-300 py-2 sm:py-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                      Melhorar com o ML Agent
-                    </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowRevisionInput(true)}
+                            disabled={isProcessing}
+                            className="flex items-center justify-center border-white/[0.08] text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/30 text-[10px] md:text-sm px-1.5 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl transition-all active:scale-95 gap-1 md:gap-1.5"
+                          >
+                            <Sparkles className="w-3 h-3 md:w-4 md:h-4 flex-shrink-0" strokeWidth={2.5} />
+                            <span className="leading-tight truncate">Revisar</span>
+                          </Button>
+                        </div>
+
+                        {/* Ver no Mercado Livre - Desktop/Tablet: direita na mesma linha | Mobile: abaixo */}
+                        {question.itemPermalink && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            asChild
+                            className="w-full md:w-auto border-white/[0.08] text-gray-400 hover:text-white hover:bg-white/[0.05] hover:border-white/20 text-xs md:text-sm px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl transition-all whitespace-nowrap"
+                          >
+                            <a href={question.itemPermalink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
+                              <ExternalLink className="w-3.5 h-3.5 md:w-4 md:h-4" strokeWidth={2} />
+                              <span>Ver no Mercado Livre</span>
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </>
                 )}
 
@@ -1757,29 +1809,16 @@ export function QuestionCard({ question, onApprove, onRevise, onEdit }: Question
                     variant="outline"
                     onClick={() => setShowRevisionInput(!showRevisionInput)}
                     disabled={isProcessing}
-                    className="w-full sm:w-auto text-xs sm:text-sm border-purple-500/20 text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/30 hover:text-purple-300 transition-all duration-300 py-2 sm:py-1.5"
+                    className="w-full sm:w-auto text-xs sm:text-sm border-white/[0.08] text-gray-400 hover:text-gold hover:bg-gold/10 hover:border-gold/30 transition-all duration-300 py-2 sm:py-1.5 rounded-lg active:scale-95"
                   >
-                    <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                    Revisar com IA
+                    <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" strokeWidth={2.5} />
+                    Revisar
                   </Button>
                 </>
               )}
             </>
           )}
 
-          {question.itemPermalink && (
-            <Button
-              size="sm"
-              variant="outline"
-              asChild
-              className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm border-white/10 text-gray-400 hover:text-white hover:bg-white/5 hover:border-white/20 transition-all duration-300 py-2 sm:py-1.5"
-            >
-              <a href={question.itemPermalink} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                Ver no ML
-              </a>
-            </Button>
-              )}
               </div>
             )}
           </>

@@ -30,6 +30,11 @@ model Organization {
   primaryEmail       String?
   primarySiteId      String?            // MLB, MLA, MLM
 
+  // 🎯 Configurações de contato e notificações
+  whatsappNumber         String?        // Número WhatsApp para notificações
+  emailNotifications     Boolean        @default(true) // Receber notificações por email
+  whatsappNotifications  Boolean        @default(true) // Receber notificações por WhatsApp
+
   // Assinatura
   plan               PlanType           @default(FREE)
   subscriptionStatus SubscriptionStatus @default(TRIAL)

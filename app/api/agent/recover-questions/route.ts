@@ -127,7 +127,11 @@ export async function POST(request: NextRequest) {
         }
 
         // Tentar reprocessar via endpoint de reprocessamento
-        const response = await fetch(`${process.env['NEXT_PUBLIC_APP_URL'] || 'http://localhost:3007'}/api/agent/reprocess-question`, {
+        const appUrl = process.env['NODE_ENV'] === 'production'
+          ? 'https://gugaleo.axnexlabs.com.br'
+          : (process.env['NEXT_PUBLIC_APP_URL'] || 'http://localhost:3007')
+
+        const response = await fetch(`${appUrl}/api/agent/reprocess-question`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

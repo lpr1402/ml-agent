@@ -23,6 +23,7 @@ const MLAgentDashboardModern = lazy(() => import('@/components/dashboard/ml-agen
 const MultiAccountQuestions = lazy(() => import('@/components/agent/multi-account-questions').then(mod => ({ default: mod.MultiAccountQuestions })))
 const GamificationDashboard = lazy(() => import('@/components/gamification/gamification-dashboard').then(mod => ({ default: mod.GamificationDashboard })))
 const OrganizationSettings = lazy(() => import('@/components/settings/organization-settings').then(mod => ({ default: mod.OrganizationSettings })))
+const PlatformInfo = lazy(() => import('@/components/settings/platform-info').then(mod => ({ default: mod.PlatformInfo })))
 
 // Componente de loading
 const ComponentLoader = () => (
@@ -332,14 +333,8 @@ export default function AgenteMultiConta() {
             
             {/* Premium Actions - Ultra Minimalista */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* Account Switcher Container - Mobile First Ultra Clean */}
-              <div className="[&>div]:!min-w-0 [&>div]:!w-auto sm:[&>div]:!min-w-[200px] lg:[&>div]:!min-w-[240px]
-                          [&>div]:!border-white/5 [&>div]:!bg-black/20 hover:[&>div]:!border-white/10
-                          [&>div]:!shadow-none [&>div]:!rounded-lg
-                          [&_button]:!h-10 [&_button]:!px-2 sm:[&_button]:!px-3 lg:[&_button]:!px-4
-                          [&_button]:!min-w-0">
-                <MLAccountSwitcher />
-              </div>
+              {/* Account Switcher - Premium & Responsivo */}
+              <MLAccountSwitcher />
 
               {/* Clean Divider */}
               <div className="hidden sm:block h-6 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent" />
@@ -361,150 +356,134 @@ export default function AgenteMultiConta() {
         </div>
       </header>
 
-      {/* Navigation Breadcrumbs - Ultra Modern Mobile-First Single Line */}
-      <div className="sticky top-[64px] sm:top-[80px] lg:top-[96px] z-40 bg-gradient-to-b from-black via-black/95 to-transparent backdrop-blur-xl border-b border-white/[0.02]">
-        <div className="w-full px-2 sm:px-4 md:px-6 lg:container lg:mx-auto py-2 sm:py-3">
-          {/* Compact Scrollable Navigation - 4 Always in Line */}
-          <nav
-            className="relative flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-hide
-                       [-webkit-overflow-scrolling:touch] [scroll-behavior:smooth]
-                       after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0
-                       after:w-8 after:bg-gradient-to-l after:from-black after:to-transparent after:pointer-events-none
-                       md:after:hidden md:justify-center"
-            aria-label="Navegação de seções"
-          >
-            {/* Atendimento */}
-            <button
-              onClick={() => handleSectionChange('atendimento')}
-              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
-                         flex items-center justify-center gap-1.5 sm:gap-2
-                         px-3 sm:px-4 md:px-5 lg:px-6
-                         h-10 sm:h-11 md:h-11
-                         rounded-xl
-                         transition-all duration-300 ease-out
-                         active:scale-[0.97]
-                         whitespace-nowrap
-                         ${activeSection === 'atendimento'
-                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
-                         }`}
-            >
-              <MessageSquare className={`w-4 h-4 flex-shrink-0
-                                       transition-all duration-300 group-hover:scale-110
-                                       ${activeSection === 'atendimento' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
-                             strokeWidth={2.5} />
-              <span className={`text-xs sm:text-sm font-medium
-                              transition-colors duration-300
-                              ${activeSection === 'atendimento' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
-                Atendimento
-              </span>
-              {/* Active Indicator */}
-              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
-                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
-                            transition-all duration-300
-                            ${activeSection === 'atendimento' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
-            </button>
+      {/* Navigation Breadcrumbs - Premium Tab Style */}
+      <div className="sticky top-[64px] sm:top-[80px] lg:top-[96px] z-40 bg-gradient-to-b from-black via-black/95 to-transparent backdrop-blur-xl">
+        <div className="w-full py-2.5 sm:py-3 px-3 sm:px-4 md:px-6 lg:container lg:mx-auto">
+          {/* Premium Tab Container */}
+          <div className="relative flex justify-center">
+            <div className="relative flex items-center">
+              <nav
+                className="relative inline-flex items-center h-10 sm:h-11 lg:h-12 p-1 sm:p-1.5 gap-1 sm:gap-1.5
+                  bg-black/40 backdrop-blur-2xl
+                  rounded-xl sm:rounded-2xl
+                  border border-white/[0.08]
+                  shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+                  before:absolute before:inset-0 before:rounded-xl sm:before:rounded-2xl before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none
+                  after:absolute after:inset-0 after:rounded-xl sm:after:rounded-2xl after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none
+                  overflow-x-auto scrollbar-hide [-webkit-overflow-scrolling:touch]"
+                aria-label="Navegação de seções"
+              >
+                {/* Atendimento */}
+                <button
+                  onClick={() => handleSectionChange('atendimento')}
+                  className={`group relative z-10
+                    min-w-[70px] sm:min-w-[100px] lg:min-w-[120px]
+                    px-3 sm:px-4 lg:px-6
+                    h-full
+                    rounded-lg sm:rounded-xl
+                    font-medium text-[10px] sm:text-xs lg:text-sm
+                    transition-all duration-300 ease-out
+                    border border-transparent
+                    flex items-center justify-center gap-1 sm:gap-2
+                    touch-manipulation
+                    active:scale-[0.98]
+                    whitespace-nowrap
+                    ${activeSection === 'atendimento'
+                      ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                >
+                  <MessageSquare className={`w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0
+                    transition-all duration-300
+                    ${activeSection === 'atendimento' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`}
+                    strokeWidth={2.5} />
+                  <span className="font-semibold tracking-wide">Atendimento</span>
+                </button>
 
-            {/* Performance */}
-            <button
-              onClick={() => handleSectionChange('performance')}
-              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
-                         flex items-center justify-center gap-1.5 sm:gap-2
-                         px-3 sm:px-4 md:px-5 lg:px-6
-                         h-10 sm:h-11 md:h-11
-                         rounded-xl
-                         transition-all duration-300 ease-out
-                         active:scale-[0.97]
-                         whitespace-nowrap
-                         ${activeSection === 'performance'
-                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
-                         }`}
-            >
-              <Activity className={`w-4 h-4 flex-shrink-0
-                                  transition-all duration-300 group-hover:scale-110
-                                  ${activeSection === 'performance' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
-                        strokeWidth={2.5} />
-              <span className={`text-xs sm:text-sm font-medium
-                              transition-colors duration-300
-                              ${activeSection === 'performance' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
-                Performance
-              </span>
-              {/* Active Indicator */}
-              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
-                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
-                            transition-all duration-300
-                            ${activeSection === 'performance' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
-            </button>
+                {/* Performance */}
+                <button
+                  onClick={() => handleSectionChange('performance')}
+                  className={`group relative z-10
+                    min-w-[70px] sm:min-w-[100px] lg:min-w-[120px]
+                    px-3 sm:px-4 lg:px-6
+                    h-full
+                    rounded-lg sm:rounded-xl
+                    font-medium text-[10px] sm:text-xs lg:text-sm
+                    transition-all duration-300 ease-out
+                    border border-transparent
+                    flex items-center justify-center gap-1 sm:gap-2
+                    touch-manipulation
+                    active:scale-[0.98]
+                    whitespace-nowrap
+                    ${activeSection === 'performance'
+                      ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                >
+                  <Activity className={`w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0
+                    transition-all duration-300
+                    ${activeSection === 'performance' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`}
+                    strokeWidth={2.5} />
+                  <span className="font-semibold tracking-wide">Performance</span>
+                </button>
 
-            {/* Ranking */}
-            <button
-              onClick={() => handleSectionChange('ranking')}
-              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
-                         flex items-center justify-center gap-1.5 sm:gap-2
-                         px-3 sm:px-4 md:px-5 lg:px-6
-                         h-10 sm:h-11 md:h-11
-                         rounded-xl
-                         transition-all duration-300 ease-out
-                         active:scale-[0.97]
-                         whitespace-nowrap
-                         ${activeSection === 'ranking'
-                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
-                         }`}
-            >
-              <Trophy className={`w-4 h-4 flex-shrink-0
-                                transition-all duration-300 group-hover:scale-110
-                                ${activeSection === 'ranking' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
-                      strokeWidth={2.5} />
-              <span className={`text-xs sm:text-sm font-medium
-                              transition-colors duration-300
-                              ${activeSection === 'ranking' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
-                Ranking
-              </span>
-              {/* Active Indicator */}
-              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
-                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
-                            transition-all duration-300
-                            ${activeSection === 'ranking' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
-            </button>
+                {/* Ranking */}
+                <button
+                  onClick={() => handleSectionChange('ranking')}
+                  className={`group relative z-10
+                    min-w-[70px] sm:min-w-[100px] lg:min-w-[120px]
+                    px-3 sm:px-4 lg:px-6
+                    h-full
+                    rounded-lg sm:rounded-xl
+                    font-medium text-[10px] sm:text-xs lg:text-sm
+                    transition-all duration-300 ease-out
+                    border border-transparent
+                    flex items-center justify-center gap-1 sm:gap-2
+                    touch-manipulation
+                    active:scale-[0.98]
+                    whitespace-nowrap
+                    ${activeSection === 'ranking'
+                      ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                >
+                  <Trophy className={`w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0
+                    transition-all duration-300
+                    ${activeSection === 'ranking' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`}
+                    strokeWidth={2.5} />
+                  <span className="font-semibold tracking-wide">Ranking</span>
+                </button>
 
-            {/* Configurações */}
-            <button
-              onClick={() => handleSectionChange('configuracoes')}
-              className={`group relative flex-1 min-w-[90px] sm:min-w-[120px] md:min-w-0 md:flex-none
-                         flex items-center justify-center gap-1.5 sm:gap-2
-                         px-3 sm:px-4 md:px-5 lg:px-6
-                         h-10 sm:h-11 md:h-11
-                         rounded-xl
-                         transition-all duration-300 ease-out
-                         active:scale-[0.97]
-                         whitespace-nowrap
-                         ${activeSection === 'configuracoes'
-                           ? 'border border-gold/30 bg-gold/[0.08] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                           : 'border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10'
-                         }`}
-            >
-              <Settings className={`w-4 h-4 flex-shrink-0
-                                  transition-all duration-300 group-hover:scale-110
-                                  ${activeSection === 'configuracoes' ? 'text-gold' : 'text-gray-500 group-hover:text-gold'}`}
-                        strokeWidth={2.5} />
-              <span className={`text-xs sm:text-sm font-medium
-                              transition-colors duration-300
-                              ${activeSection === 'configuracoes' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
-                Config
-              </span>
-              {/* Active Indicator */}
-              <div className={`absolute -bottom-[11px] left-1/2 -translate-x-1/2
-                            h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent
-                            transition-all duration-300
-                            ${activeSection === 'configuracoes' ? 'w-3/4' : 'w-0 group-hover:w-3/4'}`} />
-            </button>
-          </nav>
+                {/* Configurações */}
+                <button
+                  onClick={() => handleSectionChange('configuracoes')}
+                  className={`group relative z-10
+                    min-w-[60px] sm:min-w-[100px] lg:min-w-[120px]
+                    px-2 sm:px-4 lg:px-6
+                    h-full
+                    rounded-lg sm:rounded-xl
+                    font-medium text-[10px] sm:text-xs lg:text-sm
+                    transition-all duration-300 ease-out
+                    border border-transparent
+                    flex items-center justify-center gap-1 sm:gap-2
+                    touch-manipulation
+                    active:scale-[0.98]
+                    whitespace-nowrap
+                    ${activeSection === 'configuracoes'
+                      ? 'text-white bg-gradient-to-br from-white/[0.12] to-white/[0.06] shadow-[0_0_24px_rgba(212,175,55,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] border-gold/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                >
+                  <Settings className={`w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0
+                    transition-all duration-300
+                    ${activeSection === 'configuracoes' ? 'text-gold' : 'opacity-60 group-hover:opacity-100'}`}
+                    strokeWidth={2.5} />
+                  <span className="font-semibold tracking-wide">Config</span>
+                </button>
+              </nav>
+            </div>
+          </div>
         </div>
-
-        {/* Bottom Gradient Line - Same as Header */}
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gold/30 to-transparent" />
       </div>
 
       {/* Main Content Area - Mobile-First Optimized */}
@@ -513,7 +492,7 @@ export default function AgenteMultiConta() {
         <section id="central-atendimento" className="relative">
           {/* Header Section - Mobile Optimized */}
           <div className="mb-5 sm:mb-6">
-            <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <div className="flex items-center sm:items-start justify-between gap-3 sm:gap-4">
               {/* Title Section - Perfect Mobile Size */}
               <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
                 <div className="w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-lg shadow-gold/20">
@@ -530,7 +509,7 @@ export default function AgenteMultiConta() {
                 </div>
               </div>
 
-              {/* Filters Container - Responsive */}
+              {/* Filters Container - Alinhado verticalmente com título em mobile */}
               <div id="questions-filters-container" className="flex-shrink-0 relative z-50" />
             </div>
           </div>
@@ -540,7 +519,7 @@ export default function AgenteMultiConta() {
             <MultiAccountQuestions
               key={refreshKey}
               selectedAccountId={null}
-              filterStatus={null} // Mostrar TODAS as perguntas (pending, failed, answered)
+              filterStatus="pending" // Mostrar apenas perguntas PENDENTES por padrão
               showFilters={true}
               renderFiltersTo="questions-filters-container"
               pageKey="central-atendimento"
@@ -566,13 +545,13 @@ export default function AgenteMultiConta() {
                   before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-white/[0.05] before:to-transparent before:pointer-events-none
                   after:absolute after:inset-0 after:rounded-full after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] after:pointer-events-none">
 
-                  {/* Performance Tab - FIXED HEIGHT */}
+                  {/* Performance Tab */}
                   <TabsTrigger
                     value="performance"
                     className="group relative z-10
                       min-w-[100px] sm:min-w-[140px] lg:min-w-[160px]
                       px-4 sm:px-6 lg:px-8
-                      h-10 sm:h-11 lg:h-12
+                      h-full
                       rounded-full
                       font-medium text-xs sm:text-sm lg:text-base
                       transition-colors duration-300 ease-out
@@ -603,13 +582,13 @@ export default function AgenteMultiConta() {
                     <span className="font-semibold tracking-wide whitespace-nowrap">Performance</span>
                   </TabsTrigger>
 
-                  {/* Ranking Tab - FIXED HEIGHT */}
+                  {/* Ranking Tab */}
                   <TabsTrigger
                     value="gamification"
                     className="group relative z-10
                       min-w-[100px] sm:min-w-[140px] lg:min-w-[160px]
                       px-4 sm:px-6 lg:px-8
-                      h-10 sm:h-11 lg:h-12
+                      h-full
                       rounded-full
                       font-medium text-xs sm:text-sm lg:text-base
                       transition-colors duration-300 ease-out
@@ -687,6 +666,16 @@ export default function AgenteMultiConta() {
           <Suspense fallback={<ComponentLoader />}>
             <OrganizationSettings />
           </Suspense>
+
+          {/* 🎯 DIVISOR CLEAN - Apenas linha */}
+          <div className="w-full border-t border-white/[0.06] my-8 sm:my-10 lg:my-12" />
+
+          {/* Platform Info - Sobre a Plataforma */}
+          <div>
+            <Suspense fallback={<ComponentLoader />}>
+              <PlatformInfo />
+            </Suspense>
+          </div>
         </section>
       </main>
 
@@ -717,6 +706,28 @@ export default function AgenteMultiConta() {
           }))
         }}
       />
+
+      {/* Premium Footer - AXNEXLABS Branding */}
+      <footer className="relative w-full border-t border-white/5 mt-12 sm:mt-16 lg:mt-20">
+        <div className="w-full px-3 sm:px-4 md:px-6 lg:container lg:mx-auto py-8 sm:py-10 lg:py-12">
+          <div className="flex flex-col items-center justify-center gap-3 sm:gap-4">
+            {/* Branding - Maior e Mais Bonito */}
+            <div className="flex flex-col items-center gap-3 sm:gap-4">
+              <span className="text-sm sm:text-base lg:text-lg text-gray-400 font-medium">Uma criação</span>
+              <Image
+                src="/axnexlabs-logo.svg"
+                alt="AxnexLabs"
+                width={220}
+                height={80}
+                className="h-10 sm:h-14 lg:h-16 w-auto object-contain opacity-80 hover:opacity-100 transition-all duration-500 hover:scale-105"
+              />
+              <span className="text-xs sm:text-sm text-gray-500 font-light">
+                Versão Brasileira 4.1/1911 Hebert Richards
+              </span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

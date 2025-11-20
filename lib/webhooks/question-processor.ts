@@ -321,6 +321,7 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
         itemTitle: itemDetails?.title || questionDetails?.item_id || 'Produto',
         itemPrice: itemDetails?.price || 0,
         itemPermalink: itemDetails?.permalink || null,
+        itemThumbnail: itemDetails?.thumbnail || null, // ✅ FIX: Salvar thumbnail do produto
         customerId: questionDetails?.from?.id?.toString() || null,
         text: questionDetails?.text || 'Pergunta sem texto',
         status: newStatus,

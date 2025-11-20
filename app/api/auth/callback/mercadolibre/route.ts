@@ -41,12 +41,19 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get("error")
   const state = searchParams.get("state")
 
-  // Log inicial sem expor dados sensíveis
+  // Log inicial completo para debug
+  const cookieStore = await cookies()
+  const pendingOrgIdDebug = cookieStore.get('pending-ml-connection')?.value
+  const existingSessionDebug = cookieStore.get('ml-agent-session')?.value
+
   logger.info("[OAuth Callback] Starting OAuth callback processing", {
     hasCode: !!code,
     hasState: !!state,
     hasError: !!error,
-    errorType: error
+    errorType: error,
+    hasPendingOrg: !!pendingOrgIdDebug,
+    hasExistingSession: !!existingSessionDebug,
+    url: request.url
   })
 
   // 1. Tratar erros do Mercado Livre
@@ -130,7 +137,11 @@ export async function GET(request: NextRequest) {
       return createRedirectUrl(request, '/auth/error', `?error=NoToken&message=${encodeURIComponent('No access token received')}`)
     }
 
-    logger.info("[OAuth Callback] Token exchange successful, fetching user info")
+    logger.info("[OAuth Callback] Token exchange successful, fetching user info", {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      tokenType: tokens.token_type || 'bearer'
+    })
 
     // 10. Buscar informações do usuário
     const userResponse = await fetchWithRateLimit(
@@ -248,12 +259,17 @@ export async function GET(request: NextRequest) {
     })
 
     // 11. Verificar se há uma organização pendente de conexão ML
-    const cookieStore = await cookies()
-    const pendingOrgId = cookieStore.get('pending-ml-connection')?.value
-    const existingSessionToken = cookieStore.get('ml-agent-session')?.value
+    const pendingOrgId = pendingOrgIdDebug
+    const existingSessionToken = existingSessionDebug
 
     if (pendingOrgId) {
-      // Conectar ML account à organização que acabou de ser criada
+      // Conectar ML account à organização que acabou de ser criada (PRIMEIRO LOGIN)
+      logger.info("[OAuth Callback] Processing first-time ML connection", {
+        pendingOrgId,
+        userId: fullUser.id,
+        nickname: fullUser.nickname
+      })
+
       try {
         const mlAccountId = await addMLAccountToOrganization(
           pendingOrgId,
@@ -322,10 +338,15 @@ export async function GET(request: NextRequest) {
           sessionToken: existingSessionToken ? 'existing' : 'new session created'
         })
 
-        // 🎯 iOS PWA FIX: Redirect para success page que faz client-side navigation
-        return createRedirectUrl(request, '/auth/success/account-added', `?nickname=${encodeURIComponent(fullUser.nickname)}`)
+        // 🎯 FIRST LOGIN: Redirect direto para /agente após conectar ML
+        return createRedirectUrl(request, '/agente', '')
       } catch (error) {
-        logger.error("[OAuth Callback] Failed to connect ML account to organization", { error })
+        logger.error("[OAuth Callback] Failed to connect ML account to organization", {
+          error: error instanceof Error ? error.message : error,
+          stack: error instanceof Error ? error.stack : undefined,
+          pendingOrgId,
+          userId: fullUser.id
+        })
         return createRedirectUrl(request, '/auth/error', `?error=MLConnection&message=${encodeURIComponent('Failed to connect ML account')}`)
       }
     }

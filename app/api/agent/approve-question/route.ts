@@ -1,7 +1,7 @@
 import { subscriptionValidator } from '@/lib/subscription/plan-validator'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { zapsterService } from "@/lib/services/zapster-whatsapp"
+import { evolutionWhatsAppService } from "@/lib/services/evolution-whatsapp"
 import { sanitizeAnswerText } from "@/lib/security/input-validator"
 import { logger } from "@/lib/logger"
 
@@ -528,9 +528,9 @@ export async function POST(request: NextRequest) {
         mlQuestionId: question.mlQuestionId
       })
       
-      // NOTIFICAÇÃO WhatsApp via Zapster - Confirmação de envio ao ML
+      // NOTIFICAÇÃO WhatsApp via Evolution API - Confirmação de envio ao ML
       try {
-        logger.info('[✅ Zapster] Iniciando envio de confirmação ao WhatsApp', {
+        logger.info('[✅ Evolution] Iniciando envio de confirmação ao WhatsApp', {
           questionId: question.mlQuestionId,
           seller: question.mlAccount.nickname,
           action,
@@ -541,12 +541,12 @@ export async function POST(request: NextRequest) {
         // NUNCA gerar novo - deve ser o mesmo nas 2 notificações
         const sequentialId = question.sequentialId || '00/0000'
 
-        logger.info('[✅ Zapster] Using SAME sequential ID from question', {
+        logger.info('[✅ Evolution] Using SAME sequential ID from question', {
           sequentialId,
           questionId: question.id
         })
 
-        const zapsterConfirmResult = await zapsterService.sendApprovalConfirmation({
+        const evolutionConfirmResult = await evolutionWhatsAppService.sendApprovalConfirmation({
           sequentialId: sequentialId,
           questionText: question.text,
           finalAnswer: finalResponse,
@@ -555,8 +555,8 @@ export async function POST(request: NextRequest) {
           approved: action === "approve"
         })
 
-        if (zapsterConfirmResult) {
-          logger.info('[✅ Zapster] 📢 WhatsApp confirmation ENVIADA - ML confirmou recebimento!', {
+        if (evolutionConfirmResult) {
+          logger.info('[✅ Evolution] 📢 WhatsApp confirmation ENVIADA - ML confirmou recebimento!', {
             questionId: question.mlQuestionId,
             seller: question.mlAccount.nickname,
             sequentialId,
@@ -565,13 +565,13 @@ export async function POST(request: NextRequest) {
 
           // Não enviar segunda notificação duplicada
         } else {
-          logger.error('[✅ Zapster] ❌ FALHA ao enviar confirmação WhatsApp', {
+          logger.error('[✅ Evolution] ❌ FALHA ao enviar confirmação WhatsApp', {
             questionId: question.mlQuestionId,
             seller: question.mlAccount.nickname
           })
         }
       } catch (whatsappError) {
-        logger.error('[Zapster] ERRO ao enviar WhatsApp notification', {
+        logger.error('[Evolution] ERRO ao enviar WhatsApp notification', {
           error: whatsappError,
           stack: whatsappError instanceof Error ? whatsappError.stack : undefined,
           questionId: question.mlQuestionId

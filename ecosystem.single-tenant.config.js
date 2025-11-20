@@ -78,11 +78,11 @@ module.exports = {
         QUEUE_MAX_RETRIES: '3',
         QUEUE_RETRY_DELAY: '5000',
 
-        // WhatsApp APIs
-        ZAPSTER_API_URL: 'https://api.zapsterapi.com/v1/wa/messages',
-        ZAPSTER_API_TOKEN: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzgyOTM3NzgsImlzcyI6InphcHN0ZXJhcGkiLCJzdWIiOiJlMzRkYzc5Zi02OGZhLTRmMzEtOTgxNi04MmQzNTY1NmY2ZmQiLCJqdGkiOiJkYWU5MDQ0ZS05ZTk3LTRkNGItOWRlZS0yYmNjOWRjYjQwOTEifQ.XwA4vJrTG65TBWqEJ_5oo_-cr-BhOzp3C2XgJOh0NnY',
-        ZAPSTER_INSTANCE_ID: '21iwlxlswck0m95497nzl',
-        ZAPSTER_GROUP_ID: 'group:120363420949294702',
+        // Evolution API - WhatsApp (Self-Hosted)
+        EVOLUTION_API_URL: 'https://evolution.axnexlabs.com.br',
+        EVOLUTION_API_KEY: '26746A818E00-41E3-AA49-C97770C00E0A',
+        EVOLUTION_INSTANCE_NAME: 'AxnexLabs',
+        EVOLUTION_GROUP_ID: '120363420949294702@g.us',
 
         // N8N Webhooks
         N8N_WEBHOOK_URL: 'https://dashboard.axnexlabs.com.br/webhook/processamento',
@@ -378,6 +378,29 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 10000,
       kill_timeout: 30000 // 30 segundos para graceful shutdown
+    },
+    {
+      name: 'evolution-api',
+      script: 'npm',
+      args: 'start',
+      cwd: '/root/evolution-api',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env_production: {
+        NODE_ENV: 'production'
+      },
+      error_file: '/root/evolution-api/logs/err.log',
+      out_file: '/root/evolution-api/logs/out.log',
+      log_file: '/root/evolution-api/logs/combined.log',
+      time: true,
+      merge_logs: true,
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 15000
     }
   ],
 

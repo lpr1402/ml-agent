@@ -70,31 +70,31 @@ function AuthErrorContent() {
   }
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#111111] to-[#0A0A0A] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#111111] to-[#0A0A0A] flex items-center justify-center p-4 sm:p-6">
       <div className="max-w-md w-full">
-        <div className="bg-[#111111] border border-[#FFE600]/20 rounded-2xl p-8">
+        <div className="bg-[#111111] border border-gold/20 rounded-xl sm:rounded-2xl p-6 sm:p-8">
           {/* Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-red-500" />
+          <div className="flex justify-center mb-5 sm:mb-6">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-500/10 rounded-full flex items-center justify-center border-2 border-red-500/30">
+              <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" strokeWidth={2.5} />
             </div>
           </div>
-          
+
           {/* Title */}
-          <h1 className="text-2xl font-light text-white text-center mb-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-white text-center mb-2">
             {errorInfo?.title}
           </h1>
-          
+
           {/* Description */}
-          <p className="text-[#999999] text-center mb-6">
+          <p className="text-sm sm:text-base text-gray-400 text-center mb-5 sm:mb-6">
             {message || errorInfo?.description}
           </p>
-          
+
           {/* Error Code */}
           {error !== 'Unknown' && (
-            <div className="bg-[#0A0A0A] rounded-lg p-3 mb-6">
-              <p className="text-xs text-[#666666] text-center">
-                Código de erro: <span className="text-[#FFE600]">{error}</span>
+            <div className="bg-[#0A0A0A] rounded-lg p-3 mb-5 sm:mb-6">
+              <p className="text-xs text-gray-500 text-center">
+                Código de erro: <span className="text-gold font-semibold">{error}</span>
               </p>
             </div>
           )}
@@ -103,24 +103,24 @@ function AuthErrorContent() {
           <div className="space-y-3">
             <button
               onClick={handleRetry}
-              className="w-full py-3 bg-gradient-to-r from-[#FFE600] to-[#FFC700] text-[#0A0A0A] font-semibold rounded-lg hover:shadow-lg hover:shadow-[#FFE600]/30 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 sm:py-3 bg-gradient-to-r from-gold via-gold-light to-gold text-black font-bold text-sm sm:text-base rounded-lg sm:rounded-xl hover:shadow-lg hover:shadow-gold/30 transition-all duration-300 flex items-center justify-center gap-2 active:scale-95"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4" strokeWidth={2.5} />
               Tentar Novamente
             </button>
-            
+
             <button
               onClick={handleGoBack}
-              className="w-full py-3 bg-transparent border border-[#FFE600]/20 text-[#FFE600] rounded-lg hover:bg-[#FFE600]/10 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 sm:py-3 bg-transparent border border-gold/20 text-gold rounded-lg sm:rounded-xl hover:bg-gold/10 hover:border-gold/30 transition-all duration-300 flex items-center justify-center gap-2 text-sm sm:text-base font-semibold active:scale-95"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" strokeWidth={2.5} />
               Voltar ao Início
             </button>
           </div>
-          
+
           {/* Help */}
-          <div className="mt-8 pt-6 border-t border-[#FFE600]/10">
-            <p className="text-xs text-[#666666] text-center">
+          <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t border-gold/10">
+            <p className="text-xs text-gray-500 text-center">
               Problemas persistentes? Entre em contato com o suporte.
             </p>
           </div>
@@ -134,7 +134,7 @@ export default function AuthErrorPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-[#0A0A0A]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FFE600]"></div>
+        <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-gold"></div>
       </div>
     }>
       <AuthErrorContent />

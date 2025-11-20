@@ -1,8 +1,8 @@
 'use client'
 
-// ML Agent PWA Install Manager - Premium Design 2025
-// Otimizado para iOS com notificações push e fullscreen
-// Suporte completo iOS 16.4+ Safari
+// ML Agent PWA Install Manager - Enterprise Gold 2025
+// Banner iOS-like compacto + Modal Premium
+// Mobile-first, clean, high-end UX sem emojis
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
@@ -19,7 +19,7 @@ import {
   CheckCircle,
   Info,
   Apple,
-  ArrowUpFromLine
+  Zap
 } from 'lucide-react'
 import { Button } from './ui/button'
 
@@ -118,24 +118,11 @@ export function PWAInstallManager() {
         if (outcome === 'accepted') {
           setIsInstalled(true)
           setShowBanner(false)
-
-          // Feedback visual para Windows
-          if (platform === 'windows' || platform === 'macos') {
-            // Mostrar notificação de sucesso
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('ML Agent Instalado!', {
-                body: 'O aplicativo foi instalado com sucesso no seu computador',
-                icon: '/icons/icon-192x192.png',
-                badge: '/icons/icon-72x72.png'
-              })
-            }
-          }
         }
 
         setDeferredPrompt(null)
       } catch (error) {
         console.error('Erro ao instalar:', error)
-        // Fallback para mostrar instruções
         setShowInstructions(true)
         setShowBanner(false)
       }
@@ -155,7 +142,6 @@ export function PWAInstallManager() {
 
   const handleShowInstructions = () => {
     setShowInstructions(true)
-    setShowBanner(false)
   }
 
   // Não mostrar nada se já está instalado
@@ -163,109 +149,146 @@ export function PWAInstallManager() {
     return null
   }
 
+  const isMobile = platform === 'ios' || platform === 'android'
+
   return (
     <>
-      {/* Banner de instalação */}
+      {/* Banner iOS-like Compacto - Mobile */}
       <AnimatePresence>
-        {showBanner && !dismissed && (
+        {showBanner && !dismissed && isMobile && (
           <motion.div
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50"
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 z-50 sm:bottom-4 sm:left-auto sm:right-6 sm:max-w-md sm:rounded-xl"
+            style={{
+              paddingBottom: platform === 'ios' ? 'max(12px, env(safe-area-inset-bottom))' : '0'
+            }}
           >
-            <div className="bg-gradient-to-br from-black via-gray-950 to-black rounded-2xl shadow-2xl border border-gold/20 overflow-hidden backdrop-blur-xl">
-              {/* Premium glow effect */}
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30" />
-              <div className="absolute -top-20 -right-20 w-40 h-40 bg-gold/10 blur-3xl rounded-full" />
+            <div className="bg-gradient-to-br from-black/98 via-gray-950/98 to-black/98 backdrop-blur-2xl border-t border-gold/30 sm:border sm:border-gold/20 sm:rounded-xl shadow-2xl">
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-gold/10 via-transparent to-gold/10 opacity-50 pointer-events-none" />
 
-              <div className="relative p-4 sm:p-6">
-                {/* Close button */}
+              <div className="relative px-4 py-3 sm:p-4">
+                <div className="flex items-center gap-3">
+                  {/* Logo */}
+                  <div className="relative flex-shrink-0">
+                    <Image
+                      src="/mlagent-logo-3d.svg"
+                      alt="ML Agent"
+                      width={40}
+                      height={40}
+                      className="relative"
+                      style={{
+                        filter: 'drop-shadow(0 0 15px rgba(212, 175, 55, 0.4))'
+                      }}
+                    />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold text-sm sm:text-base truncate">
+                      Instalar ML Agent
+                    </h3>
+                    <p className="text-gray-400 text-xs sm:text-sm truncate">
+                      Notificações 24/7 e acesso rápido
+                    </p>
+                  </div>
+
+                  {/* Install Button */}
+                  <Button
+                    onClick={handleInstallClick}
+                    className="flex-shrink-0 bg-gradient-to-r from-gold via-gold-light to-gold text-black font-bold text-xs sm:text-sm px-4 py-2 rounded-lg hover:shadow-lg hover:shadow-gold/40 transition-all active:scale-95"
+                  >
+                    Instalar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Banner Desktop - Modal Compact */}
+        {showBanner && !dismissed && !isMobile && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-6 right-6 z-50 max-w-md"
+          >
+            <div className="bg-gradient-to-br from-black/95 via-gray-950/95 to-black/95 backdrop-blur-xl rounded-2xl border border-gold/20 shadow-2xl overflow-hidden">
+              {/* Premium glow */}
+              <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 opacity-40 pointer-events-none" />
+              <div className="absolute -top-20 -right-20 w-40 h-40 bg-gold/20 blur-3xl rounded-full" />
+
+              <div className="relative p-5">
+                {/* Close */}
                 <button
                   onClick={handleDismiss}
-                  className="absolute top-2 right-2 p-1 rounded-lg hover:bg-white/10 transition-colors"
+                  className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-white/10 transition-colors"
                 >
                   <X className="w-4 h-4 text-gray-400" />
                 </button>
 
                 <div className="flex items-start gap-4">
-                  {/* ML Agent Logo Premium */}
+                  {/* Logo */}
                   <div className="flex-shrink-0">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gold/20 blur-xl rounded-full" />
-                      <Image
-                        src="/mlagent-logo-3d.svg"
-                        alt="ML Agent"
-                        width={48}
-                        height={48}
-                        className="relative drop-shadow-2xl"
-                        style={{
-                          filter: 'drop-shadow(0 0 20px rgba(255, 230, 0, 0.3))'
-                        }}
-                        priority
-                      />
-                    </div>
+                    <Image
+                      src="/mlagent-logo-3d.svg"
+                      alt="ML Agent"
+                      width={48}
+                      height={48}
+                      className="drop-shadow-2xl"
+                      style={{
+                        filter: 'drop-shadow(0 0 20px rgba(212, 175, 55, 0.4))'
+                      }}
+                    />
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 space-y-3">
                     <div>
-                      <div className="flex items-baseline gap-2">
-                        <h3 className="text-white font-semibold text-base">
-                          ML Agent
-                        </h3>
-                      </div>
-                      <p className="text-gray-400 text-sm mt-1">
-                        {platform === 'ios' ? (
-                          <>Notificações push 24/7 • Fullscreen no iOS 16.4+</>
-                        ) : platform === 'windows' ? (
-                          <>Aplicativo nativo do Windows com notificações em tempo real</>
-                        ) : (
-                          <>Acesso rápido, notificações e experiência otimizada</>
-                        )}
+                      <h3 className="text-white font-bold text-base">
+                        Instalar ML Agent
+                      </h3>
+                      <p className="text-gray-400 text-sm mt-0.5">
+                        Aplicativo nativo com notificações em tempo real
                       </p>
                     </div>
 
-                    {/* Features Premium */}
+                    {/* Features */}
                     <div className="flex flex-wrap gap-2">
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gold/10 border border-gold/20">
-                        <Bell className="w-3 h-3 text-gold" />
-                        <span className="text-xs text-gold font-medium">Push 24/7</span>
+                      <div className="flex items-center gap-1.5 bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/20 rounded-lg px-2.5 py-1">
+                        <Bell className="w-3.5 h-3.5 text-gold" strokeWidth={2} />
+                        <span className="text-xs text-gold font-semibold">Notificações</span>
                       </div>
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gold/10 border border-gold/20">
-                        <Smartphone className="w-3 h-3 text-gold" />
-                        <span className="text-xs text-gold font-medium">{platform === 'windows' ? 'Desktop App' : 'Fullscreen'}</span>
+                      <div className="flex items-center gap-1.5 bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/20 rounded-lg px-2.5 py-1">
+                        <Zap className="w-3.5 h-3.5 text-gold" strokeWidth={2} />
+                        <span className="text-xs text-gold font-semibold">Rápido</span>
                       </div>
-                      {platform === 'ios' && (
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                          <CheckCircle className="w-3 h-3 text-emerald-400" />
-                          <span className="text-xs text-emerald-400 font-medium">iOS 16.4+</span>
-                        </div>
-                      )}
-                      {platform === 'windows' && (
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
-                          <Monitor className="w-3 h-3 text-blue-400" />
-                          <span className="text-xs text-blue-400 font-medium">Windows</span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5 bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/20 rounded-lg px-2.5 py-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-gold" strokeWidth={2} />
+                        <span className="text-xs text-gold font-semibold">Seguro</span>
+                      </div>
                     </div>
 
                     {/* Actions */}
                     <div className="flex gap-2">
                       <Button
                         onClick={handleInstallClick}
-                        className="flex-1 bg-gradient-to-r from-gold to-yellow-600 hover:from-gold/90 hover:to-yellow-600/90 text-black font-semibold transition-all hover:scale-105"
-                        size="sm"
+                        className="flex-1 bg-gradient-to-r from-gold via-gold-light to-gold text-black font-bold text-sm py-2.5 rounded-lg hover:shadow-lg hover:shadow-gold/40 transition-all active:scale-95"
                       >
-                        {platform === 'windows' ? 'Instalar App' : 'Instalar Agora'}
+                        <Download className="w-4 h-4 mr-2" strokeWidth={2.5} />
+                        Instalar Agora
                       </Button>
                       <Button
                         onClick={handleShowInstructions}
                         variant="outline"
-                        className="border-gold/30 text-gold hover:bg-gold/10"
-                        size="sm"
+                        className="border-gold/30 text-gold hover:bg-gold/10 hover:border-gold/40 py-2.5 px-3 rounded-lg"
                       >
-                        <Info className="w-4 h-4" />
+                        <Info className="w-4 h-4" strokeWidth={2} />
                       </Button>
                     </div>
                   </div>
@@ -276,49 +299,49 @@ export function PWAInstallManager() {
         )}
       </AnimatePresence>
 
-      {/* Modal de instruções */}
+      {/* Modal de Instruções Premium */}
       <AnimatePresence>
         {showInstructions && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-md"
             onClick={() => setShowInstructions(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-gradient-to-br from-black via-gray-950 to-black rounded-2xl shadow-2xl border border-gold/20 max-w-lg w-full max-h-[90vh] overflow-y-auto backdrop-blur-xl"
+              initial={{ y: 100, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="bg-gradient-to-br from-black via-gray-950 to-black rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gold/20 w-full max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden backdrop-blur-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Premium background effects */}
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-20 pointer-events-none rounded-2xl" />
-              {/* Header */}
-              <div className="sticky top-0 bg-black/90 backdrop-blur border-b border-gold/20 p-4 sm:p-6">
+              {/* Premium Effects */}
+              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
+
+              {/* Header Sticky */}
+              <div className="sticky top-0 bg-gradient-to-b from-black/95 to-black/80 backdrop-blur-xl border-b border-gold/20 p-4 sm:p-5 z-10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {/* ML Agent Logo */}
                     <Image
                       src="/mlagent-logo-3d.svg"
                       alt="ML Agent"
-                      width={40}
-                      height={40}
-                      className="drop-shadow-2xl"
+                      width={36}
+                      height={36}
                       style={{
-                        filter: 'drop-shadow(0 0 15px rgba(255, 230, 0, 0.3))'
+                        filter: 'drop-shadow(0 0 15px rgba(212, 175, 55, 0.3))'
                       }}
-                      priority
                     />
                     <div>
-                      <h2 className="text-lg font-semibold text-white">
-                        ML Agent
+                      <h2 className="text-base sm:text-lg font-bold text-white">
+                        Como Instalar
                       </h2>
                       <p className="text-xs text-gray-400">
-                        {platform === 'ios' ? 'iOS 16.4+ Suportado' :
-                         platform === 'android' ? 'Android PWA' :
-                         'Instalação Desktop'}
+                        {platform === 'ios' ? 'iOS Safari' :
+                         platform === 'android' ? 'Android' :
+                         platform === 'windows' ? 'Windows Desktop' :
+                         'Guia de Instalação'}
                       </p>
                     </div>
                   </div>
@@ -331,27 +354,27 @@ export function PWAInstallManager() {
                 </div>
               </div>
 
-              {/* Content */}
-              <div className="p-4 sm:p-6 space-y-6">
+              {/* Content Scrollable */}
+              <div className="overflow-y-auto max-h-[calc(85vh-80px)] sm:max-h-[calc(90vh-90px)] p-4 sm:p-5 space-y-5">
                 {/* Platform-specific instructions */}
                 {platform === 'ios' && browser === 'safari' ? (
                   <IosInstructions />
                 ) : platform === 'ios' && browser !== 'safari' ? (
                   <IosChromeInstructions />
                 ) : platform === 'windows' || platform === 'macos' ? (
-                  <DesktopInstructions browser={browser} />
+                  <DesktopInstructions browser={browser} platform={platform} />
                 ) : platform === 'android' ? (
-                  <AndroidInstructions browser={browser} />
+                  <AndroidInstructions />
                 ) : (
                   <GenericInstructions />
                 )}
 
-                {/* Benefits */}
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h3 className="text-sm font-semibold text-white">
+                {/* Benefits Section */}
+                <div className="space-y-3 pt-4 border-t border-white/5">
+                  <h3 className="text-sm font-bold text-gold">
                     Benefícios do App
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <BenefitItem
                       icon={<Bell className="w-4 h-4" />}
                       title="Notificações em Tempo Real"
@@ -363,11 +386,21 @@ export function PWAInstallManager() {
                       description="Ícone na tela inicial para acesso direto"
                     />
                     <BenefitItem
-                      icon={<CheckCircle className="w-4 h-4" />}
-                      title="Experiência Otimizada"
+                      icon={<Zap className="w-4 h-4" />}
+                      title="Experiência Completa"
                       description="Interface em tela cheia sem barras do navegador"
                     />
                   </div>
+                </div>
+
+                {/* Close Button Bottom */}
+                <div className="pt-4">
+                  <Button
+                    onClick={() => setShowInstructions(false)}
+                    className="w-full bg-gradient-to-r from-gold via-gold-light to-gold text-black font-bold py-3 rounded-lg hover:shadow-lg hover:shadow-gold/40 transition-all active:scale-95"
+                  >
+                    Entendi
+                  </Button>
                 </div>
               </div>
             </motion.div>
@@ -378,83 +411,68 @@ export function PWAInstallManager() {
   )
 }
 
-// Instruções para iOS Safari - Otimizado 2025
+// Instruções iOS Safari - Clean e High-end
 function IosInstructions() {
   return (
     <div className="space-y-4">
-      {/* iOS Capabilities Badge */}
-      <div className="bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/30 rounded-lg p-3">
+      {/* Feature Badge */}
+      <div className="bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/30 rounded-xl p-3.5">
         <div className="flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-400" />
-          <p className="text-emerald-400 text-sm font-medium">
-            ✨ iOS 16.4+ com Push Notifications e Fullscreen
+          <Apple className="w-4 h-4 text-gold" strokeWidth={2} />
+          <p className="text-gold text-sm font-semibold">
+            iOS 16.4+ com Push Notifications
           </p>
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
           Notificações funcionam quando instalado na tela inicial
         </p>
       </div>
 
-      <div className="text-center mb-4">
-        <p className="text-gray-300 text-sm">
-          3 passos rápidos para instalar no iPhone/iPad
-        </p>
-      </div>
-
+      {/* Steps */}
       <div className="space-y-3">
         <InstructionStep
           number={1}
           icon={<Share className="w-4 h-4" />}
+          iconColor="text-blue-400"
+          iconBg="from-blue-500/20 to-blue-500/10"
           title="Toque no botão Compartilhar"
-          description="Encontre o ícone de compartilhamento na barra inferior do Safari"
+          description="Ícone de compartilhamento na barra inferior do Safari"
         />
 
         <InstructionStep
           number={2}
           icon={<Plus className="w-4 h-4" />}
-          title='Selecione "Adicionar à Tela de Início"'
+          iconColor="text-gold"
+          iconBg="from-gold/20 to-gold/10"
+          title="Adicionar à Tela de Início"
           description="Role para baixo no menu de opções"
         />
 
         <InstructionStep
           number={3}
           icon={<CheckCircle className="w-4 h-4" />}
+          iconColor="text-green-400"
+          iconBg="from-green-500/20 to-green-500/10"
           title="Confirme a instalação"
-          description='Toque em "Adicionar" no canto superior direito'
+          description="Toque em Adicionar no canto superior direito"
         />
-      </div>
-
-      {/* Visual guide Premium */}
-      <div className="mt-6 p-4 bg-gradient-to-br from-gold/10 to-yellow-600/5 rounded-xl border border-gold/20">
-        <div className="flex items-center justify-center gap-2 text-gold">
-          <ArrowUpFromLine className="w-5 h-5 animate-bounce" />
-          <span className="text-sm font-bold">
-            Toque no botão compartilhar do Safari
-          </span>
-        </div>
-      </div>
-
-      {/* Important iOS Note */}
-      <div className="text-xs text-center text-gray-500">
-        <p>📱 Após instalar, o app abrirá em tela cheia sem barras</p>
-        <p className="mt-1">🔔 Notificações push 24/7 quando instalado</p>
       </div>
     </div>
   )
 }
 
-// Instruções para iOS com Chrome - Redirecionamento para Safari
+// Instruções iOS Chrome - Redirecionamento
 function IosChromeInstructions() {
   return (
     <div className="space-y-4">
-      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <Apple className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+      <div className="bg-gradient-to-r from-red-500/10 to-red-500/5 border border-red-500/30 rounded-xl p-3.5">
+        <div className="flex items-start gap-2.5">
+          <Apple className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" strokeWidth={2} />
           <div>
-            <p className="text-red-400 text-sm font-medium">
-              🚨 iOS exige Safari para instalar PWAs
+            <p className="text-red-400 text-sm font-semibold">
+              iOS exige Safari
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-gray-400 mt-1 leading-relaxed">
               Push notifications só funcionam quando instalado via Safari
             </p>
           </div>
@@ -465,21 +483,27 @@ function IosChromeInstructions() {
         <InstructionStep
           number={1}
           icon={<Chrome className="w-4 h-4" />}
-          title="Abra esta página no Safari"
+          iconColor="text-gold"
+          iconBg="from-gold/20 to-gold/10"
+          title="Abra no Safari"
           description="Copie o link e cole no Safari para melhor experiência"
         />
 
         <InstructionStep
           number={2}
           icon={<Share className="w-4 h-4" />}
-          title="Use o botão Compartilhar do Safari"
-          description="Disponível na barra inferior"
+          iconColor="text-blue-400"
+          iconBg="from-blue-500/20 to-blue-500/10"
+          title="Use o botão Compartilhar"
+          description="Disponível na barra inferior do Safari"
         />
 
         <InstructionStep
           number={3}
           icon={<Plus className="w-4 h-4" />}
-          title='Adicione à "Tela de Início"'
+          iconColor="text-green-400"
+          iconBg="from-green-500/20 to-green-500/10"
+          title="Adicione à Tela de Início"
           description="Confirme para instalar o app"
         />
       </div>
@@ -487,169 +511,99 @@ function IosChromeInstructions() {
   )
 }
 
-// Instruções para Desktop - Otimizado para Windows
-function DesktopInstructions({ browser }: { browser: Browser }) {
+// Instruções Desktop - Windows/Mac
+function DesktopInstructions({ browser, platform }: { browser: Browser; platform: Platform }) {
   return (
     <div className="space-y-4">
-      {/* Windows Features Badge */}
-      <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/30 rounded-lg p-3">
+      {/* Platform Badge */}
+      <div className="bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/30 rounded-xl p-3.5">
         <div className="flex items-center gap-2">
-          <Monitor className="w-4 h-4 text-blue-400" />
-          <p className="text-blue-400 text-sm font-medium">
-            🚀 Aplicativo Nativo no Windows
+          <Monitor className="w-4 h-4 text-gold" strokeWidth={2} />
+          <p className="text-gold text-sm font-semibold">
+            Aplicativo Nativo {platform === 'windows' ? 'Windows' : 'Desktop'}
           </p>
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
           Experiência completa com notificações e acesso rápido
         </p>
       </div>
 
-      <div className="text-center mb-4">
-        <p className="text-gray-300 text-sm font-semibold">
-          Instale o ML Agent como aplicativo no Windows
-        </p>
-        <p className="text-gray-400 text-xs mt-1">
-          Funciona como um aplicativo desktop completo
-        </p>
-      </div>
-
       {browser === 'chrome' || browser === 'edge' ? (
-        <>
-          <div className="space-y-3">
-            <InstructionStep
-              number={1}
-              icon={<Download className="w-4 h-4" />}
-              title="Instalação Automática"
-              description="Clique no botão de instalação na barra de endereços (lado direito)"
-            />
-
-            <InstructionStep
-              number={2}
-              icon={<CheckCircle className="w-4 h-4" />}
-              title="Confirme a Instalação"
-              description='Clique em "Instalar" na janela pop-up que aparecer'
-            />
-
-            <InstructionStep
-              number={3}
-              icon={<Monitor className="w-4 h-4" />}
-              title="App Instalado!"
-              description="O ML Agent será adicionado ao Menu Iniciar e Área de Trabalho"
-            />
-          </div>
-
-          {/* Visual Guide for Windows */}
-          <div className="mt-4 p-4 bg-gradient-to-br from-blue-500/10 to-indigo-500/5 rounded-xl border border-blue-500/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
-                  <Download className="w-4 h-4 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-white text-sm font-medium">Instalação Rápida</p>
-                  <p className="text-gray-400 text-xs">Procure este ícone na barra de URL →</p>
-                </div>
-              </div>
-              <div className="animate-pulse">
-                <div className="px-3 py-1.5 bg-blue-500/20 rounded-lg border border-blue-500/30">
-                  <span className="text-blue-400 text-xs font-bold">Instalar</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Benefits for Windows */}
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <div className="p-2 bg-gray-900/50 rounded-lg border border-gray-800">
-              <p className="text-xs text-gold font-medium">✨ Menu Iniciar</p>
-              <p className="text-xs text-gray-400 mt-1">Acesso rápido</p>
-            </div>
-            <div className="p-2 bg-gray-900/50 rounded-lg border border-gray-800">
-              <p className="text-xs text-gold font-medium">🔔 Notificações</p>
-              <p className="text-xs text-gray-400 mt-1">Windows nativas</p>
-            </div>
-            <div className="p-2 bg-gray-900/50 rounded-lg border border-gray-800">
-              <p className="text-xs text-gold font-medium">🖥️ Área de Trabalho</p>
-              <p className="text-xs text-gray-400 mt-1">Ícone direto</p>
-            </div>
-            <div className="p-2 bg-gray-900/50 rounded-lg border border-gray-800">
-              <p className="text-xs text-gold font-medium">⚡ Performance</p>
-              <p className="text-xs text-gray-400 mt-1">Otimizado</p>
-            </div>
-          </div>
-        </>
-      ) : browser === 'firefox' ? (
         <div className="space-y-3">
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-amber-400 text-sm font-medium">
-                  Firefox tem suporte limitado para PWA
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Recomendamos usar Chrome ou Edge para melhor experiência no Windows
-                </p>
-              </div>
-            </div>
-          </div>
-
           <InstructionStep
             number={1}
-            icon={<Chrome className="w-4 h-4" />}
-            title="Abra no Chrome ou Edge"
-            description="Para instalar como aplicativo nativo do Windows"
+            icon={<Download className="w-4 h-4" />}
+            iconColor="text-gold"
+            iconBg="from-gold/20 to-gold/10"
+            title="Clique em Instalar"
+            description="Ícone de instalação na barra de endereços (lado direito)"
+          />
+
+          <InstructionStep
+            number={2}
+            icon={<CheckCircle className="w-4 h-4" />}
+            iconColor="text-green-400"
+            iconBg="from-green-500/20 to-green-500/10"
+            title="Confirme a Instalação"
+            description="Clique em Instalar na janela que aparecer"
+          />
+
+          <InstructionStep
+            number={3}
+            icon={<Monitor className="w-4 h-4" />}
+            iconColor="text-blue-400"
+            iconBg="from-blue-500/20 to-blue-500/10"
+            title="App Instalado"
+            description="ML Agent será adicionado ao Menu Iniciar"
           />
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-            <p className="text-amber-400 text-sm">
-              Use Chrome ou Edge para instalar o app no Windows
-            </p>
+        <div className="bg-gradient-to-r from-amber-500/10 to-amber-500/5 border border-amber-500/30 rounded-xl p-3.5">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" strokeWidth={2} />
+            <div>
+              <p className="text-amber-400 text-sm font-semibold">
+                Use Chrome ou Edge
+              </p>
+              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                Para instalar como aplicativo nativo no {platform === 'windows' ? 'Windows' : 'desktop'}
+              </p>
+            </div>
           </div>
-
-          <InstructionStep
-            number={1}
-            icon={<Chrome className="w-4 h-4" />}
-            title="Abra no Chrome ou Edge"
-            description="Estes navegadores suportam instalação completa de PWA no Windows"
-          />
         </div>
       )}
-
-      {/* Atalhos de teclado Windows */}
-      <div className="mt-4 p-3 bg-black/50 rounded-lg border border-gray-800">
-        <p className="text-xs text-gray-400">
-          💡 Dica Windows: Após instalar, você pode fixar o ML Agent na barra de tarefas para acesso instantâneo
-        </p>
-      </div>
     </div>
   )
 }
 
-// Instruções para Android
-function AndroidInstructions({ browser: _browser }: { browser: Browser }) {
+// Instruções Android
+function AndroidInstructions() {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <InstructionStep
           number={1}
           icon={<Chrome className="w-4 h-4" />}
-          title="Toque no menu (⋮)"
-          description="No canto superior direito do navegador"
+          iconColor="text-gold"
+          iconBg="from-gold/20 to-gold/10"
+          title="Toque no menu"
+          description="Três pontos no canto superior direito"
         />
 
         <InstructionStep
           number={2}
           icon={<Plus className="w-4 h-4" />}
-          title='Selecione "Adicionar à tela inicial"'
-          description="Ou 'Instalar aplicativo'"
+          iconColor="text-gold"
+          iconBg="from-gold/20 to-gold/10"
+          title="Adicionar à tela inicial"
+          description="Ou selecione Instalar aplicativo"
         />
 
         <InstructionStep
           number={3}
           icon={<CheckCircle className="w-4 h-4" />}
+          iconColor="text-green-400"
+          iconBg="from-green-500/20 to-green-500/10"
           title="Confirme a instalação"
           description="O app será adicionado à sua tela inicial"
         />
@@ -662,44 +616,57 @@ function AndroidInstructions({ browser: _browser }: { browser: Browser }) {
 function GenericInstructions() {
   return (
     <div className="space-y-4">
-      <div className="text-center">
-        <p className="text-gray-300 text-sm">
+      <div className="bg-gradient-to-r from-gold/10 to-gold/5 border border-gold/30 rounded-xl p-4 text-center">
+        <Info className="w-6 h-6 text-gold mx-auto mb-2" strokeWidth={2} />
+        <p className="text-white text-sm font-medium">
           Procure a opção de instalação no menu do seu navegador
+        </p>
+        <p className="text-gray-400 text-xs mt-1.5">
+          Geralmente em Mais opções ou Configurações
         </p>
       </div>
     </div>
   )
 }
 
-// Componente de passo
+// Componente de passo - Enterprise Clean
 function InstructionStep({
   number,
   icon,
+  iconColor,
+  iconBg,
   title,
   description
 }: {
   number: number
   icon: React.ReactNode
+  iconColor: string
+  iconBg: string
   title: string
   description: string
 }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-gold/20 to-yellow-600/20 border border-gold/30 flex items-center justify-center">
-        <span className="text-gold font-semibold text-sm">{number}</span>
+    <div className="flex gap-3 group">
+      {/* Number Badge */}
+      <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-gold/30 to-gold/10 border border-gold/40 flex items-center justify-center">
+        <span className="text-gold font-bold text-sm">{number}</span>
       </div>
-      <div className="flex-1 space-y-1">
+
+      {/* Content */}
+      <div className="flex-1 space-y-1.5">
         <div className="flex items-center gap-2">
-          <div className="text-gold">{icon}</div>
-          <h4 className="text-white font-medium text-sm">{title}</h4>
+          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${iconBg} border border-white/10 flex items-center justify-center`}>
+            <div className={iconColor}>{icon}</div>
+          </div>
+          <h4 className="text-white font-semibold text-sm flex-1">{title}</h4>
         </div>
-        <p className="text-gray-400 text-xs">{description}</p>
+        <p className="text-gray-400 text-xs leading-relaxed">{description}</p>
       </div>
     </div>
   )
 }
 
-// Componente de benefício
+// Componente de benefício - Enterprise Style
 function BenefitItem({
   icon,
   title,
@@ -710,11 +677,13 @@ function BenefitItem({
   description: string
 }) {
   return (
-    <div className="flex gap-3">
-      <div className="text-gold flex-shrink-0">{icon}</div>
-      <div>
-        <h4 className="text-white text-sm font-medium">{title}</h4>
-        <p className="text-gray-400 text-xs">{description}</p>
+    <div className="flex gap-3 p-3 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 hover:border-gold/20 transition-all">
+      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gold/20 to-gold/10 border border-gold/30 flex items-center justify-center flex-shrink-0">
+        <div className="text-gold">{icon}</div>
+      </div>
+      <div className="flex-1">
+        <h4 className="text-white text-sm font-semibold">{title}</h4>
+        <p className="text-gray-400 text-xs mt-0.5 leading-relaxed">{description}</p>
       </div>
     </div>
   )

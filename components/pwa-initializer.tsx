@@ -6,7 +6,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell } from 'lucide-react'
+import { Bell, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import Image from 'next/image'
 import { PWAInstallPrompt } from './pwa-install-prompt'
 
 export function PWAInitializer() {
@@ -179,60 +181,83 @@ export function PWAInitializer() {
     setIsLoading(true)
 
     try {
-      // Verificar suporte a notificações
-      if (!('Notification' in window)) {
-        // Removido toast - apenas notificações do dispositivo
-        console.error('[PWA] Browser does not support notifications')
+      // 🎯 iOS Critical: Verificar standalone mode PRIMEIRO
+      const isIOSDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                          (window.navigator as any).standalone === true
+
+      console.log('[PWA Notif] iOS:', isIOSDevice, 'Standalone:', isStandalone)
+
+      // iOS: Notificações APENAS funcionam em standalone mode
+      if (isIOSDevice && !isStandalone) {
+        console.error('[PWA Notif] iOS needs standalone mode for notifications')
         setShowPermissionRequest(false)
         return
       }
 
-      // Log para debug
-      console.log('[PWA] Requesting notification permission...')
-      console.log('[PWA] Current permission:', Notification.permission)
+      // Verificar suporte a notificações
+      if (!('Notification' in window)) {
+        console.error('[PWA Notif] Browser does not support notifications')
+        setShowPermissionRequest(false)
+        return
+      }
+
+      console.log('[PWA Notif] Current permission:', Notification.permission)
+
+      // 🎯 iOS Critical: Aguardar service worker estar completamente pronto
+      if ('serviceWorker' in navigator) {
+        console.log('[PWA Notif] Waiting for service worker to be ready...')
+        const registration = await navigator.serviceWorker.ready
+        console.log('[PWA Notif] ✅ Service worker ready')
+
+        // Verificar se pushManager está disponível
+        if (!registration.pushManager) {
+          console.error('[PWA Notif] PushManager not available')
+          setShowPermissionRequest(false)
+          return
+        }
+      }
 
       // Solicitar permissão
+      console.log('[PWA Notif] Requesting permission...')
       const permission = await Notification.requestPermission()
-      console.log('[PWA] Permission result:', permission)
+      console.log('[PWA Notif] Permission result:', permission)
 
       if (permission === 'granted') {
-        // Obter registration do service worker
-        console.log('[PWA] Getting service worker registration...')
+        // Aguardar service worker registration
         const registration = await navigator.serviceWorker.ready
-        console.log('[PWA] Service worker ready:', registration)
+
+        // 🎯 iOS Fix: Pequeno delay antes de subscribe (iOS precisa processar permission)
+        if (isIOSDevice) {
+          console.log('[PWA Notif] iOS detected, waiting 500ms before subscribe...')
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
 
         await subscribeToNotifications(registration)
 
-        // Removido toast - apenas notificações do dispositivo
-        // toast.success('Notificações ativadas! 🎉', {
-        //   description: 'Você receberá alertas quando novas perguntas chegarem.',
-        //   duration: 5000
-        // })
-
+        console.log('[PWA Notif] ✅ Notifications enabled successfully!')
         setShowPermissionRequest(false)
+
       } else if (permission === 'denied') {
-        // Removido toast - apenas notificações do dispositivo
-        console.log('[PWA] Notification permission denied')
+        console.log('[PWA Notif] Permission denied by user')
+        setShowPermissionRequest(false)
+      } else {
+        // 'default' - usuário fechou sem escolher
+        console.log('[PWA Notif] Permission prompt dismissed')
         setShowPermissionRequest(false)
       }
+
     } catch (error: any) {
-      console.error('[PWA] Error enabling notifications:', error)
-      console.error('[PWA] Error stack:', error.stack)
+      console.error('[PWA Notif] ❌ Error:', error)
+      console.error('[PWA Notif] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      })
 
-      // Mensagem de erro mais específica
-      const errorMessage = 'Erro ao ativar notificações'
-      let errorDescription = 'Verifique as permissões do navegador e tente novamente.'
+      // iOS: Se erro, fechar modal e permitir retry
+      setShowPermissionRequest(false)
 
-      if (error.message?.includes('Registration failed')) {
-        errorDescription = 'Service Worker não está registrado. Recarregue a página.'
-      } else if (error.message?.includes('subscription')) {
-        errorDescription = 'Erro ao criar inscrição. Tente novamente.'
-      } else if (error.message) {
-        errorDescription = error.message
-      }
-
-      // Removido toast - apenas notificações do dispositivo
-      console.error('[PWA] Error:', errorMessage, errorDescription)
     } finally {
       setIsLoading(false)
     }
@@ -265,39 +290,113 @@ export function PWAInitializer() {
       {/* PWA Install Prompt - cuida da instalação */}
       <PWAInstallPrompt />
 
-      {/* Push Notification Request - cuida das notificações */}
-      {showPermissionRequest && (
-        <div className="fixed bottom-24 right-4 max-w-sm bg-black/90 backdrop-blur-lg border border-yellow-500/30 rounded-lg p-4 shadow-2xl z-50 animate-in slide-in-from-right">
-          <div className="flex items-start gap-3">
-            <div className="bg-yellow-500/20 rounded-full p-2 flex-shrink-0">
-              <Bell className="w-5 h-5 text-yellow-500" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-white text-sm mb-1">
-                Ativar Notificações
-              </h4>
-              <p className="text-xs text-gray-400 mb-3">
-                Receba alertas instantâneos quando novas perguntas chegarem no Mercado Livre.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleEnableNotifications}
-                  disabled={isLoading}
-                  className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 text-black text-xs font-medium rounded-md transition-colors"
-                >
-                  {isLoading ? 'Ativando...' : 'Ativar'}
-                </button>
+      {/* Push Notification Request - Responsive & Clean 2025 */}
+      <AnimatePresence>
+        {showPermissionRequest && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4"
+            onClick={() => setShowPermissionRequest(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+              className="relative w-full max-w-[340px] sm:max-w-[400px] md:max-w-[440px] bg-black/60 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.8)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Subtle glow */}
+              <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-40 pointer-events-none" />
+
+              <div className="relative p-6 sm:p-8">
+                {/* Close button - minimal */}
                 <button
                   onClick={() => setShowPermissionRequest(false)}
-                  className="px-3 py-1.5 text-gray-400 hover:text-white text-xs font-medium transition-colors"
+                  className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                  aria-label="Fechar"
                 >
-                  Agora não
+                  <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                 </button>
+
+                {/* Header - Clean com logo */}
+                <div className="flex flex-col items-center gap-3 sm:gap-4 mb-5 sm:mb-6">
+                  {/* Logo ML Agent 3D */}
+                  <div className="relative">
+                    <Image
+                      src="/mlagent-logo-3d.svg"
+                      alt="ML Agent"
+                      width={72}
+                      height={72}
+                      className="drop-shadow-2xl sm:w-20 sm:h-20"
+                      style={{
+                        filter: 'drop-shadow(0 0 25px rgba(212, 175, 55, 0.5))'
+                      }}
+                    />
+                  </div>
+
+                  <div className="text-center">
+                    <div className="flex items-baseline justify-center gap-2 mb-1.5">
+                      <h3 className="text-lg sm:text-xl font-light text-white tracking-wide">ML Agent</h3>
+                      <span className="text-lg sm:text-xl font-extrabold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">PRO</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-400 leading-relaxed">
+                      <strong className="text-gold">Essencial:</strong> Receba alertas 24/7
+                    </p>
+                  </div>
+                </div>
+
+                {/* Benefícios - Responsivo */}
+                <div className="space-y-2 sm:space-y-2.5 mb-5 sm:mb-6">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gold flex-shrink-0" />
+                    <p className="text-white text-xs sm:text-sm font-medium">Nunca perca uma venda</p>
+                  </div>
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                    <p className="text-white text-xs sm:text-sm font-medium">Responda em segundos</p>
+                  </div>
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-400 flex-shrink-0" />
+                    <p className="text-white text-xs sm:text-sm font-medium">Automático 24 horas</p>
+                  </div>
+                </div>
+
+                {/* Buttons - Responsivo */}
+                <div className="space-y-2.5 sm:space-y-3">
+                  <button
+                    onClick={handleEnableNotifications}
+                    disabled={isLoading}
+                    className="w-full h-11 sm:h-12 rounded-xl font-bold text-sm sm:text-base bg-gradient-to-r from-gold via-gold-light to-gold text-black shadow-lg shadow-gold/30 hover:shadow-xl hover:shadow-gold/40 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? (
+                      <div className="flex gap-1.5">
+                        <div className="w-1.5 h-1.5 bg-black/60 rounded-full animate-pulse" />
+                        <div className="w-1.5 h-1.5 bg-black/60 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                        <div className="w-1.5 h-1.5 bg-black/60 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    ) : (
+                      <>
+                        <Bell className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.5} />
+                        <span>Ativar Agora</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setShowPermissionRequest(false)}
+                    className="w-full h-9 sm:h-10 rounded-lg sm:rounded-xl font-medium text-xs sm:text-sm text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    Agora não
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

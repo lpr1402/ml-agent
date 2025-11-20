@@ -78,9 +78,9 @@ export async function GET(
     
     // Send WhatsApp confirmation
     try {
-      const { zapsterService } = await import("@/lib/services/zapster-whatsapp")
-      await zapsterService.sendApprovalConfirmation({
-        sequentialId: parseInt(question.id.slice(-6), 16) || 0,
+      const { evolutionWhatsAppService } = await import("@/lib/services/evolution-whatsapp")
+      await evolutionWhatsAppService.sendApprovalConfirmation({
+        sequentialId: question.sequentialId || '00/0000', // ✅ Usar ID salvo no banco
         questionText: question.text,
         finalAnswer: question.aiSuggestion || "",
         productTitle: question.itemTitle || "Produto",

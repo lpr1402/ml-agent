@@ -1,8 +1,8 @@
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-// Removido: import de whatsapp-professional - usando apenas Zapster
-import { zapsterService } from "@/lib/services/zapster-whatsapp"
+// Evolution API integration for WhatsApp notifications
+import { evolutionWhatsAppService } from "@/lib/services/evolution-whatsapp"
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,38 +128,28 @@ export async function POST(request: NextRequest) {
     
     // Send WhatsApp notification with SECURE token-based approval
     try {
-      // Gerar token único para aprovação segura
-      const { approvalTokenService } = await import('@/lib/services/approval-token-service')
-      const approvalToken = await approvalTokenService.createToken({
-        questionId: question.id,
-        mlAccountId: mlAccount.id,
-        organizationId: mlAccount.organizationId,
-        expiresInHours: 24, // Link válido por 24 horas
-        userAgent: 'N8N-Webhook'
-      })
+      // 🎯 URL vai direto para /agente com questionId (PWA-friendly, deep linking iOS)
+      // Não precisamos mais de approval token, usuário vai direto para central /agente
+      const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
+      const approvalUrl = `${baseUrl}/agente?questionId=${question.mlQuestionId}&source=whatsapp&utm_medium=notification`
 
-      // URL de aprovação com token único
-      const approvalUrl = approvalTokenService.generateApprovalUrl(approvalToken)
-      
-      logger.info("📱 Sending WhatsApp notification with secure token", {
+      logger.info("📱 Sending WhatsApp notification with direct /agente link", {
         seller: mlAccount.nickname,
         questionId: question.id,
         mlQuestionId: question.mlQuestionId,
-        tokenPrefix: approvalToken.substring(0, 8)
+        approvalUrl
       })
-      
-      // Removido: notificação WhatsApp antiga - usando apenas Zapster abaixo
 
-      // NOTIFICAÇÃO via Zapster WhatsApp
+      // NOTIFICAÇÃO via Evolution API WhatsApp
       try {
-        logger.info('[📢 Zapster] Preparando envio de notificação WhatsApp', {
+        logger.info('[📢 Evolution] Preparando envio de notificação WhatsApp', {
           questionId,
           seller: mlAccount.nickname,
           hasImage: !!productImage,
           approvalUrl
         })
 
-        const zapsterPayload: any = {
+        const whatsappPayload: any = {
           sequentialId: question.sequentialId || '00/0000', // Usar ID salvo no banco
           questionText: question.text,
           productTitle: question.itemTitle || "Produto",
@@ -169,31 +159,31 @@ export async function POST(request: NextRequest) {
           approvalUrl,
           customerName: 'Cliente',
           sellerName: mlAccount.nickname || 'Vendedor',
-          questionId: question.id, // Passar o ID da pergunta para usar o sequentialId salvo
+          questionId: question.mlQuestionId, // ✅ mlQuestionId para deep linking
           mlAccountId: mlAccount.id,
           organizationId: mlAccount.organizationId
         }
 
         if (mlAccount.organization?.primaryNickname) {
-          zapsterPayload.organizationName = mlAccount.organization.primaryNickname
+          whatsappPayload.organizationName = mlAccount.organization.primaryNickname
         }
 
-        const zapsterResult = await zapsterService.sendQuestionNotification(zapsterPayload)
+        const whatsappResult = await evolutionWhatsAppService.sendQuestionNotification(whatsappPayload)
 
-        if (zapsterResult) {
-          logger.info('[📢 Zapster] ✅ WhatsApp notification ENVIADA COM SUCESSO!', {
+        if (whatsappResult) {
+          logger.info('[📢 Evolution] ✅ WhatsApp notification ENVIADA COM SUCESSO!', {
             questionId,
             seller: mlAccount.nickname,
             mlQuestionId: question.mlQuestionId
           })
         } else {
-          logger.error('[📢 Zapster] ❌ FALHA ao enviar WhatsApp notification', {
+          logger.error('[📢 Evolution] ❌ FALHA ao enviar WhatsApp notification', {
             questionId,
             seller: mlAccount.nickname
           })
         }
       } catch (error) {
-        logger.error('[Zapster] ERRO CRÍTICO ao enviar WhatsApp notification', {
+        logger.error('[Evolution] ERRO CRÍTICO ao enviar WhatsApp notification', {
           error,
           questionId,
           stack: error instanceof Error ? error.stack : undefined

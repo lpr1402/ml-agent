@@ -76,22 +76,26 @@ export async function POST(request: NextRequest) {
 
     // Send WhatsApp notification with unique link
     try {
-      const { zapsterService } = await import('@/lib/services/zapster-whatsapp')
+      const { evolutionWhatsAppService } = await import('@/lib/services/evolution-whatsapp')
+
+      // 🎯 Construir URL de aprovação
+      const baseUrl = process.env['NEXT_PUBLIC_APP_URL'] || 'https://gugaleo.axnexlabs.com.br'
+      const approvalUrl = `${baseUrl}/agente?source=whatsapp&utm_medium=notification`
 
       const notificationData = {
-        sequentialId: 0, // Será gerado pelo tokenService
+        sequentialId: question.sequentialId || '00/0000', // ✅ Usar ID salvo no banco
         questionText: question.text || '',
         productTitle: question.itemTitle || 'Produto',
         productPrice: question.itemPrice || 0,
         suggestedAnswer: body.answer,
-        approvalUrl: '', // Será gerado pelo tokenService
+        approvalUrl: approvalUrl,
         sellerName: question.mlAccount.nickname,
         questionId: question.id,
         mlAccountId: question.mlAccount.id,
         organizationId: question.mlAccount.organizationId
       }
 
-      const sent = await zapsterService.sendQuestionNotification(notificationData)
+      const sent = await evolutionWhatsAppService.sendQuestionNotification(notificationData)
 
       if (sent) {
         logger.info('[Webhook N8N] ✅ WhatsApp notification sent with unique link')

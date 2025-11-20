@@ -171,7 +171,7 @@ export function AddAccountModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] sm:w-[90vw] sm:max-w-3xl md:max-w-4xl lg:max-w-5xl max-h-[90vh] sm:max-h-[85vh] md:max-h-[80vh] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 text-white shadow-2xl overflow-hidden">
+      <DialogContent className="w-[95vw] sm:w-[90vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] sm:max-h-[85vh] md:max-h-[80vh] bg-gradient-to-br from-gray-900/98 via-black/98 to-gray-900/98 backdrop-blur-2xl border border-white/5 text-white shadow-2xl overflow-hidden">
         {/* Premium Background Pattern */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
 
@@ -182,29 +182,29 @@ export function AddAccountModal({
         <div className="relative z-10 flex flex-col h-full max-h-[85vh] sm:max-h-[80vh]">
           <DialogHeader className="relative pb-2 sm:pb-3 border-b border-white/5 flex-shrink-0 px-4 sm:px-6">
             {/* Compact Premium Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 sm:gap-3">
-                {/* Premium Icon Container - No Animation */}
-                <div className="relative">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Premium Icon Container */}
+                <div className="relative flex-shrink-0">
                   <div className="absolute inset-0 bg-gold/20 blur-xl" />
-                  <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-xl">
-                    <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5 text-black" />
+                  <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-gold via-gold-light to-gold flex items-center justify-center shadow-xl shadow-gold/30">
+                    <ShoppingBag className="h-5 w-5 sm:h-5.5 sm:w-5.5 text-black" strokeWidth={2.5} />
                   </div>
                 </div>
 
-                <div>
-                  <DialogTitle className="text-base sm:text-lg font-bold text-white">
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="text-base sm:text-lg font-bold text-white truncate">
                     Conectar Nova Conta
                   </DialogTitle>
-                  <DialogDescription className="text-[10px] sm:text-xs text-gray-400">
+                  <DialogDescription className="text-xs text-gray-400 truncate">
                     Integração Mercado Livre
                   </DialogDescription>
                 </div>
               </div>
 
               {/* Account Counter Badge */}
-              <div className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-black/50 border border-white/10">
-                <span className="text-[10px] sm:text-xs font-semibold text-gold">
+              <div className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-black/50 border border-gold/20 flex-shrink-0">
+                <span className="text-xs sm:text-sm font-bold text-gold">
                   {currentAccountCount}/{maxAccounts}
                 </span>
               </div>
@@ -217,15 +217,15 @@ export function AddAccountModal({
           <div className="relative flex-1 overflow-y-auto">
             {/* Estado inicial - Responsive Premium Layout */}
             {status === 'idle' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6 p-4 sm:p-5 lg:p-6">
-                {/* Connection Flow - First on mobile */}
-                <div className="space-y-2 sm:space-y-3 order-2 md:order-1">
-                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
-                    <Link2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 p-5 sm:p-6 lg:p-7">
+                {/* Connection Flow */}
+                <div className="space-y-3">
+                  <h3 className="text-xs sm:text-sm font-bold text-gold uppercase tracking-wide flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" strokeWidth={2.5} />
                     Processo de Conexão
                   </h3>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {[
                       { icon: UserPlus, title: 'Autorizar', desc: 'Clique em conectar' },
                       { icon: Lock, title: 'Autenticar', desc: 'Entre no Mercado Livre' },
@@ -233,7 +233,7 @@ export function AddAccountModal({
                     ].map((step, index) => (
                       <div
                         key={index}
-                        className="flex items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-lg bg-gradient-to-r from-white/[0.03] to-white/[0.01] border border-white/5 group hover:border-gold/20 transition-all duration-300"
+                        className="flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-lg bg-gradient-to-r from-white/[0.04] to-white/[0.01] border border-white/[0.06] group hover:border-gold/20 transition-all duration-300"
                       >
                         <div className="relative">
                           <div className="absolute inset-0 bg-gold/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -253,10 +253,10 @@ export function AddAccountModal({
                   </div>
                 </div>
 
-                {/* Account Slots - First on mobile, center on desktop */}
-                <div className="space-y-2 sm:space-y-3 order-1 md:order-2">
-                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
-                    <Crown className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
+                {/* Account Slots */}
+                <div className="space-y-3">
+                  <h3 className="text-xs sm:text-sm font-bold text-gold uppercase tracking-wide flex items-center gap-2">
+                    <Crown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" strokeWidth={2.5} />
                     Slots Disponíveis
                   </h3>
 
@@ -303,10 +303,10 @@ export function AddAccountModal({
                   </div>
                 </div>
 
-                {/* Benefits - Full width on mobile, third column on desktop */}
-                <div className="space-y-2 sm:space-y-3 order-3 md:col-span-2 lg:col-span-1">
-                  <h3 className="text-[10px] sm:text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
-                    <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-gold" />
+                {/* Benefits */}
+                <div className="space-y-3">
+                  <h3 className="text-xs sm:text-sm font-bold text-gold uppercase tracking-wide flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" strokeWidth={2.5} />
                     Benefícios
                   </h3>
 
@@ -446,7 +446,7 @@ export function AddAccountModal({
                     variant="ghost"
                     onClick={onClose}
                     disabled={isLoading || status === 'authenticating'}
-                    className="px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-300 flex-1 sm:flex-none"
+                    className="px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg sm:rounded-xl transition-all duration-300 flex-1 sm:flex-none font-semibold"
                   >
                     Cancelar
                   </Button>
@@ -456,15 +456,15 @@ export function AddAccountModal({
                   <Button
                     onClick={handleAddAccount}
                     disabled={isLoading}
-                    className="relative group px-4 sm:px-5 py-1 sm:py-1.5 bg-gradient-to-r from-gold via-gold-light to-gold text-black text-[10px] sm:text-xs font-bold rounded-lg shadow-lg shadow-gold/30 hover:shadow-xl hover:shadow-gold/40 transition-all duration-300 overflow-hidden flex-1 sm:flex-none"
+                    className="relative group px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-gold via-gold-light to-gold text-black text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl shadow-lg shadow-gold/30 hover:shadow-xl hover:shadow-gold/40 transition-all duration-300 overflow-hidden flex-1 sm:flex-none"
                   >
                     {/* Shimmer Effect */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
 
-                    <div className="relative flex items-center justify-center gap-1 sm:gap-1.5">
-                      <ExternalLink className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                    <div className="relative flex items-center justify-center gap-2">
+                      <ExternalLink className="h-4 w-4" strokeWidth={2.5} />
                       <span>Conectar Agora</span>
-                      <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" strokeWidth={2.5} />
                     </div>
                   </Button>
                 )}

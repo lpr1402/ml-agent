@@ -73,24 +73,25 @@ export default function AuthSuccessPage() {
   }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{backgroundColor: '#0A0A0A'}}>
-      <div className="flex flex-col items-center justify-center">
-        {/* Logo ML Agent sem fundo */}
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6" style={{backgroundColor: '#0A0A0A'}}>
+      <div className="flex flex-col items-center justify-center max-w-md w-full">
+        {/* Logo ML Agent */}
         <div style={{
-          width: '80px',
-          height: '80px',
+          width: '64px',
+          height: '64px',
           position: 'relative',
-          marginBottom: '32px'
+          marginBottom: '24px'
         }}>
           <Image
             src="/mlagent-logo-3d.svg"
             alt="ML Agent"
-            width={80}
-            height={80}
+            width={64}
+            height={64}
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'contain'
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 0 20px rgba(212, 175, 55, 0.3))'
             }}
           />
           {/* Loading Ring */}
@@ -99,34 +100,34 @@ export default function AuthSuccessPage() {
               position: 'absolute',
               inset: '-10px',
               borderRadius: '50%',
-              border: '1px solid rgba(255, 230, 0, 0.1)',
-              borderTopColor: '#FFE600',
-              animation: 'spin 1.5s linear infinite'
+              border: '2px solid rgba(212, 175, 55, 0.2)',
+              borderTopColor: '#D4AF37',
+              animation: 'spin 1.2s linear infinite'
             }}></div>
           )}
         </div>
-        
+
         {/* Status Text */}
         <h2 style={{
-          fontSize: '14px',
-          fontWeight: '300',
+          fontSize: '13px',
+          fontWeight: '600',
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          color: '#FFE600',
+          color: '#D4AF37',
           marginBottom: '8px'
         }}>
           {status === "processing" && "Autenticando"}
           {status === "success" && "Autenticado"}
           {status === "error" && "Erro"}
         </h2>
-        
+
         <p style={{
           fontSize: '12px',
           color: '#666666',
           textAlign: 'center'
         }}>
           {status === "processing" && "Conectando com o Mercado Livre"}
-          {status === "success" && "Redirecionando"}
+          {status === "success" && "Redirecionando para o painel"}
           {status === "error" && "Falha na autenticação"}
         </p>
       </div>

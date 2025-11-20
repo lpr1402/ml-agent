@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { apiClient } from '@/lib/api-client'
 import { logger } from '@/lib/logger'
@@ -16,23 +15,13 @@ import {
   Star,
   Flame,
   Crown,
-  ChevronRight,
-  Gift,
-  Sparkles,
   MessageSquare,
-  ChevronDown,
-  Info,
   User
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getValidAvatarUrl } from '@/lib/utils/avatar-utils'
-import { Skeleton } from '@/components/ui/skeleton'
-import { AchievementTipsModal } from './achievement-tips-modal'
-import { LevelsInfoModal } from './levels-info-modal'
-import { AchievementsInfoModal } from './achievements-info-modal'
-import { XPSystemInfoModal } from './xp-system-info-modal'
 
-// 🎯 TypeScript Interfaces para API Backend
+// 🎯 TypeScript Interfaces
 interface Level {
   level: number
   xpRequired: number
@@ -71,7 +60,6 @@ interface Achievement {
   unlockedAt: string | null
   rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
   color: string
-  tips: string[]
   currentTier: number
   nextTier: {
     tierName: string
@@ -103,7 +91,7 @@ interface RankingData {
   recentXP: RecentXPActivity[]
 }
 
-// Mapa de ícones por tipo de ação
+// Mapa de ícones
 const ACTION_ICONS: Record<string, typeof Zap> = {
   fast_response: Zap,
   ultra_fast: Zap,
@@ -118,7 +106,6 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
   achievement_unlocked: Trophy
 }
 
-// Mapa de ícones por tipo de achievement
 const ACHIEVEMENT_ICONS: Record<string, typeof Zap> = {
   speed: Zap,
   dedication: Flame,
@@ -129,7 +116,7 @@ const ACHIEVEMENT_ICONS: Record<string, typeof Zap> = {
   streak: Flame
 }
 
-// Helper para formatar tempo relativo
+// Helper para formatar tempo
 const formatTimeAgo = (date: string): string => {
   const now = new Date()
   const past = new Date(date)
@@ -144,20 +131,16 @@ const formatTimeAgo = (date: string): string => {
   return `${diffDays}d`
 }
 
+const formatTime = (seconds: number) => {
+  if (!seconds || seconds === 0) return "0s"
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`
+  return `${(seconds / 3600).toFixed(1)}h`
+}
+
 export function GamificationDashboard() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<RankingData | null>(null)
-  const [showAllAchievements, setShowAllAchievements] = useState(false)
-  const [showMyAchievements, setShowMyAchievements] = useState(false) // Minhas conquistas (100%)
-  const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null)
-  const [showLevelsInfo, setShowLevelsInfo] = useState(false)
-  const [showAchievementsInfo, setShowAchievementsInfo] = useState(false)
-  const [showXPSystemInfo, setShowXPSystemInfo] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     const fetchRankingData = async () => {
@@ -177,7 +160,7 @@ export function GamificationDashboard() {
 
     fetchRankingData()
 
-    // 🎮 Listen for refresh events (quando XP é ganho)
+    // Listen for refresh events
     const handleRefresh = () => {
       logger.info('[Ranking] Refresh triggered by XP event')
       fetchRankingData()
@@ -196,98 +179,67 @@ export function GamificationDashboard() {
 
   if (loading || !data) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-48 bg-gray-800/50 rounded-2xl" />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Skeleton className="h-96 bg-gray-800/50 rounded-2xl" />
-          <Skeleton className="h-96 bg-gray-800/50 rounded-2xl" />
-        </div>
-        <Skeleton className="h-32 bg-gray-800/50 rounded-xl" />
+      <div className="flex items-center justify-center py-12">
+        <Trophy className="h-8 w-8 text-gold animate-pulse" />
       </div>
     )
   }
 
   const { organizationStats, accountsRanking, achievements, recentXP } = data
 
-  // Separar conquistas completadas e em progresso
+  // Separar conquistas
   const completedAchievements = achievements.filter(a => a.unlocked)
-  const inProgressAchievements = achievements.filter(a => !a.unlocked)
-
-  // Exibir: Se "Minhas Conquistas" ativado, mostrar completadas. Senão, mostrar em progresso
-  const displayAchievements = showMyAchievements
-    ? completedAchievements
-    : showAllAchievements
-    ? inProgressAchievements
-    : inProgressAchievements.slice(0, 10)
+  const inProgressAchievements = achievements.filter(a => !a.unlocked).slice(0, 6)
 
   return (
-    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-      {/* Header com Level da Organização - Ultra Premium */}
+    <div className="w-full space-y-5 sm:space-y-6">
+      {/* Card Premium de Nível - Ultra Premium Mobile-First */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative rounded-2xl bg-gradient-to-br from-black via-gray-950 to-black backdrop-blur-xl border border-gold/20 shadow-2xl overflow-hidden"
+        className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-black via-gray-950 to-black backdrop-blur-xl border border-gold/20 shadow-2xl overflow-hidden"
       >
         {/* Animated Background Glow */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 opacity-60 animate-pulse pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,215,0,0.1),transparent_50%)] pointer-events-none" />
 
-        {/* Botão Info - Canto Superior Direito */}
-        <button
-          onClick={() => setShowLevelsInfo(true)}
-          className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-black/40 hover:bg-gold/20 border border-white/10 hover:border-gold/30 transition-all duration-300 group"
-          title="Como funciona o sistema de níveis"
-        >
-          <Info className="h-4 w-4 text-gray-400 group-hover:text-gold transition-colors" />
-        </button>
-
-        <div className="relative p-5 sm:p-6 lg:p-8">
-          {/* Level Badge + Title - SEM MÉTRICAS */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/60 to-yellow-500/60 rounded-3xl blur-2xl animate-pulse" />
-              <div className="relative bg-gradient-to-br from-gold to-gold-light rounded-2xl p-4 sm:p-5 border-2 border-gold/40 shadow-2xl shadow-gold/40">
-                <Crown className="h-8 w-8 sm:h-10 sm:w-10 text-black" strokeWidth={2.5} />
+        <div className="relative p-4 sm:p-5 lg:p-8">
+          {/* Level Badge + Title - Mobile Optimized */}
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="relative flex-shrink-0">
+              <div className="absolute inset-0 bg-gradient-to-br from-gold/60 to-yellow-500/60 rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl animate-pulse" />
+              <div className="relative bg-gradient-to-br from-gold to-gold-light rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 border-2 border-gold/40 shadow-2xl shadow-gold/40">
+                <Crown className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-black" strokeWidth={2.5} />
               </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-4xl sm:text-5xl lg:text-6xl font-black bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-tight">
+            <div className="flex-1 min-w-0 text-center sm:text-left">
+              <div className="flex items-baseline gap-1.5 sm:gap-2 mb-1 justify-center sm:justify-start">
+                <span className="text-3xl sm:text-4xl lg:text-6xl font-black bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-tight">
                   {organizationStats.totalLevel.level}
                 </span>
-                <span className="text-sm sm:text-base text-gray-400 font-bold uppercase tracking-wider">Nível</span>
+                <span className="text-xs sm:text-sm lg:text-base text-gray-400 font-bold uppercase tracking-wider">Nível</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">
-                  {organizationStats.totalLevel.name}
-                </span>
-                {organizationStats.totalLevel.nextLevel && (
-                  <>
-                    <ChevronRight className="h-4 w-4 text-gray-600" style={{ verticalAlign: 'middle', marginTop: '2px' }} />
-                    <span className="text-xs sm:text-sm text-gray-500 font-medium">
-                      Próximo: {organizationStats.totalLevel.nextLevel.name}
-                    </span>
-                  </>
-                )}
-              </div>
+              <span className="text-sm sm:text-base lg:text-lg font-bold bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">
+                {organizationStats.totalLevel.name}
+              </span>
             </div>
           </div>
 
-          {/* XP Progress Bar - Premium */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-sm">
+          {/* XP Progress Bar - Premium Mobile-First */}
+          <div className="space-y-2 sm:space-y-2.5">
+            <div className="flex items-center justify-between text-xs sm:text-sm flex-wrap gap-1">
               <span className="font-bold text-white">
                 {organizationStats.totalXP.toLocaleString()} XP Total
               </span>
               {organizationStats.totalLevel.nextLevel && (
-                <span className="font-mono text-gold">
+                <span className="font-mono text-gold text-xs sm:text-sm">
                   {organizationStats.totalLevel.xpToNextLevel.toLocaleString()} XP para Level {organizationStats.totalLevel.level + 1}
                 </span>
               )}
             </div>
 
             {/* Progress Bar - Dourada Premium */}
-            <div className="relative h-4 bg-black/60 rounded-full overflow-hidden border border-white/10 shadow-inner">
+            <div className="relative h-3 sm:h-4 bg-black/60 rounded-full overflow-hidden border border-white/10 shadow-inner">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{
@@ -308,417 +260,367 @@ export function GamificationDashboard() {
         </div>
       </motion.div>
 
-      {/* Ranking de Contas - ACIMA de tudo */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 shadow-xl overflow-hidden"
-      >
-        {/* Background Glow */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
-
-        {/* Header PADRONIZADO */}
-        <div className="relative z-10 border-b border-white/5 p-4 sm:p-5">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-              <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
+      {/* 🏆 RANKING DE CONTAS - Grid 3 Colunas Mobile */}
+      {accountsRanking.length > 0 && (
+        <div className="space-y-5 sm:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 lg:w-12 lg:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-lg shadow-gold/20">
+              <Trophy className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-black" strokeWidth={2.5} />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-gold">Ranking de Contas</h3>
-              <p className="text-xs text-gray-500">Top performers do Mercado Livre</p>
+              <h4 className="text-sm sm:text-base lg:text-lg font-bold text-gold tracking-tight">
+                Ranking de Contas
+              </h4>
+              <p className="text-xs text-gray-400 lg:text-sm mt-0.5">
+                {accountsRanking.length} {accountsRanking.length === 1 ? 'conta ativa' : 'contas ativas'}
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Ranking Cards */}
-        <div className="relative z-10 p-4 sm:p-5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-            {accountsRanking.length === 0 ? (
-              <div className="col-span-full text-center py-8">
-                <Trophy className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Nenhuma conta no ranking</p>
-              </div>
-            ) : (
-              accountsRanking.map((account, index) => {
-                const podiumStyles = [
-                  {
-                    position: '1º',
-                    positionBg: 'from-gold via-gold-light to-gold',
-                    positionText: 'text-black',
-                    positionShadow: 'shadow-gold/40',
-                    nameBg: 'from-gold/8',
-                    nameBorder: 'border-gold/30',
-                    nameText: 'text-gold'
-                  },
-                  {
-                    position: '2º',
-                    positionBg: 'from-slate-300 via-gray-200 to-slate-400',
-                    positionText: 'text-black',
-                    positionShadow: 'shadow-slate-300/30',
-                    nameBg: 'from-slate-200/5',
-                    nameBorder: 'border-slate-300/20',
-                    nameText: 'text-slate-200'
-                  },
-                  {
-                    position: '3º',
-                    positionBg: 'from-amber-600 via-orange-500 to-amber-700',
-                    positionText: 'text-white',
-                    positionShadow: 'shadow-amber-500/30',
-                    nameBg: 'from-amber-500/5',
-                    nameBorder: 'border-amber-500/20',
-                    nameText: 'text-amber-300'
-                  }
-                ][index] || {
-                  position: `${index + 1}º`,
-                  positionBg: 'from-gray-600 to-gray-700',
-                  positionText: 'text-white',
-                  positionShadow: 'shadow-gray-500/10',
-                  nameBg: 'from-gray-600/2',
-                  nameBorder: 'border-gray-500/10',
-                  nameText: 'text-gray-300'
-                }
-
-                const accountAvatar = getValidAvatarUrl(account.thumbnail)
+          {/* Layout Dinâmico: 1-2 contas = maior | 3+ contas = top 3 + lista */}
+          {accountsRanking.length <= 2 ? (
+            /* 1-2 Contas: Grid maior e mais espaçado */
+            <div className={`grid ${accountsRanking.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : 'grid-cols-1 sm:grid-cols-2'} gap-3 sm:gap-4 lg:gap-5`}>
+              {accountsRanking.map((account, index) => {
+                const accountImage = getValidAvatarUrl(account.thumbnail)
+                const position = index + 1
+                const medalColor = position === 1 ? 'from-gold to-gold-light' :
+                                  position === 2 ? 'from-slate-200 to-slate-300' : ''
+                const medalShadow = position === 1 ? 'shadow-lg shadow-gold/40' :
+                                   position === 2 ? 'shadow-lg shadow-slate-300/40' : ''
 
                 return (
                   <motion.div
                     key={account.id}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.1 + index * 0.1 }}
-                    className={`relative rounded-xl p-4 border transition-all duration-300 hover:scale-[1.01] bg-gradient-to-br ${podiumStyles.nameBg} via-transparent to-transparent ${podiumStyles.nameBorder}`}
+                    whileHover={{ scale: 1.02 }}
+                    className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/5 p-4 sm:p-5 lg:p-6 overflow-hidden group"
                   >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br ${podiumStyles.positionBg} ${podiumStyles.positionShadow} shadow-xl border-2 border-white/20 flex items-center justify-center flex-shrink-0`}>
-                        <span className={`text-lg sm:text-xl font-black ${podiumStyles.positionText}`}>
-                          {podiumStyles.position}
-                        </span>
-                      </div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <Avatar className="h-10 w-10 sm:h-11 sm:w-11 ring-2 ring-white/10 flex-shrink-0">
-                          {accountAvatar ? (
+                    <div className="relative z-10">
+                      {/* Posição - Maior */}
+                      {medalColor && (
+                        <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br ${medalColor} ${medalShadow} flex items-center justify-center text-xs sm:text-sm font-black text-black border border-white/20`}>
+                            {position}º
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Avatar + Info - Maior */}
+                      <div className="flex items-center gap-3 sm:gap-4 mb-4">
+                        <Avatar className="h-12 w-12 sm:h-14 sm:w-14 ring-2 ring-gold/20">
+                          {accountImage ? (
                             <AvatarImage
-                              src={accountAvatar}
+                              src={accountImage}
                               alt={account.nickname}
                               className="object-cover"
                             />
                           ) : (
-                            <AvatarFallback className="bg-gradient-to-br from-gray-700 to-gray-800">
-                              <User className="h-5 w-5 text-gray-400" />
+                            <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900">
+                              <User className="h-6 w-6 sm:h-7 sm:w-7 text-gold" />
                             </AvatarFallback>
                           )}
                         </Avatar>
-                        <h4 className={`text-sm sm:text-base font-black truncate ${podiumStyles.nameText}`}>
-                          {account.nickname}
-                        </h4>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">
+                            {account.nickname}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {account.totalXP.toLocaleString()} XP
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center justify-center gap-4 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <MessageSquare className="h-3 w-3 text-gray-500" />
-                        <span className="text-gray-400 font-medium">{account.questionsAnswered}</span>
-                        <span className="text-gray-600">resp.</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-3 w-3 text-gray-500" />
-                        <span className="text-gray-300 font-medium">{account.avgResponseTimeMinutes}</span>
-                        <span className="text-gray-600">min</span>
+                      {/* Métricas - Maiores */}
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                        <div className="bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                          <div className="flex items-center gap-1 sm:gap-1.5 mb-1.5 sm:mb-2">
+                            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-gold flex-shrink-0" />
+                            <span className="text-xs sm:text-sm text-gold/70 font-medium">Perguntas</span>
+                          </div>
+                          <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gold leading-none">
+                            {account.questionsAnswered}
+                          </p>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                          <div className="flex items-center gap-1 sm:gap-1.5 mb-1.5 sm:mb-2">
+                            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-gray-300 flex-shrink-0" />
+                            <span className="text-xs sm:text-sm text-gray-400 font-medium">Tempo</span>
+                          </div>
+                          <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white leading-none">
+                            {formatTime(account.avgResponseTimeMinutes * 60)}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
                 )
-              })
-            )}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Grid - Conquistas e XP Recente lado a lado (50/50) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 lg:gap-6">
-        {/* Conquistas - 50% Desktop - HEADER PADRONIZADO */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 shadow-xl overflow-hidden"
-        >
-          {/* Background Glow */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
-
-          {/* Header PADRONIZADO com Info Button */}
-          <div className="relative z-10 border-b border-white/5 p-4 sm:p-5">
-            <button
-              onClick={() => setShowAchievementsInfo(true)}
-              className="absolute top-4 right-4 p-2 rounded-lg bg-black/40 hover:bg-gold/20 border border-white/10 hover:border-gold/30 transition-all duration-300 group"
-              title="Como funcionam as conquistas"
-            >
-              <Info className="h-4 w-4 text-gray-400 group-hover:text-gold transition-colors" />
-            </button>
-
-            <div className="flex items-center justify-between gap-2 sm:gap-3 pr-12">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                <Award className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm sm:text-base font-bold text-gold">
-                  {showMyAchievements ? 'Minhas Conquistas' : 'Conquistas'}
-                </h3>
-                <p className="text-xs text-gray-500">
-                  {showMyAchievements
-                    ? `${completedAchievements.length} Conquistadas`
-                    : `${inProgressAchievements.length} Em Progresso`
-                  }
-                </p>
-              </div>
-
-              {/* Botão Minhas Conquistas */}
-              <button
-                onClick={() => setShowMyAchievements(!showMyAchievements)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 ${
-                  showMyAchievements
-                    ? 'bg-gradient-to-r from-gold to-gold-light text-black'
-                    : 'bg-black/40 text-gray-400 hover:bg-black/60 hover:text-gold border border-white/10'
-                }`}
-              >
-                {showMyAchievements ? 'Ver Disponíveis' : 'Minhas Conquistas'}
-              </button>
+              })}
             </div>
-          </div>
+          ) : (
+            /* 3+ Contas: Top 3 em grid + resto em lista compacta */
+            <div className="space-y-4">
+              {/* Top 3 - Grid 3 Colunas */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
+                {accountsRanking.slice(0, 3).map((account, index) => {
+                  const accountImage = getValidAvatarUrl(account.thumbnail)
+                  const position = index + 1
+                  const medalColor = position === 1 ? 'from-gold to-gold-light' :
+                                    position === 2 ? 'from-slate-200 to-slate-300' :
+                                    position === 3 ? 'from-amber-500 to-amber-600' : ''
+                  const medalShadow = position === 1 ? 'shadow-lg shadow-gold/40' :
+                                     position === 2 ? 'shadow-lg shadow-slate-300/40' :
+                                     position === 3 ? 'shadow-lg shadow-amber-500/40' : ''
 
-          {/* Conquistas List */}
-          <div className="relative z-10 p-4 sm:p-5">
-            {achievements.length === 0 ? (
-              <div className="text-center py-8">
-                <Award className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Nenhuma conquista disponível</p>
+                  return (
+                    <motion.div
+                      key={account.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      whileHover={{ scale: 1.02 }}
+                      className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/5 p-2 sm:p-3 lg:p-4 overflow-hidden group"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                      <div className="relative z-10">
+                        {/* Posição */}
+                        <div className="absolute top-0 right-0 sm:top-1 sm:right-1">
+                          <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br ${medalColor} ${medalShadow} flex items-center justify-center text-[9px] sm:text-[10px] font-black text-black border border-white/20`}>
+                            {position}º
+                          </div>
+                        </div>
+
+                        {/* Avatar + Info */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 mb-2 sm:mb-3">
+                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 ring-2 ring-gold/20 mx-auto sm:mx-0">
+                            {accountImage ? (
+                              <AvatarImage
+                                src={accountImage}
+                                alt={account.nickname}
+                                className="object-cover"
+                              />
+                            ) : (
+                              <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900">
+                                <User className="h-3 w-3 sm:h-5 sm:w-5 text-gold" />
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <div className="flex-1 min-w-0 text-center sm:text-left">
+                            <p className="text-[10px] sm:text-sm lg:text-base font-bold text-white truncate">
+                              {account.nickname}
+                            </p>
+                            <p className="text-[8px] sm:text-[10px] lg:text-xs text-gray-500">
+                              #{position} • {account.totalXP} XP
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Métricas */}
+                        <div className="grid grid-cols-2 gap-1 sm:gap-2">
+                          <div className="bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 rounded-md sm:rounded-lg p-1.5 sm:p-2">
+                            <div className="flex items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
+                              <MessageSquare className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gold flex-shrink-0" />
+                              <span className="text-[7px] sm:text-[9px] lg:text-[10px] text-gold/70 font-medium truncate">Perg</span>
+                            </div>
+                            <p className="text-xs sm:text-base lg:text-lg font-bold text-gold leading-none">
+                              {account.questionsAnswered}
+                            </p>
+                          </div>
+
+                          <div className="bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10 rounded-md sm:rounded-lg p-1.5 sm:p-2">
+                            <div className="flex items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
+                              <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 flex-shrink-0" />
+                              <span className="text-[7px] sm:text-[9px] lg:text-[10px] text-gray-400 font-medium truncate">Tempo</span>
+                            </div>
+                            <p className="text-xs sm:text-base lg:text-lg font-bold text-white leading-none">
+                              {formatTime(account.avgResponseTimeMinutes * 60)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )
+                })}
               </div>
-            ) : (
-              <>
-                <div className="space-y-2.5 max-h-[60vh] sm:max-h-[500px] overflow-y-auto custom-scrollbar">
-                  {displayAchievements.map((achievement, index) => {
-                    const AchievementIcon = ACHIEVEMENT_ICONS[achievement.iconType] || Award
-                    const progressPercent = (achievement.progress / achievement.total) * 100
 
-                    // Cores HIGH-END baseadas no progresso
-                    const getProgressColor = () => {
-                      if (achievement.unlocked) return achievement.color
-                      if (progressPercent >= 75) return 'from-yellow-600 to-orange-600'
-                      if (progressPercent >= 50) return 'from-blue-600 to-cyan-600'
-                      if (progressPercent >= 25) return 'from-purple-600 to-pink-600'
-                      return 'from-gray-700 to-gray-800'
-                    }
-
-                    const progressColor = getProgressColor()
-                    const progressBarColor = achievement.unlocked
-                      ? achievement.color
-                      : progressPercent >= 50
-                      ? 'from-gold to-yellow-500'
-                      : 'from-gray-600 to-gray-500'
+              {/* 4º+ em Lista Compacta */}
+              {accountsRanking.length > 3 && (
+                <div className="space-y-2">
+                  {accountsRanking.slice(3).map((account, index) => {
+                    const accountImage = getValidAvatarUrl(account.thumbnail)
+                    const position = index + 4
 
                     return (
                       <motion.div
-                        key={achievement.id}
+                        key={account.id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 + index * 0.05 }}
-                        onClick={() => setSelectedAchievement(achievement)}
-                        className={`relative rounded-xl p-3.5 border transition-all duration-300 cursor-pointer group ${
-                          achievement.unlocked
-                            ? 'bg-gradient-to-br from-white/[0.1] to-white/[0.04] border-gold/40 hover:border-gold/60 hover:scale-[1.02] shadow-lg shadow-gold/10'
-                            : progressPercent >= 50
-                            ? 'bg-gradient-to-br from-white/[0.06] to-white/[0.02] border-gold/20 hover:border-gold/40 hover:scale-[1.01]'
-                            : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10 hover:scale-[1.01]'
-                        }`}
+                        whileHover={{ scale: 1.01 }}
+                        className="relative rounded-lg bg-gradient-to-br from-white/[0.02] to-white/[0.01] border border-white/5 p-2.5 sm:p-3 overflow-hidden group"
                       >
-                        <div className="flex items-start gap-3">
-                          {/* Icon Colorido */}
-                          <div className={`relative p-2.5 rounded-xl flex-shrink-0 shadow-lg bg-gradient-to-br ${progressColor}`}>
-                            <AchievementIcon className="h-5 w-5 text-white" strokeWidth={2.5} />
-                            {achievement.unlocked && (
-                              <div className="absolute -top-1.5 -right-1.5 bg-emerald-500 rounded-full p-1 shadow-lg shadow-emerald-500/50">
-                                <CheckCircle2 className="h-3 w-3 text-white" />
-                              </div>
-                            )}
+                        <div className="absolute inset-0 bg-gradient-to-br from-gold/3 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                        <div className="relative z-10 flex items-center gap-2 sm:gap-3">
+                          {/* Posição - Compacta */}
+                          <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 flex items-center justify-center">
+                            <span className="text-xs sm:text-sm font-bold text-gray-400">
+                              {position}º
+                            </span>
                           </div>
 
-                          {/* Content */}
+                          {/* Avatar - Compacto */}
+                          <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-1 ring-white/10">
+                            {accountImage ? (
+                              <AvatarImage
+                                src={accountImage}
+                                alt={account.nickname}
+                                className="object-cover"
+                              />
+                            ) : (
+                              <AvatarFallback className="bg-gradient-to-br from-gray-800 to-gray-900">
+                                <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gold" />
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+
+                          {/* Info - Compacta */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-sm font-bold text-white">
-                                  {achievement.title}
-                                </h4>
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${
-                                  achievement.unlocked ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                                  progressPercent >= 75 ? 'bg-gold/20 text-gold border border-gold/30' :
-                                  'bg-gray-700/30 text-gray-500 border border-gray-600/30'
-                                }`}>
-                                  {achievement.tierName}
-                                </span>
-                              </div>
-                              <span className="text-xs font-black text-gold whitespace-nowrap">
-                                +{achievement.xpReward}
+                            <p className="text-xs sm:text-sm font-bold text-white truncate">
+                              {account.nickname}
+                            </p>
+                            <p className="text-[10px] text-gray-500">
+                              {account.totalXP.toLocaleString()} XP
+                            </p>
+                          </div>
+
+                          {/* Métricas Inline - Compactas */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                            <div className="flex items-center gap-1">
+                              <MessageSquare className="w-3 h-3 text-gold flex-shrink-0" />
+                              <span className="text-xs sm:text-sm font-bold text-gold">
+                                {account.questionsAnswered}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-400 mb-2.5">{achievement.description}</p>
-
-                            {/* Progress Bar */}
-                            {!achievement.unlocked && (
-                              <div className="space-y-1.5">
-                                <div className="h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/5">
-                                  <motion.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${progressPercent}%` }}
-                                    transition={{ duration: 1, ease: 'easeOut' }}
-                                    className={`h-full bg-gradient-to-r ${progressBarColor} rounded-full shadow-lg`}
-                                  />
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <p className="text-[10px] text-gray-500 font-mono">
-                                    {achievement.progress}/{achievement.total}
-                                  </p>
-                                  <p className="text-[10px] font-bold text-gold">
-                                    {Math.round(progressPercent)}%
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {achievement.unlocked && (
-                              <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold">
-                                <Gift className="h-3.5 w-3.5" />
-                                <span>Desbloqueado</span>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              <span className="text-xs sm:text-sm font-bold text-white">
+                                {formatTime(account.avgResponseTimeMinutes * 60)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
                     )
                   })}
                 </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-                {/* Botão Ver Todas (se houver mais de 10 EM PROGRESSO) */}
-                {!showMyAchievements && inProgressAchievements.length > 10 && (
-                  <button
-                    onClick={() => setShowAllAchievements(!showAllAchievements)}
-                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-gold/20 transition-all duration-300"
-                  >
-                    <span className="text-xs font-semibold text-gray-400">{showAllAchievements ? 'Ver Menos' : `Ver Todas (${inProgressAchievements.length})`}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-300 ${showAllAchievements ? 'rotate-180' : ''}`} />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* XP Recentes - 50% Desktop - HEADER PADRONIZADO */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="relative rounded-2xl bg-gradient-to-br from-gray-900/90 via-black/95 to-gray-900/90 backdrop-blur-xl border border-white/5 shadow-xl overflow-hidden"
-        >
-          {/* Background Glow */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-transparent to-gold/5 opacity-30 pointer-events-none" />
-
-          {/* Header PADRONIZADO com Info Button */}
-          <div className="relative z-10 border-b border-white/5 p-4 sm:p-5">
-            <button
-              onClick={() => setShowXPSystemInfo(true)}
-              className="absolute top-4 right-4 p-2 rounded-lg bg-black/40 hover:bg-gold/20 border border-white/10 hover:border-gold/30 transition-all duration-300 group"
-              title="Como funciona o sistema de XP"
-            >
-              <Info className="h-4 w-4 text-gray-400 group-hover:text-gold transition-colors" />
-            </button>
-
-            <div className="flex items-center gap-2 sm:gap-3 pr-12">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-2xl shadow-gold/30">
-                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-gold">XP Recente</h3>
-                <p className="text-xs text-gray-500">Últimas atividades</p>
-              </div>
+      {/* 🎯 CONQUISTAS - Grid Simples */}
+      {inProgressAchievements.length > 0 && (
+        <div className="space-y-5 sm:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 lg:w-12 lg:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-r from-gold to-gold-light flex items-center justify-center shadow-lg shadow-gold/20">
+              <Award className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-black" strokeWidth={2.5} />
+            </div>
+            <div>
+              <h4 className="text-sm sm:text-base lg:text-lg font-bold text-gold tracking-tight">
+                Conquistas em Progresso
+              </h4>
+              <p className="text-xs text-gray-400 lg:text-sm mt-0.5">
+                {completedAchievements.length} completadas • {inProgressAchievements.length} em andamento
+              </p>
             </div>
           </div>
 
-          {/* XP List - Scroll otimizado */}
-          <div className="relative z-10 p-4 sm:p-5">
-            <div className="space-y-2 max-h-[50vh] sm:max-h-[500px] overflow-y-auto custom-scrollbar">
-            {recentXP.length === 0 ? (
-              <div className="text-center py-8">
-                <Sparkles className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Nenhuma atividade recente</p>
-              </div>
-            ) : (
-              recentXP.map((activity, index) => {
-                const ActivityIcon = ACTION_ICONS[activity.actionType] || Award
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
+            {inProgressAchievements.map((achievement) => {
+              const Icon = ACHIEVEMENT_ICONS[achievement.iconType] || Award
+              const progress = (achievement.progress / achievement.total) * 100
 
-                return (
-                  <motion.div
-                    key={activity.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 + index * 0.05 }}
-                    className="flex items-center gap-2.5 p-2.5 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-gold/20 transition-all duration-300"
-                  >
-                    <div className="p-1.5 rounded-lg bg-gradient-to-br from-gold/20 to-yellow-500/20 border border-gold/30 flex-shrink-0">
-                      <ActivityIcon className="h-3.5 w-3.5 text-gold" />
+              return (
+                <div
+                  key={achievement.id}
+                  className="relative rounded-lg sm:rounded-xl bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/5 p-2.5 sm:p-3 lg:p-4 overflow-hidden group"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between mb-2">
+                      <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+                      <span className="text-[10px] text-gray-500 font-mono">
+                        {achievement.progress}/{achievement.total}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-white truncate">{activity.actionDescription}</p>
-                      <p className="text-[10px] text-gray-500">{activity.accountNickname}</p>
+                    <p className="text-xs sm:text-sm font-bold text-white mb-1 truncate">
+                      {achievement.title}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mb-2 line-clamp-2">
+                      {achievement.description}
+                    </p>
+
+                    {/* Progress Bar */}
+                    <div className="h-1.5 bg-black/60 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-gold to-gold-light"
+                        style={{ width: `${progress}%` }}
+                      />
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-bold text-gold">+{activity.xpEarned}</p>
-                      <p className="text-[10px] text-gray-600">{formatTimeAgo(activity.createdAt)}</p>
-                    </div>
-                  </motion.div>
-                )
-              })
-            )}
-            </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </motion.div>
-      </div>
-
-      {/* Modals - Renderizar via Portal para FULL-SCREEN REAL */}
-      {mounted && selectedAchievement && createPortal(
-        <AchievementTipsModal
-          isOpen={!!selectedAchievement}
-          onClose={() => setSelectedAchievement(null)}
-          achievement={selectedAchievement}
-        />,
-        document.body
+        </div>
       )}
 
-      {mounted && createPortal(
-        <LevelsInfoModal
-          isOpen={showLevelsInfo}
-          onClose={() => setShowLevelsInfo(false)}
-          currentLevel={organizationStats.totalLevel.level}
-        />,
-        document.body
-      )}
+      {/* 📝 ATIVIDADES RECENTES */}
+      {recentXP.length > 0 && (
+        <div className="rounded-lg sm:rounded-xl bg-black/40 border border-white/5 p-3 sm:p-4 lg:p-5">
+          <h4 className="text-xs sm:text-sm font-bold text-gold mb-3 sm:mb-4">
+            Atividades Recentes
+          </h4>
 
-      {mounted && createPortal(
-        <AchievementsInfoModal
-          isOpen={showAchievementsInfo}
-          onClose={() => setShowAchievementsInfo(false)}
-        />,
-        document.body
-      )}
+          <div className="space-y-2">
+            {recentXP.slice(0, 5).map((activity) => {
+              const Icon = ACTION_ICONS[activity.actionType] || Zap
 
-      {mounted && createPortal(
-        <XPSystemInfoModal
-          isOpen={showXPSystemInfo}
-          onClose={() => setShowXPSystemInfo(false)}
-        />,
-        document.body
+              return (
+                <div
+                  key={activity.id}
+                  className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                >
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-gold/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-3 h-3 sm:w-4 sm:h-4 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] sm:text-xs text-white font-medium truncate">
+                      {activity.actionDescription}
+                    </p>
+                    <p className="text-[9px] sm:text-[10px] text-gray-500">
+                      {activity.accountNickname}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-xs sm:text-sm font-bold text-gold">
+                      +{activity.xpEarned}
+                    </span>
+                    <span className="text-[9px] text-gray-600">
+                      {formatTimeAgo(activity.createdAt)}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

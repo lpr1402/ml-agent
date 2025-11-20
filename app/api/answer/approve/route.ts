@@ -118,9 +118,9 @@ export async function POST(request: NextRequest) {
 
     // NOTIFICAÇÃO WhatsApp - Confirmação de envio ao ML
     try {
-      const { zapsterService } = await import('@/lib/services/zapster-whatsapp')
+      const { evolutionWhatsAppService } = await import('@/lib/services/evolution-whatsapp')
 
-      const confirmationResult = await zapsterService.sendApprovalConfirmation({
+      const confirmationResult = await evolutionWhatsAppService.sendApprovalConfirmation({
         sequentialId: validation.question.sequentialId || '00/0000', // Usar ID salvo no banco
         questionText: validation.question.text,
         finalAnswer: response,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (confirmationResult) {
-        logger.info('[✅ Zapster] WhatsApp confirmation sent - Answer delivered to ML', {
+        logger.info('[✅ Evolution] WhatsApp confirmation sent - Answer delivered to ML', {
           questionId: validation.question.mlQuestionId,
           seller: approvalToken.mlAccount.nickname
         })
