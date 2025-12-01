@@ -175,7 +175,7 @@ export function PWAInstallManager() {
                   {/* Logo */}
                   <div className="relative flex-shrink-0">
                     <Image
-                      src="/mlagent-logo-3d.svg"
+                      src="/mlagent-logo-3d.png"
                       alt="ML Agent"
                       width={40}
                       height={40}
@@ -236,7 +236,7 @@ export function PWAInstallManager() {
                   {/* Logo */}
                   <div className="flex-shrink-0">
                     <Image
-                      src="/mlagent-logo-3d.svg"
+                      src="/mlagent-logo-3d.png"
                       alt="ML Agent"
                       width={48}
                       height={48}
@@ -325,7 +325,7 @@ export function PWAInstallManager() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Image
-                      src="/mlagent-logo-3d.svg"
+                      src="/mlagent-logo-3d.png"
                       alt="ML Agent"
                       width={36}
                       height={36}

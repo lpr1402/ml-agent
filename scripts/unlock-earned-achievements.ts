@@ -33,19 +33,22 @@ async function unlockEarnedAchievements() {
 
   // Stats da organização (soma de todas as contas)
   const orgStats = {
+    lightningCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.lightningCount || 0), 0),
     ultraFastCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.ultraFastCount || 0), 0),
     fastResponsesCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.fastResponsesCount || 0), 0),
+    currentStreak: Math.max(...org.mlAccounts.map(acc => acc.xpTracking?.currentStreak || 0)),
+    bestStreak: Math.max(...org.mlAccounts.map(acc => acc.xpTracking?.bestStreak || 0)),
     questionsAnswered: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.questionsAnswered || 0), 0),
-    longestStreak: Math.max(...org.mlAccounts.map(acc => acc.xpTracking?.longestStreak || 0)),
     firstApprovalCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.firstApprovalCount || 0), 0),
-    earlyBirdCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.earlyBirdCount || 0), 0)
+    earlyBirdCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.earlyBirdCount || 0), 0),
+    lateNightCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.lateNightCount || 0), 0)
   }
 
   console.log('📊 Stats Atuais:')
   console.log(`   Ultra rápidas: ${orgStats.ultraFastCount}`)
   console.log(`   Rápidas: ${orgStats.fastResponsesCount}`)
   console.log(`   Total: ${orgStats.questionsAnswered}`)
-  console.log(`   Sequência: ${orgStats.longestStreak}`)
+  console.log(`   Sequência: ${orgStats.bestStreak}`)
   console.log(`   Primeira aprovação: ${orgStats.firstApprovalCount}`)
   console.log(`   Madrugador: ${orgStats.earlyBirdCount}\n`)
 

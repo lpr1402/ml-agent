@@ -27,15 +27,25 @@ interface AchievementUnlockedModalProps {
 }
 
 const ACHIEVEMENT_ICONS: Record<string, typeof Zap> = {
-  speed: Zap,
-  dedication: Flame,
+  // 🎯 Achievement types do sistema de gamificação
+  lightning: Zap,      // < 2 min (5x XP!) - Lightning
+  speed: Zap,          // < 5 min (3x XP!) - Ultra Rápido
+  streak: Flame,       // Dias consecutivos
+  volume: Target,      // Total de perguntas
+  quality: Star,       // Primeira aprovação
+  dedication: Flame,   // Horários especiais (madrugada/manhã)
+  // Legacy/fallbacks
   early_bird: Clock,
-  milestone: Target,
-  quality: Star,
-  streak: Flame
+  milestone: Target
 }
 
 const RARITY_CONFIG: Record<string, { glow: string; border: string; text: string }> = {
+  // 🎯 Sistema completo de raridades: common, uncommon, rare, epic, legendary, mythic
+  mythic: {
+    glow: 'from-pink-500/60 via-purple-500/60 to-gold/60',
+    border: 'border-pink-400/50',
+    text: 'text-pink-400'
+  },
   legendary: {
     glow: 'from-gold/60 to-yellow-500/60',
     border: 'border-gold/50',
@@ -50,6 +60,11 @@ const RARITY_CONFIG: Record<string, { glow: string; border: string; text: string
     glow: 'from-blue-500/60 to-cyan-500/60',
     border: 'border-blue-500/50',
     text: 'text-blue-400'
+  },
+  uncommon: {
+    glow: 'from-green-500/60 to-emerald-500/60',
+    border: 'border-green-500/50',
+    text: 'text-green-400'
   },
   common: {
     glow: 'from-gray-500/60 to-gray-600/60',
@@ -221,9 +236,11 @@ export function AchievementUnlockedModal({
                 className={`px-4 py-2 rounded-full ${rarityConfig.text} bg-black/40 border ${rarityConfig.border} backdrop-blur-sm`}
               >
                 <span className="text-xs font-bold uppercase tracking-wider">
-                  {achievement.rarity === 'legendary' ? '⚡ Lendária' :
+                  {achievement.rarity === 'mythic' ? '🐐 Mítica' :
+                   achievement.rarity === 'legendary' ? '⚡ Lendária' :
                    achievement.rarity === 'epic' ? '🔥 Épica' :
                    achievement.rarity === 'rare' ? '💎 Rara' :
+                   achievement.rarity === 'uncommon' ? '✨ Incomum' :
                    '⭐ Comum'}
                 </span>
               </motion.div>

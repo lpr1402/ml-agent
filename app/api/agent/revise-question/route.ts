@@ -1,12 +1,22 @@
+/**
+ * API Route: Revisão de Resposta com Gemini 3.0 Pro Agent
+ * Suporta: Edição manual + Revisão com IA (streaming)
+ *
+ * @author ML Agent Team
+ * @date 2025-11-20
+ */
+
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-// Revisão removida - não enviamos mais notificações de revisão
-import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
+import { getMLAgentServiceForOrganization } from "@/lib/agent/core/ml-agent-service-manager"
+import { formatProductInfo, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
 import { decryptToken } from "@/lib/security/encryption"
+import type { QuestionInput, QuestionContext } from "@/lib/agent/types/agent-types"
 
-const N8N_REVISION_WEBHOOK = process.env['N8N_WEBHOOK_EDIT_URL'] || "https://dashboard.axnexlabs.com.br/webhook/editar"
-
+/**
+ * POST - Revisa resposta (manual ou com IA)
+ */
 export async function POST(request: NextRequest) {
   try {
     // Verificar sessão
@@ -16,19 +26,19 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    
+
     const { questionId, feedback, editedResponse } = await request.json()
-    
+
     if (!questionId || (!feedback && !editedResponse)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
-    
-    // Buscar pergunta com informações completas da conta ML
+
+    // Buscar pergunta
     const question = await prisma.question.findFirst({
       where: {
         id: questionId,
         mlAccount: {
-          organizationId: session.organizationId // Isolamento multi-tenant
+          organizationId: session.organizationId
         }
       },
       include: {
@@ -42,338 +52,279 @@ export async function POST(request: NextRequest) {
         }
       }
     })
-    
-    if (!question) {
+
+    if (!question || !question.mlAccount) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
 
-    if (!question.mlAccount) {
-      return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
-    }
-    
-    let revisedResponse = editedResponse
-    
-    // If edited response provided, use it directly
+    // ============================================================
+    // CASO 1: Edição Manual (usuário editou texto diretamente)
+    // ============================================================
     if (editedResponse && editedResponse !== question.aiSuggestion) {
-      logger.info("📝 Using manually edited response")
-      revisedResponse = editedResponse
-    } else if (feedback) {
-      // Update status to REVISING
+      logger.info("📝 [Revision] Manual edit", {
+        questionId: question.id,
+        changes: editedResponse.length - (question.aiSuggestion?.length || 0),
+      })
+
+      // Salvar aprendizado (o que foi mudado)
+      if (question.aiSuggestion) {
+        // ✅ MULTI-TENANT: Usar instância da organização
+        const mlAgentService = getMLAgentServiceForOrganization(question.mlAccount.organizationId)
+
+        await mlAgentService.saveFeedback({
+          questionId: question.id,
+          originalResponse: question.aiSuggestion,
+          finalResponse: editedResponse,
+          organizationId: question.mlAccount.organizationId,
+          mlAccountId: question.mlAccount.id,
+          userId: session.organizationId,
+        })
+      }
+
+      // Atualizar banco
+      await prisma.question.update({
+        where: { id: questionId },
+        data: {
+          editedResponse,
+          aiSuggestion: editedResponse,
+          status: "AWAITING_APPROVAL",
+        }
+      })
+
+      // Emitir WebSocket update
+      const { emitQuestionUpdate } = require('@/lib/websocket/emit-events.js')
+      emitQuestionUpdate(
+        question.mlQuestionId,
+        "AWAITING_APPROVAL",
+        {
+          organizationId: question.mlAccount.organizationId,
+          aiSuggestion: editedResponse,
+        }
+      )
+
+      return NextResponse.json({
+        success: true,
+        type: 'manual_edit',
+        response: editedResponse,
+      })
+    }
+
+    // ============================================================
+    // CASO 2: Revisão com Gemini 3.0 Pro IA (streaming)
+    // ============================================================
+    if (feedback) {
+      logger.info("🤖 [Revision] Starting AI revision with Gemini", {
+        questionId: question.id,
+        feedbackLength: feedback.length,
+      })
+
+      // Atualizar status
       await prisma.question.update({
         where: { id: questionId },
         data: { status: "REVISING" }
       })
 
-      // Emitir evento WebSocket de revisão
+      // Emitir eventos WebSocket
+      const {
+        emitQuestionRevising,
+        emitAgentStep,
+        emitQuestionEvent,
+        emitQuestionUpdate
+      } = require('@/lib/websocket/emit-events.js')
+
+      emitQuestionRevising(
+        question.mlQuestionId,
+        feedback,
+        question.mlAccount.organizationId
+      )
+
+      emitAgentStep(
+        question.id,
+        question.mlAccount.organizationId,
+        'revising',
+        { status: 'Gemini 3.0 Pro revisando resposta...' }
+      )
+
       try {
-        const { emitQuestionRevising } = require('@/lib/websocket/emit-events.js')
-        emitQuestionRevising(
-          question.mlQuestionId,
-          feedback,
-          question.mlAccount.organizationId
-        )
-      } catch (wsError) {
-        logger.warn('[Revision] Failed to emit revising event', { error: wsError })
-      }
-
-      // Buscar dados completos do produto da API ML
-      const { getValidMLToken } = await import('@/lib/ml-api/token-manager')
-      const accessToken = await getValidMLToken(question.mlAccount.id)
-
-      let itemData = null
-      let descriptionData = null
-
-      if (accessToken) {
         // Buscar dados do produto
-        try {
-          const itemResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          })
-          if (itemResponse.ok) {
-            itemData = await itemResponse.json()
-          }
+        const { getValidMLToken } = await import('@/lib/ml-api/token-manager')
+        const accessToken = await getValidMLToken(question.mlAccount.id)
 
-          // Buscar descrição
-          const descResponse = await fetch(`https://api.mercadolibre.com/items/${question.itemId}/description`, {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          })
-          if (descResponse.ok) {
-            descriptionData = await descResponse.json()
-          }
-        } catch (err) {
-          logger.warn('[Revision] Could not fetch item data:', { error: err })
-        }
-      }
-
-      // Fallback para dados armazenados
-      if (!itemData) {
-        itemData = {
+        let itemData: any = {
           id: question.itemId,
           title: question.itemTitle || 'Produto',
           price: question.itemPrice || 0,
           permalink: question.itemPermalink || ''
         }
-      }
 
-      // Buscar histórico de perguntas do comprador
-      const buyerQuestions = await fetchBuyerQuestionsHistory(
-        question.customerId || '',
-        question.mlAccount.organizationId,
-        question.mlQuestionId,
-        prisma,
-        decryptToken
-      )
+        let descriptionData = null
 
-      // Construir payload unificado com feedback de revisão
-      const revisionPayload = await buildN8NPayload(
-        {
+        if (accessToken) {
+          try {
+            const [itemResponse, descResponse] = await Promise.all([
+              fetch(`https://api.mercadolibre.com/items/${question.itemId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              }),
+              fetch(`https://api.mercadolibre.com/items/${question.itemId}/description`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              })
+            ])
+
+            if (itemResponse.ok) itemData = await itemResponse.json()
+            if (descResponse.ok) descriptionData = await descResponse.json()
+          } catch (_err) {
+            logger.warn('[Revision] Using fallback product data')
+          }
+        }
+
+        // Buscar histórico do comprador
+        const buyerQuestions = await fetchBuyerQuestionsHistory(
+          question.customerId || '',
+          question.mlAccount.organizationId,
+          question.mlQuestionId,
+          prisma,
+          decryptToken
+        )
+
+        // Formatar dados
+        const productInfoFormatted = formatProductInfo({
+          ...itemData,
+          description: descriptionData
+        })
+
+        // Preparar input
+        const questionInput: QuestionInput = {
           mlQuestionId: question.mlQuestionId,
           text: question.text,
-          item_id: question.itemId,
-          customerId: question.customerId // Adicionar customerId para histórico
-        },
-        itemData,
-        descriptionData,
-        buyerQuestions,
-        {
+          itemId: question.itemId,
+          customerId: question.customerId,
+          sellerId: question.sellerId,
+          dateCreated: question.dateCreated,
+          receivedAt: question.receivedAt,
+        }
+
+        const questionContext: QuestionContext = {
+          product: null,
+          productImages: [],
+          productDescription: productInfoFormatted,
+          buyerHistory: buyerQuestions,
+          buyerProfile: null,
+          sellerNickname: question.mlAccount.nickname,
+          sellerReputation: null,
+          similarQuestions: [],
+          organizationPreferences: null,
+        }
+
+        // ✅ MULTI-TENANT: Usar instância da organização
+        const mlAgentService = getMLAgentServiceForOrganization(question.mlAccount.organizationId)
+
+        logger.info('[Revision] Using org-specific agent instance', {
+          organizationId: question.mlAccount.organizationId,
+          questionId: question.id,
+        })
+
+        // 🤖 REVISAR com Gemini (streaming via WebSocket) - MODO ASYNC
+        // Não aguardar conclusão - streaming via WebSocket notifica frontend
+        mlAgentService.reviseResponseWithStreaming({
+          questionId: question.id,
+          questionInput,
+          context: questionContext,
+          organizationId: question.mlAccount.organizationId,
           originalResponse: question.aiSuggestion || '',
           revisionFeedback: feedback,
-          sellerNickname: question.mlAccount.nickname || 'Vendedor' // Adicionar nickname correto da conta ML
-        }
-      )
-      
-      logger.info("📝 Sending revision request to N8N:", { error: { error: revisionPayload } })
-      
-      // Send to N8N revision webhook with 2 minute timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes timeout
+        }).then(async (revisedResponse) => {
+          // ✅ Sucesso: Atualizar banco após streaming completar
+          await prisma.question.update({
+            where: { id: questionId },
+            data: {
+              aiSuggestion: revisedResponse.content,
+              aiConfidence: revisedResponse.confidence,
+              status: "AWAITING_APPROVAL",
+              processedAt: new Date(),
+            }
+          })
 
-      let n8nResponse: Response
-      try {
-        n8nResponse = await fetch(N8N_REVISION_WEBHOOK, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(revisionPayload),
-          signal: controller.signal
-        })
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId)
-        logger.error("[Revision] N8N request failed:", {
-          error: fetchError.name === 'AbortError' ? 'Request timeout after 2 minutes' : fetchError.message
-        })
+          // Emitir evento question:updated para UI
+          emitQuestionUpdate(
+            question.mlQuestionId,
+            "AWAITING_APPROVAL",
+            {
+              organizationId: question.mlAccount.organizationId,
+              aiSuggestion: revisedResponse.content,
+              aiConfidence: revisedResponse.confidence,
+            }
+          )
 
-        // IMPORTANT: Revert status back to AWAITING_APPROVAL for retry
-        await prisma.question.update({
-          where: { id: questionId },
-          data: {
-            status: 'AWAITING_APPROVAL',
-            // Keep the original AI suggestion for user to retry or edit
-            aiSuggestion: question.aiSuggestion
-          }
-        })
+          logger.info("✅ [Revision] AI revision completed", {
+            questionId: question.id,
+            confidence: revisedResponse.confidence,
+            tokensUsed: revisedResponse.tokensUsed.totalTokens,
+          })
+        }).catch(async (error) => {
+          // ❌ Erro: Reverter status e notificar
+          logger.error("[Revision] AI revision failed in background", {
+            error: error.message
+          })
 
-        logger.info('[Revision] Reverted status back to AWAITING_APPROVAL after error', {
-          questionId,
-          error: fetchError.name === 'AbortError'
-            ? 'Timeout after 2 minutes'
-            : fetchError.message
-        })
+          await prisma.question.update({
+            where: { id: questionId },
+            data: {
+              status: 'AWAITING_APPROVAL',
+              aiSuggestion: question.aiSuggestion
+            }
+          })
 
-        // Emit error event for real-time feedback with status revert
-        try {
-          const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
           emitQuestionEvent(
             question.mlQuestionId,
             'revision-error',
             {
-              failureReason: fetchError.name === 'AbortError'
-                ? '⏱️ IA demorou mais de 2 minutos para responder'
-                : '❌ Erro ao conectar com serviço de IA',
-              errorType: 'REVISION_ERROR',
+              failureReason: `Erro no agente: ${error.message}`,
+              errorType: 'AGENT_ERROR',
               status: 'AWAITING_APPROVAL',
               retryable: true,
               aiSuggestion: question.aiSuggestion
             },
             question.mlAccount.organizationId
           )
-        } catch (wsError) {
-          logger.warn('[Revision] Failed to emit error event', { error: wsError })
-        }
+        })
+
+        // ✅ Retornar IMEDIATAMENTE - streaming acontece via WebSocket
+        logger.info("✅ [Revision] Streaming started successfully", {
+          questionId: question.id,
+        })
 
         return NextResponse.json({
-          error: fetchError.name === 'AbortError'
-            ? "Timeout: A IA não respondeu em 2 minutos"
-            : "Erro de conexão com serviço de IA",
-          status: 'AWAITING_APPROVAL',
-          aiSuggestion: question.aiSuggestion
-        }, { status: 500 })
-      } finally {
-        clearTimeout(timeoutId)
-      }
-      
-      if (!n8nResponse.ok) {
-        const errorText = await n8nResponse.text()
-        logger.error("N8N revision failed", { response: errorText })
+          success: true,
+          type: 'ai_revision',
+          message: 'Revision started - streaming via WebSocket',
+          questionId: question.id,
+        })
 
-        // IMPORTANT: Revert status back to AWAITING_APPROVAL for retry
+      } catch (revisionError: any) {
+        // Erro ao INICIAR revisão (não ao processar)
+        logger.error("[Revision] Failed to start revision", {
+          error: revisionError.message
+        })
+
+        // Reverter status
         await prisma.question.update({
           where: { id: questionId },
           data: {
             status: 'AWAITING_APPROVAL',
-            // Keep the original AI suggestion for user to retry or edit
-            aiSuggestion: question.aiSuggestion
           }
         })
 
-        logger.info('[Revision] Reverted status back to AWAITING_APPROVAL after N8N error', {
-          questionId,
-          error: errorText
-        })
-
-        // Emit error event for real-time feedback with status revert
-        try {
-          const { emitQuestionEvent } = require('@/lib/websocket/emit-events.js')
-          emitQuestionEvent(
-            question.mlQuestionId,
-            'revision-error',
-            {
-              failureReason: errorText.includes('Error in workflow')
-                ? '🤖 Erro no processamento da IA'
-                : `❌ Erro na IA: ${errorText.substring(0, 100)}`,
-              errorType: 'REVISION_ERROR',
-              status: 'AWAITING_APPROVAL',
-              retryable: true,
-              aiSuggestion: question.aiSuggestion
-            },
-            question.mlAccount.organizationId
-          )
-        } catch (wsError) {
-          logger.warn('[Revision] Failed to emit error event', { error: wsError })
-        }
-
         return NextResponse.json({
-          error: "A IA retornou um erro. Tente novamente.",
-          details: errorText,
-          status: 'AWAITING_APPROVAL',
-          aiSuggestion: question.aiSuggestion
+          error: `Erro ao iniciar revisão: ${revisionError.message}`,
         }, { status: 500 })
       }
-      
-      // N8N will respond with revised answer
-      const response = await n8nResponse.json()
-      revisedResponse = response.output
     }
-    
-    // 🔒 FIX: Create revision record SIMPLIFICADO
-    // Validar campos obrigatórios @db.Text
-    const sanitizedFeedback = (feedback && feedback.trim().length > 0)
-      ? feedback.trim()
-      : "Manual edit"
 
-    const sanitizedRevision = (revisedResponse && revisedResponse.trim().length > 0)
-      ? revisedResponse.trim()
-      : question.aiSuggestion || "Resposta revisada"
+    // Se chegou aqui, erro
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
 
-    try {
-      await prisma.revision.create({
-        data: {
-          questionId,
-          userFeedback: sanitizedFeedback,
-          aiRevision: sanitizedRevision
-        }
-      })
-      logger.info('[Revision] ✅ Revision record created successfully', {
-        questionId,
-        feedbackLength: sanitizedFeedback.length,
-        revisionLength: sanitizedRevision.length
-      })
-    } catch (revisionError: any) {
-      // Log detalhado mas não falhar o processo
-      logger.error('[Revision] Failed to create revision record (non-fatal)', {
-        questionId,
-        errorType: revisionError?.name || 'Unknown',
-        errorCode: revisionError?.code || 'UNKNOWN',
-        errorMessage: revisionError?.message || String(revisionError),
-        errorMeta: revisionError?.meta || null
-      })
-      // Continuar mesmo se falhar a gravação do histórico
-    }
-    
-    // Update question with revised response
-    await prisma.question.update({
-      where: { id: questionId },
-      data: {
-        aiSuggestion: revisedResponse,
-        status: "AWAITING_APPROVAL" // Sempre AWAITING_APPROVAL após revisão
-      }
-    })
-    
-    // Notificações de revisão removidas - processo simplificado
-    
-    // 🔴 FIX: Update metrics usando upsert para evitar P2025
-    try {
-      await prisma.userMetrics.upsert({
-        where: { mlUserId: question.mlAccount.mlUserId },
-        update: {
-          revisedCount: { increment: 1 },
-          lastActiveAt: new Date()
-        },
-        create: {
-          mlUserId: question.mlAccount.mlUserId,
-          totalQuestions: 0,
-          answeredQuestions: 0,
-          pendingQuestions: 0,
-          answeredToday: 0,
-          avgResponseTime: 0,
-          autoApprovedCount: 0,
-          manualApprovedCount: 0,
-          revisedCount: 1,
-          rejectedCount: 0,
-          failedQuestions: 0,
-          totalXP: 0,
-          currentLevel: 1,
-          currentStreak: 0,
-          maxStreak: 0,
-          achievements: []
-        }
-      })
-    } catch (metricsError) {
-      logger.warn('Could not update metrics:', { error: { error: metricsError } })
-    }
-    
-    return NextResponse.json({
-      success: true,
-      message: "Response revised successfully",
-      revisedResponse
-    })
-    
-  } catch (error) {
-    logger.error("Revision error:", { error })
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-// Get revision history
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const questionId = searchParams.get("questionId")
-    
-    if (!questionId) {
-      return NextResponse.json({ error: "Missing question ID" }, { status: 400 })
-    }
-    
-    const revisions = await prisma.revision.findMany({
-      where: { questionId },
-      orderBy: { createdAt: "desc" }
-    })
-    
-    return NextResponse.json({ revisions })
-    
-  } catch (error) {
-    logger.error("Get revisions error:", { error })
+  } catch (error: any) {
+    logger.error("[Revision API] Error:", { error: error.message })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

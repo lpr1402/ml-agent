@@ -30,6 +30,7 @@ interface QuestionWithAccount {
     nickname: string
     thumbnail?: string | null
     siteId: string
+    organizationId: string // ✅ FIX: Necessário para streaming
   }
 }
 
@@ -95,7 +96,8 @@ export async function GET(request: NextRequest) {
             mlUserId: true,
             nickname: true,
             thumbnail: true,
-            siteId: true
+            siteId: true,
+            organizationId: true // ✅ FIX CRÍTICO: Necessário para streaming funcionar
           }
         }
       },
@@ -137,7 +139,8 @@ export async function GET(request: NextRequest) {
         mlUserId: q.mlAccount.mlUserId,
         nickname: q.mlAccount.nickname,
         thumbnail: ensureHttps(q.mlAccount.thumbnail) ?? null,
-        siteId: q.mlAccount.siteId
+        siteId: q.mlAccount.siteId,
+        organizationId: q.mlAccount.organizationId // ✅ FIX: Passar para frontend
       }
     }))
     

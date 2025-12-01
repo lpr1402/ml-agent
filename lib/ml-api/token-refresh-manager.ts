@@ -227,16 +227,19 @@ class TokenRefreshManager {
             throw error
           }
 
-          return response
+          // 🔴 FIX: Retornar JSON parseado, não o objeto Response
+          return await response.json()
         }
       })
 
-      // Response já processado e validado pelo rate limiter
-      const data = typeof response === 'string'
-        ? JSON.parse(response)
-        : response
+      // Validar que recebemos os tokens esperados
+      if (!response || !response.access_token || !response.refresh_token) {
+        throw new Error('Invalid token response from ML API - missing access_token or refresh_token')
+      }
 
-      // Se chegou aqui, request foi bem sucedido (rate limiter já tratou erros)
+      const data = response
+
+      // Se chegou aqui, request foi bem sucedido
       logger.info(`[TokenRefresh] Token refresh successful para ${account.nickname}`)
 
       // Criptografa novos tokens

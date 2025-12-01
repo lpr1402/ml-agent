@@ -9,6 +9,76 @@ import { prisma } from '@/lib/prisma'
 // Import the CommonJS emit-events module
 const websocketEvents = require('./emit-events.js')
 
+// ========== AI AGENT STREAMING EVENTS ==========
+
+/**
+ * Emite token do agente durante geração
+ */
+export async function emitAgentToken(
+  questionId: string,
+  organizationId: string,
+  token: string,
+  sequenceNumber: number
+): Promise<void> {
+  return websocketEvents.emitAgentToken(questionId, organizationId, token, sequenceNumber)
+}
+
+/**
+ * Emite step do workflow
+ */
+export async function emitAgentStep(
+  questionId: string,
+  organizationId: string,
+  step: string,
+  data?: any
+): Promise<void> {
+  return websocketEvents.emitAgentStep(questionId, organizationId, step, data)
+}
+
+/**
+ * Emite conclusão do processamento
+ */
+export async function emitAgentDone(
+  questionId: string,
+  organizationId: string,
+  response: string,
+  confidence: number,
+  processingTime: number,
+  tokensUsed: number
+): Promise<void> {
+  return websocketEvents.emitAgentDone(
+    questionId,
+    organizationId,
+    response,
+    confidence,
+    processingTime,
+    tokensUsed
+  )
+}
+
+/**
+ * Emite erro do agente
+ */
+export async function emitAgentError(
+  questionId: string,
+  organizationId: string,
+  error: string,
+  code?: string
+): Promise<void> {
+  return websocketEvents.emitAgentError(questionId, organizationId, error, code)
+}
+
+/**
+ * Emite atualização de confiança
+ */
+export async function emitAgentConfidence(
+  questionId: string,
+  organizationId: string,
+  confidence: number
+): Promise<void> {
+  return websocketEvents.emitAgentConfidence(questionId, organizationId, confidence)
+}
+
 /**
  * Emitir evento de nova pergunta recebida
  */

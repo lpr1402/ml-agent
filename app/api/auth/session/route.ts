@@ -38,6 +38,9 @@ export async function GET(_request: Request) {
     
     // 🚀 ENTERPRISE FIX: Retornar role para identificar admin
     const response = NextResponse.json({
+      // Flag de autenticação para AuthContext
+      authenticated: true,
+
       // Dados essenciais para o dashboard
       organizationId: session.organizationId,
       organizationName: session.organization.primaryNickname || 'ML Agent Pro',

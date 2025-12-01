@@ -27,32 +27,33 @@ import {
 export function PlatformInfo() {
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* Header Premium com Logos - SEMPRE HORIZONTAL */}
+      {/* Header Premium com Logos - SEMPRE HORIZONTAL - Mobile-First Otimizado */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gold/10 via-gold/5 to-transparent border border-gold/20 p-4 sm:p-6 lg:p-7 overflow-hidden"
+        className="relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-gold/10 via-gold/5 to-transparent border border-gold/20 p-3 sm:p-5 md:p-6 lg:p-7 overflow-hidden"
       >
         {/* Background Effects */}
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent opacity-50" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.1),transparent_50%)]" />
 
         <div className="relative z-10">
-          {/* Logos Row - SEMPRE HORIZONTAL mesmo no mobile */}
-          <div className="flex items-center justify-center gap-3 sm:gap-5 lg:gap-6 mb-4 sm:mb-5">
+          {/* Logos Row - SEMPRE HORIZONTAL mesmo no mobile - OTIMIZADO */}
+          <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-5 lg:gap-6 mb-4 sm:mb-5 px-2">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
+              className="flex-shrink-0"
             >
               <Image
-                src="/mlagent-logo-3d.svg"
+                src="/mlagent-logo-3d.png"
                 alt="ML Agent"
-                width={140}
-                height={140}
-                className="h-14 sm:h-20 lg:h-28 w-auto object-contain"
-                style={{ filter: 'drop-shadow(0 0 20px rgba(212, 175, 55, 0.4))' }}
+                width={300}
+                height={300}
+                className="h-16 sm:h-20 md:h-24 lg:h-28 xl:h-32 w-auto object-contain"
+                style={{ filter: 'drop-shadow(0 0 30px rgba(212, 175, 55, 0.4))' }}
                 priority
               />
             </motion.div>
@@ -64,32 +65,30 @@ export function PlatformInfo() {
               className="relative flex items-center justify-center flex-shrink-0"
             >
               <div className="absolute inset-0 bg-gold/30 blur-md scale-150" />
-              <div className="relative font-extrabold text-xl sm:text-2xl lg:text-3xl leading-none" style={{
-                transform: 'rotate(-10deg)',
-                fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
-                textShadow: '0 2px 10px rgba(212,175,55,0.5)',
-                background: 'linear-gradient(135deg, #f4d03f 0%, #d4af37 50%, #c9a961 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                letterSpacing: '-0.05em'
-              }}>
-                ×
-              </div>
+              <Image
+                src="/connection-icon.png"
+                alt="Conexão ML Agent × Gugaleo"
+                width={48}
+                height={48}
+                className="h-7 sm:h-8 md:h-10 lg:h-11 xl:h-12 w-auto object-contain relative"
+                style={{ filter: 'drop-shadow(0 2px 10px rgba(212,175,55,0.5))' }}
+                priority
+              />
             </motion.div>
 
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
+              className="flex-shrink-0"
             >
               <Image
                 src="/gugaleo-logo.png"
                 alt="Gugaleo"
-                width={140}
-                height={140}
-                className="h-12 sm:h-18 lg:h-24 w-auto object-contain"
-                style={{ filter: 'drop-shadow(0 0 15px rgba(255, 255, 255, 0.2))' }}
+                width={300}
+                height={300}
+                className="h-16 sm:h-20 md:h-24 lg:h-28 xl:h-32 w-auto object-contain"
+                style={{ filter: 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.2))' }}
                 priority
               />
             </motion.div>

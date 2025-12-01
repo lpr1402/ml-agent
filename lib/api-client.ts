@@ -1,5 +1,8 @@
 import { logger } from '@/lib/logger'
 
+// 🛡️ Flag global para prevenir múltiplos redirects simultâneos
+let isRedirecting = false
+
 export class APIClient {
   // CRITICAL: Get session token for SSE authentication
   getSessionToken(): string | null {
@@ -49,9 +52,12 @@ export class APIClient {
       logger.error(`API call failed: ${url} - Status: ${response.status}`)
       
       if (response.status === 401) {
-        // Session expired - redirect to login
+        // Session expired - redirect to login (com guard contra loops)
         logger.warn("401 Unauthorized - Session expired")
-        window.location.href = "/login"
+        if (!isRedirecting) {
+          isRedirecting = true
+          window.location.href = "/login"
+        }
         throw new Error("Unauthorized")
       }
       throw new Error(`API call failed: ${response.statusText}`)
@@ -107,9 +113,10 @@ export class APIClient {
       }
 
       if (response.status === 401) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !isRedirecting) {
           const currentPath = window.location.pathname
           if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            isRedirecting = true
             sessionStorage.clear()
             localStorage.removeItem('ml-agent-session')
             window.location.href = "/login?session_expired=true"
@@ -147,9 +154,10 @@ export class APIClient {
       logger.error(`API PUT failed: ${url} - Status: ${response.status}`)
       
       if (response.status === 401) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !isRedirecting) {
           const currentPath = window.location.pathname
           if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            isRedirecting = true
             sessionStorage.clear()
             localStorage.removeItem('ml-agent-session')
             window.location.href = "/login?session_expired=true"
@@ -157,7 +165,7 @@ export class APIClient {
         }
         throw new Error("Session expired. Please login again.")
       }
-      
+
       throw new Error(`API PUT failed: ${response.statusText}`)
     }
     
@@ -175,9 +183,10 @@ export class APIClient {
       logger.error(`API DELETE failed: ${url} - Status: ${response.status}`)
       
       if (response.status === 401) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !isRedirecting) {
           const currentPath = window.location.pathname
           if (!currentPath.includes('/login') && !currentPath.includes('/auth')) {
+            isRedirecting = true
             sessionStorage.clear()
             localStorage.removeItem('ml-agent-session')
             window.location.href = "/login?session_expired=true"
@@ -185,7 +194,7 @@ export class APIClient {
         }
         throw new Error("Session expired. Please login again.")
       }
-      
+
       throw new Error(`API DELETE failed: ${response.statusText}`)
     }
     

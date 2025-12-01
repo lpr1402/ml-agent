@@ -166,13 +166,11 @@ export async function proxy(request: NextRequest) {
     '/api/public',
     '/api/ml-webhook',
     '/api/webhooks',
-    '/api/n8n',  // IMPORTANTE: N8N precisa acessar sem auth
     '/api/health',
     '/api/agent/monitor-stuck-questions',
     '/api/agent/reprocess-question',  // Endpoint autônomo - usa dados da pergunta
     '/api/redirect',  // IMPORTANTE: Redirecionamento universal PWA
     '/api/answer',  // APIs de resposta ainda usadas internamente
-    '/api/secure/approve-with-token',  // Aprovação com token único
     '/_next',  // IMPORTANTE: Recursos do Next.js
     '/favicon',
     '/mlagent',

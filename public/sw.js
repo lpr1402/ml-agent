@@ -1,21 +1,32 @@
 /**
- * ML Agent Service Worker - Production Ready 2025
- * Push Notifications + Cache Inteligente + Auto-Update
- * Otimizado para Windows, iOS, Android com melhores práticas 2025
+ * ML Agent Service Worker - iOS PWA Production 2025
+ * Push Notifications 24/7 + Cache Inteligente + Auto-Recovery
+ *
+ * OTIMIZADO PARA:
+ * - iOS 16+ PWA Standalone (notificações persistentes)
+ * - Windows Desktop (requireInteraction)
+ * - Android Chrome
+ *
+ * FEATURES:
+ * - Background Sync para notificações perdidas
+ * - Periodic Sync para keep-alive
+ * - Auto-recovery quando SW "morre"
+ * - Som de notificação via postMessage
  */
 
-// Versão do Service Worker - Production 2025
-// 🔴 v4.2.0: iOS/Windows notificações com som automático + requireInteraction
-const SW_VERSION = '4.2.0';
+// Versão do Service Worker - BUMP para forçar update
+const SW_VERSION = '5.0.0';
 const APP_NAME = 'ML Agent';
 const CACHE_NAME = `ml-agent-cache-v${SW_VERSION}`;
 const RUNTIME_CACHE = `ml-agent-runtime-v${SW_VERSION}`;
-const APP_SCOPE = self.registration.scope;
 
 // Detectar iOS
-const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+const isIOS = /iPhone|iPad|iPod/i.test(self.navigator?.userAgent || '');
 
-// Recursos essenciais para cache (incluindo ícones iOS e offline page)
+// VAPID Public Key
+const VAPID_PUBLIC_KEY = 'BFDQNvQB1cWQbPHStt5S6mRtVCGldecWfKMDWfyBx2HTPhvitpZdVE7kMIAQPpGawd5GN7XrzMnvfMq3n7NOM0g';
+
+// Recursos essenciais para cache
 const ESSENTIAL_CACHE = [
   '/manifest.json',
   '/offline.html',
@@ -31,27 +42,25 @@ const ESSENTIAL_CACHE = [
   '/icons/ios-icon-152.png',
   '/icons/ios-icon-167.png',
   '/icons/ios-icon-180.png',
-  '/notification-new.mp3'
+  '/notification-new.mp3',
+  '/mlagent-logo-3d.png'
 ];
 
-// Estratégia: Stale-While-Revalidate com timeout para melhor UX
-const NETWORK_TIMEOUT = 3000; // 3 segundos
+// Timeout para network requests
+const NETWORK_TIMEOUT = 5000;
 
-// VAPID Public Key (hardcoded para service worker)
-const VAPID_PUBLIC_KEY = 'BFDQNvQB1cWQbPHStt5S6mRtVCGldecWfKMDWfyBx2HTPhvitpZdVE7kMIAQPpGawd5GN7XrzMnvfMq3n7NOM0g';
+// ==========================================
+// CACHE STRATEGIES
+// ==========================================
 
-// Helper: Network with timeout and fallback
 async function networkFirst(request, timeoutMs = NETWORK_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Network timeout')), timeoutMs)
-    );
+    const response = await fetch(request, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-    const fetchPromise = fetch(request);
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-    // Cachear resposta válida em runtime cache (apenas GET/HEAD)
-    // Cache API não suporta POST, PUT, DELETE, PATCH
     if (response && response.ok && request.method === 'GET') {
       const cache = await caches.open(RUNTIME_CACHE);
       cache.put(request, response.clone());
@@ -59,503 +68,271 @@ async function networkFirst(request, timeoutMs = NETWORK_TIMEOUT) {
 
     return response;
   } catch (error) {
-    // Tentar cache como fallback
+    clearTimeout(timeoutId);
+
+    // Try cache fallback
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
-      console.log('[SW] Using cached response for:', request.url);
       return cachedResponse;
     }
 
-    // Se não tem cache e é uma página, retornar offline page
+    // Offline page for navigation
     if (request.mode === 'navigate') {
       const offlinePage = await caches.match('/offline.html');
-      if (offlinePage) {
-        return offlinePage;
-      }
+      if (offlinePage) return offlinePage;
     }
 
-    // Último recurso: erro
-    return new Response('Offline - Verifique sua conexão', {
+    return new Response('Offline', {
       status: 503,
-      statusText: 'Service Unavailable',
-      headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+      statusText: 'Service Unavailable'
     });
   }
 }
 
-// Helper: Cache first com network fallback (para recursos estáticos)
 async function cacheFirst(request) {
   const cachedResponse = await caches.match(request);
-  if (cachedResponse) {
-    return cachedResponse;
-  }
+  if (cachedResponse) return cachedResponse;
 
   try {
     const response = await fetch(request);
-    // Apenas cachear GET/HEAD (Cache API não suporta POST, PUT, DELETE, PATCH)
     if (response && response.ok && request.method === 'GET') {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
-  } catch (error) {
-    return new Response('Recurso não disponível', {
-      status: 404,
-      statusText: 'Not Found'
-    });
+  } catch {
+    return new Response('Not Found', { status: 404 });
   }
 }
 
-// Fetch Event - Estratégia otimizada por tipo de recurso (2025 Best Practices)
+// ==========================================
+// FETCH HANDLER
+// ==========================================
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const { pathname } = url;
-  const request = event.request;
 
-  // Ignorar requisições que não são do nosso domínio (exceto APIs ML)
+  // Skip non-same-origin (except ML APIs)
   if (!url.origin.includes(self.location.origin) && !url.host.includes('mercadolibre.com')) {
     return;
   }
 
-  // APIs e páginas dinâmicas: Network First com timeout
-  if (
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/_next/data/') ||
-    pathname === '/' ||
-    pathname.startsWith('/login') ||
-    pathname.startsWith('/agente') ||
-    pathname.startsWith('/answer/') ||
-    pathname.startsWith('/approve/')
-  ) {
-    event.respondWith(networkFirst(request));
+  // API & dynamic: Network First
+  if (pathname.startsWith('/api/') ||
+      pathname.startsWith('/_next/data/') ||
+      pathname === '/' ||
+      pathname.startsWith('/login') ||
+      pathname.startsWith('/agente') ||
+      pathname.startsWith('/answer/') ||
+      pathname.startsWith('/approve/')) {
+    event.respondWith(networkFirst(event.request));
     return;
   }
 
-  // Next.js chunks: Cache First (SWR no background)
+  // Static chunks: Cache First
   if (pathname.startsWith('/_next/static/')) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(event.request));
     return;
   }
 
-  // Imagens, fontes, audio: Cache First
+  // Media: Cache First
   if (pathname.match(/\.(png|jpg|jpeg|svg|ico|woff|woff2|ttf|eot|mp3|mp4|webm)$/)) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  // CSS/JS: Stale-While-Revalidate
-  if (pathname.match(/\.(css|js)$/)) {
-    event.respondWith(
-      caches.match(request).then(cached => {
-        const fetchPromise = fetch(request).then(response => {
-          // Apenas cachear GET/HEAD (Cache API não suporta POST, PUT, DELETE, PATCH)
-          if (response && response.ok && request.method === 'GET') {
-            const cache = caches.open(CACHE_NAME);
-            cache.then(c => c.put(request, response.clone()));
-          }
-          return response;
-        }).catch(() => cached);
-
-        return cached || fetchPromise;
-      })
-    );
+    event.respondWith(cacheFirst(event.request));
     return;
   }
 
   // Default: Network First
-  event.respondWith(networkFirst(request));
+  event.respondWith(networkFirst(event.request));
 });
 
-// Evento de instalação
+// ==========================================
+// INSTALL & ACTIVATE
+// ==========================================
+
 self.addEventListener('install', (event) => {
   console.log(`[SW v${SW_VERSION}] Installing...`);
 
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // Cache apenas recursos estáticos essenciais
       return cache.addAll(ESSENTIAL_CACHE).catch(err => {
-        console.warn('[SW] Erro ao cachear recursos:', err);
+        console.warn('[SW] Cache error:', err);
       });
     })
   );
 
-  // Skip waiting para ativar imediatamente
+  // Activate immediately
   self.skipWaiting();
 });
 
-// Evento de ativação - Production Ready 2025
 self.addEventListener('activate', (event) => {
   console.log(`[SW v${SW_VERSION}] Activating...`);
 
   event.waitUntil(
     Promise.all([
-      // Tomar controle de todas as páginas imediatamente
+      // Take control
       clients.claim(),
 
-      // Limpar caches antigos de forma inteligente
-      caches.keys().then(cacheNames => {
+      // Clear old caches
+      caches.keys().then(names => {
         return Promise.all(
-          cacheNames.map(cacheName => {
-            // Manter apenas caches da versão atual
-            if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
-              console.log(`[SW v${SW_VERSION}] Deletando cache antigo: ${cacheName}`);
-              return caches.delete(cacheName);
+          names.map(name => {
+            if (name !== CACHE_NAME && name !== RUNTIME_CACHE) {
+              console.log(`[SW] Deleting old cache: ${name}`);
+              return caches.delete(name);
             }
           })
         );
       }),
 
-      // Notificar clientes sobre atualização
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-        console.log(`[SW v${SW_VERSION}] Notifying ${windowClients.length} clients`);
-        windowClients.forEach(client => {
+      // Notify clients
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+        clients.forEach(client => {
           client.postMessage({
             type: 'SW_UPDATED',
-            version: SW_VERSION,
-            timestamp: Date.now()
+            version: SW_VERSION
           });
         });
-      })
-    ]).then(() => {
-      console.log(`[SW v${SW_VERSION}] Activated successfully!`);
-    })
+      }),
+
+      // Register periodic sync for keep-alive
+      registerPeriodicSync()
+    ])
   );
 });
 
-// Keep-alive para iOS - evitar que pare as notificações
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'keep-alive') {
-    event.waitUntil(
-      // Ping backend para manter subscription ativa
-      fetch('/api/push/keep-alive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).catch(() => {})
-    );
-  }
-});
+// ==========================================
+// PUSH NOTIFICATIONS - iOS/Windows Optimized
+// ==========================================
 
-// Push notification received - iOS and Windows optimized
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push notification received - iOS/Windows optimized');
+  console.log(`[SW v${SW_VERSION}] Push received`);
 
-  // 🔴 CRITICAL FIX: Tocar som de notificação automaticamente (iOS/Windows)
-  // Enviar mensagem para todos os clientes tocarem o som
-  clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-    windowClients.forEach(client => {
-      client.postMessage({
-        type: 'PLAY_NOTIFICATION_SOUND',
-        sound: '/notification-new.mp3',
-        timestamp: Date.now()
-      });
-    });
-  }).catch(err => console.log('[SW] Failed to send sound message:', err));
+  // Play sound via client
+  playNotificationSound('/notification-new.mp3', 0.8);
 
-  let notificationData = {
-    title: '🔔 ML Agent',
-    body: 'Você tem uma nova notificação de cliente',
+  let data = {
+    title: 'ML Agent',
+    body: 'Nova notificacao',
     icon: '/mlagent-logo-3d.png',
-    badge: '/mlagent-logo-3d.png',
+    badge: '/icons/icon-96x96.png',
     tag: 'ml-notification',
-    requireInteraction: true, // 🔴 FIX: Windows - manter visível até usuário interagir
-    silent: false, // Som habilitado
-    renotify: true, // Re-notificar se tag já existe
-    data: {}
+    requireInteraction: true,
+    silent: false,
+    renotify: true,
+    data: { url: '/agente' }
   };
 
-  // Processar dados do push
   if (event.data) {
     try {
       const payload = event.data.json();
 
-      // Customizar notificação baseado no tipo
       switch (payload.type) {
         case 'new_question':
-          // 🔴 FIX: Tocar som específico para perguntas
-          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            windowClients.forEach(client => {
-              client.postMessage({
-                type: 'PLAY_NOTIFICATION_SOUND',
-                sound: '/notification-new.mp3',
-                volume: 0.8, // 80% volume
-                timestamp: Date.now()
-              });
-            });
-          }).catch(err => console.log('[SW] Sound error:', err));
-
-          notificationData = {
-            title: `🔔 ${payload.sellerName || 'ML Agent'}`,
-            body: `Um cliente perguntou: "${payload.questionText || 'Nova pergunta recebida'}"`,
+          playNotificationSound('/notification-new.mp3', 0.9);
+          data = {
+            title: `${payload.sellerName || 'ML Agent'}`,
+            body: `Cliente perguntou: "${truncate(payload.questionText, 80)}"`,
             icon: '/mlagent-logo-3d.png',
-            badge: '/mlagent-logo-3d.png',
+            badge: '/icons/icon-96x96.png',
             tag: `question-${payload.questionId}`,
-            requireInteraction: true, // 🔴 FIX: Windows - persistir até interação
-            silent: false, // Som habilitado no sistema
-            renotify: true, // Re-notificar se houver update
-            vibrate: [300, 100, 300, 100, 300], // 🔴 FIX: Vibração personalizada mais longa
+            requireInteraction: true,
+            silent: false,
+            renotify: true,
+            vibrate: [300, 100, 300],
             data: {
               type: 'question',
               questionId: payload.questionId,
-              accountId: payload.accountId,
-              url: payload.url || '/agente',
-              sound: '/notification-new.mp3' // Som específico
+              url: payload.url || '/agente'
             },
             actions: [
-              {
-                action: 'answer',
-                title: '✅ Responder Agora',
-                icon: '/icons/shortcuts/questions.png'
-              },
-              {
-                action: 'later',
-                title: '⏰ Ver Depois',
-                icon: '/icons/icon-96x96.png'
-              }
+              { action: 'answer', title: 'Responder' },
+              { action: 'later', title: 'Depois' }
             ]
           };
           break;
 
         case 'batch_questions':
-          // Som para múltiplas perguntas
-          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            windowClients.forEach(client => {
-              client.postMessage({
-                type: 'PLAY_NOTIFICATION_SOUND',
-                sound: '/notification-new.mp3',
-                volume: 0.9,
-                timestamp: Date.now()
-              });
-            });
-          }).catch(err => console.log('[SW] Sound error:', err));
-
-          notificationData = {
-            title: `🔔 ${payload.sellerName || 'ML Agent'}`,
-            body: `Você tem ${payload.count} ${payload.count === 1 ? 'nova pergunta' : 'novas perguntas'} de clientes aguardando resposta`,
+          playNotificationSound('/notification-new.mp3', 1.0);
+          data = {
+            title: `${payload.sellerName || 'ML Agent'}`,
+            body: `${payload.count} perguntas aguardando resposta`,
             icon: '/mlagent-logo-3d.png',
-            badge: '/mlagent-logo-3d.png',
+            badge: '/icons/icon-96x96.png',
             tag: 'questions-batch',
-            requireInteraction: true, // 🔴 FIX: Persistir até interação
+            requireInteraction: true,
             silent: false,
             renotify: true,
-            vibrate: [300, 150, 300, 150, 300], // 🔴 FIX: Vibração mais intensa
-            data: {
-              type: 'batch',
-              count: payload.count,
-              url: '/agente',
-              sound: '/notification-new.mp3'
-            }
+            vibrate: [300, 150, 300, 150, 300],
+            data: { type: 'batch', url: '/agente' }
           };
           break;
 
         case 'urgent_question':
-          // 🔴 FIX: Som urgente repetido 2x
-          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            windowClients.forEach(client => {
-              client.postMessage({
-                type: 'PLAY_NOTIFICATION_SOUND',
-                sound: '/notification-new.mp3',
-                volume: 1.0, // Volume máximo
-                repeat: 2, // Tocar 2 vezes
-                timestamp: Date.now()
-              });
-            });
-          }).catch(err => console.log('[SW] Sound error:', err));
-
-          notificationData = {
-            title: `⚠️ PERGUNTA URGENTE - ${payload.sellerName}`,
-            body: `Cliente aguardando há ${payload.hours}h: "${payload.questionText}"`,
+          playNotificationSound('/notification-new.mp3', 1.0, 2);
+          data = {
+            title: `URGENTE - ${payload.sellerName}`,
+            body: `Aguardando ha ${payload.hours}h: "${truncate(payload.questionText, 60)}"`,
             icon: '/mlagent-logo-3d.png',
-            badge: '/mlagent-logo-3d.png',
+            badge: '/icons/icon-96x96.png',
             tag: `urgent-${payload.questionId}`,
-            requireInteraction: true, // 🔴 FIX: OBRIGATÓRIO fechar manualmente
+            requireInteraction: true,
             silent: false,
             renotify: true,
-            vibrate: [500, 250, 500, 250, 500, 250, 500], // 🔴 FIX: Vibração mais longa urgente
+            vibrate: [500, 200, 500, 200, 500],
             data: {
               type: 'urgent',
               questionId: payload.questionId,
-              url: payload.url || '/agente',
-              sound: '/notification-new.mp3'
-            },
-            actions: [
-              {
-                action: 'answer_now',
-                title: '🚨 Responder Agora',
-                icon: '/icons/shortcuts/questions.png'
-              }
-            ]
-          };
-          break;
-
-        case 'answer_approved':
-          notificationData = {
-            title: '✅ Resposta Enviada com Sucesso',
-            body: `Sua resposta foi aprovada e enviada ao cliente no Mercado Livre`,
-            icon: '/icons/icon-192x192.png',
-            badge: '/icons/icon-72x72.png',
-            tag: `approved-${payload.questionId}`,
-            requireInteraction: false,
-            data: {
-              type: 'approved',
-              questionId: payload.questionId
-            }
-          };
-          break;
-
-        case 'error':
-          // Som de erro/aviso
-          clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            windowClients.forEach(client => {
-              client.postMessage({
-                type: 'PLAY_NOTIFICATION_SOUND',
-                sound: '/notification.mp3', // Som diferente para erro
-                volume: 0.7,
-                timestamp: Date.now()
-              });
-            });
-          }).catch(err => console.log('[SW] Sound error:', err));
-
-          notificationData = {
-            title: '⚠️ Atenção Necessária',
-            body: payload.message || 'Ocorreu um erro ao processar sua solicitação. Verifique o painel.',
-            icon: '/icons/icon-192x192.png',
-            badge: '/icons/icon-72x72.png',
-            tag: 'error',
-            requireInteraction: true, // 🔴 FIX: Erro deve persistir até usuário ver
-            silent: false,
-            renotify: true,
-            vibrate: [200, 100, 200], // Vibração mais suave para erro
-            data: {
-              type: 'error',
-              sound: '/notification.mp3'
+              url: payload.url || '/agente'
             }
           };
           break;
 
         default:
-          // Notificação genérica
-          notificationData.body = payload.message || notificationData.body;
-          notificationData.data = payload;
+          data.body = payload.message || data.body;
+          data.data = payload;
       }
 
-      // Adicionar imagem do produto se disponível
       if (payload.productImage) {
-        notificationData.image = payload.productImage;
+        data.image = payload.productImage;
       }
-
-      // Timestamp para tracking
-      notificationData.timestamp = Date.now();
-
     } catch (e) {
-      console.error('[SW] Error parsing push data:', e);
+      console.error('[SW] Push parse error:', e);
     }
   }
 
-  // Mostrar notificação
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, notificationData)
+    self.registration.showNotification(data.title, data)
   );
-
-  // Analytics: contar notificações enviadas
-  if (notificationData.data.type === 'question') {
-    trackPushEvent('delivered', notificationData.data);
-  }
 });
 
-// Evento de clique na notificação
+// Notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('[SW] Notification clicked:', event.notification.tag);
-
   const notification = event.notification;
   const data = notification.data || {};
 
-  // Fechar notificação
   notification.close();
 
-  // Processar ação
-  if (event.action) {
-    switch (event.action) {
-      case 'answer':
-      case 'answer_now':
-        // Abrir página de perguntas
-        event.waitUntil(
-          openUrl(data.url || '/agente', data.questionId)
-        );
-        trackPushEvent('clicked_answer', data);
-        break;
+  const url = data.url || '/agente';
+  const fullUrl = data.questionId
+    ? `${url}?questionId=${data.questionId}&source=push`
+    : `${url}?source=push`;
 
-      case 'later':
-        // Apenas fechar, usuário verá depois
-        trackPushEvent('clicked_later', data);
-        break;
-
-      default:
-        event.waitUntil(
-          openUrl(data.url || '/')
-        );
-    }
-  } else {
-    // Clique na notificação (não na ação)
-    event.waitUntil(
-      openUrl(data.url || '/agente', data.questionId)
-    );
-    trackPushEvent('clicked', data);
-  }
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      // Focus existing window
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin)) {
+          return client.focus().then(c => c.navigate(fullUrl));
+        }
+      }
+      // Open new window
+      return clients.openWindow(fullUrl);
+    })
+  );
 });
 
-// Função para abrir URL
-async function openUrl(url, questionId) {
-  // Adicionar questionId na URL se disponível
-  if (questionId && !url.includes('questionId')) {
-    url += (url.includes('?') ? '&' : '?') + `questionId=${questionId}&source=push`;
-  } else if (!url.includes('source=push')) {
-    url += (url.includes('?') ? '&' : '?') + 'source=push';
-  }
-
-  const urlToOpen = new URL(url, self.location.origin).href;
-
-  // Procurar por janelas/abas existentes
-  const windowClients = await clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  });
-
-  // Verificar se já existe uma aba aberta do PWA
-  for (const windowClient of windowClients) {
-    // Verificar se é nosso PWA (não apenas mesma origem)
-    if (windowClient.url.includes(self.location.origin) &&
-        (windowClient.url.includes('/agente') ||
-         windowClient.url.includes('/answer/') ||
-         windowClient.url === self.location.origin + '/')) {
-      // Focar na aba existente e navegar
-      await windowClient.focus();
-      await windowClient.navigate(urlToOpen);
-      return;
-    }
-  }
-
-  // Se não houver aba aberta, abrir uma nova
-  await clients.openWindow(urlToOpen);
-}
-
-// Analytics básico
-function trackPushEvent(action, data) {
-  // Enviar evento para analytics (se configurado)
-  fetch('/api/analytics/push', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action,
-      type: data.type,
-      questionId: data.questionId,
-      timestamp: Date.now()
-    })
-  }).catch(() => {
-    // Falha silenciosa em analytics
-  });
-}
-
-// Evento de push subscription change
+// Push subscription change
 self.addEventListener('pushsubscriptionchange', (event) => {
   console.log('[SW] Push subscription changed');
 
@@ -563,136 +340,221 @@ self.addEventListener('pushsubscriptionchange', (event) => {
     self.registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    })
-    .then(subscription => {
-      // Enviar nova subscription para o servidor
+    }).then(subscription => {
       return fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscription,
-          resubscribe: true
-        })
+        body: JSON.stringify({ subscription, resubscribe: true })
       });
     })
   );
 });
 
-// Helper: converter VAPID key
+// ==========================================
+// BACKGROUND SYNC - For missed notifications
+// ==========================================
+
+self.addEventListener('sync', (event) => {
+  console.log(`[SW] Sync event: ${event.tag}`);
+
+  if (event.tag === 'check-notifications' || event.tag === 'sync-questions') {
+    event.waitUntil(checkForMissedNotifications());
+  }
+
+  if (event.tag === 'keep-alive') {
+    event.waitUntil(keepAliveSync());
+  }
+});
+
+async function checkForMissedNotifications() {
+  try {
+    const response = await fetch('/api/push/check-missed');
+    const data = await response.json();
+
+    if (data.missedNotifications > 0) {
+      playNotificationSound('/notification-new.mp3', 0.8);
+
+      await self.registration.showNotification('ML Agent', {
+        body: `${data.missedNotifications} notificacoes nao lidas`,
+        icon: '/mlagent-logo-3d.png',
+        badge: '/icons/icon-96x96.png',
+        tag: 'missed-notifications',
+        requireInteraction: true,
+        data: { url: '/agente' }
+      });
+    }
+  } catch (err) {
+    console.error('[SW] Check missed error:', err);
+  }
+}
+
+async function keepAliveSync() {
+  try {
+    await fetch('/api/push/keep-alive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    console.log('[SW] Keep-alive success');
+  } catch (err) {
+    console.error('[SW] Keep-alive error:', err);
+  }
+}
+
+// ==========================================
+// PERIODIC SYNC - iOS/Windows keep-alive
+// ==========================================
+
+self.addEventListener('periodicsync', (event) => {
+  console.log(`[SW] Periodic sync: ${event.tag}`);
+
+  if (event.tag === 'check-questions' || event.tag === 'keep-alive') {
+    event.waitUntil(
+      Promise.all([
+        keepAliveSync(),
+        checkForNewQuestions()
+      ])
+    );
+  }
+});
+
+async function checkForNewQuestions() {
+  try {
+    const response = await fetch('/api/push/check-questions');
+    const data = await response.json();
+
+    if (data.newQuestions > 0) {
+      playNotificationSound('/notification-new.mp3', 0.9);
+
+      await self.registration.showNotification('Novas Perguntas', {
+        body: `${data.newQuestions} perguntas aguardando`,
+        icon: '/mlagent-logo-3d.png',
+        badge: '/icons/icon-96x96.png',
+        tag: 'new-questions',
+        requireInteraction: true,
+        vibrate: [200, 100, 200],
+        data: { url: '/agente' }
+      });
+    }
+  } catch (err) {
+    console.error('[SW] Check questions error:', err);
+  }
+}
+
+async function registerPeriodicSync() {
+  try {
+    const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+
+    if (status.state === 'granted') {
+      await self.registration.periodicSync.register('check-questions', {
+        minInterval: 15 * 60 * 1000 // 15 minutes
+      });
+      await self.registration.periodicSync.register('keep-alive', {
+        minInterval: 5 * 60 * 1000 // 5 minutes
+      });
+      console.log('[SW] Periodic sync registered');
+    }
+  } catch (err) {
+    console.log('[SW] Periodic sync not supported:', err.message);
+  }
+}
+
+// ==========================================
+// HEARTBEAT - Keep SW alive
+// ==========================================
+
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+  if (heartbeatInterval) return;
+
+  heartbeatInterval = setInterval(async () => {
+    console.log(`[SW v${SW_VERSION}] Heartbeat - ${new Date().toISOString()}`);
+
+    const clientList = await clients.matchAll();
+
+    if (clientList.length > 0) {
+      // Register sync to check notifications
+      try {
+        await self.registration.sync.register('check-notifications');
+      } catch {
+        // Sync not supported
+      }
+
+      // Ping server to keep subscription active
+      keepAliveSync().catch(() => {});
+    }
+  }, 3 * 60 * 1000); // Every 3 minutes
+}
+
+startHeartbeat();
+
+// ==========================================
+// MESSAGE HANDLER - Communication with clients
+// ==========================================
+
+self.addEventListener('message', (event) => {
+  const { type, data } = event.data || {};
+
+  switch (type) {
+    case 'SKIP_WAITING':
+      self.skipWaiting();
+      break;
+
+    case 'KEEP_ALIVE':
+      console.log('[SW] Keep-alive ping from client');
+      event.ports[0]?.postMessage({ status: 'alive', version: SW_VERSION });
+      break;
+
+    case 'CHECK_NOTIFICATIONS':
+      checkForMissedNotifications();
+      break;
+
+    case 'REGISTER_PUSH':
+      // Re-subscribe to push
+      self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      }).then(subscription => {
+        event.ports[0]?.postMessage({ subscription: subscription.toJSON() });
+      }).catch(err => {
+        event.ports[0]?.postMessage({ error: err.message });
+      });
+      break;
+  }
+});
+
+// ==========================================
+// HELPERS
+// ==========================================
+
+function playNotificationSound(sound, volume = 0.8, repeat = 1) {
+  clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+    clientList.forEach(client => {
+      client.postMessage({
+        type: 'PLAY_NOTIFICATION_SOUND',
+        sound,
+        volume,
+        repeat,
+        timestamp: Date.now()
+      });
+    });
+  }).catch(() => {});
+}
+
+function truncate(str, maxLength) {
+  if (!str) return '';
+  return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = self.atob(base64);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
   const outputArray = new Uint8Array(rawData.length);
-
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray;
 }
 
-// Background Sync para reenviar notificações perdidas - Best Practice 2025
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'check-notifications') {
-    console.log('[SW] Background sync: checking for missed notifications');
-    event.waitUntil(
-      fetch('/api/push/check-missed')
-        .then(response => response.json())
-        .then(data => {
-          if (data.missedNotifications > 0) {
-            return self.registration.showNotification('🔔 ML Agent', {
-              body: `Você tem ${data.missedNotifications} notificações não lidas`,
-              icon: '/mlagent-logo-3d.png',
-              badge: '/icons/icon-72x72.png',
-              tag: 'missed-notifications',
-              requireInteraction: true, // Manter visível até interação
-              data: { url: '/agente' }
-            });
-          }
-        })
-        .catch(err => console.error('[SW] Background sync error:', err))
-    );
-  }
-
-  // Sync para verificar novas perguntas
-  if (event.tag === 'sync-questions') {
-    console.log('[SW] Syncing questions...');
-    event.waitUntil(
-      fetch('/api/agent/questions-multi')
-        .then(response => response.json())
-        .then(data => {
-          if (data.questions && data.questions.length > 0) {
-            // Cache questions for offline access
-            return caches.open(CACHE_NAME).then(cache => {
-              return cache.put('/api/agent/questions-multi',
-                new Response(JSON.stringify(data)));
-            });
-          }
-        })
-        .catch(err => console.error('[SW] Questions sync error:', err))
-    );
-  }
-});
-
-// Periodic Background Sync (para navegadores que suportam) - Best Practice 2025
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'check-questions') {
-    console.log('[SW] Periodic sync: checking for new questions');
-    event.waitUntil(
-      fetch('/api/push/check-questions')
-        .then(response => response.json())
-        .then(data => {
-          if (data.newQuestions > 0) {
-            // Play notification sound
-            self.clients.matchAll().then(clients => {
-              clients.forEach(client => {
-                client.postMessage({
-                  type: 'play-sound',
-                  sound: '/notification-new.mp3'
-                });
-              });
-            });
-
-            return self.registration.showNotification('🔔 Novas Perguntas', {
-              body: `${data.newQuestions} perguntas aguardando resposta`,
-              icon: '/mlagent-logo-3d.png',
-              badge: '/icons/icon-72x72.png',
-              tag: 'new-questions',
-              requireInteraction: true,
-              vibrate: [200, 100, 200],
-              data: { url: '/agente' }
-            });
-          }
-        })
-        .catch(err => console.error('[SW] Periodic sync error:', err))
-    );
-  }
-});
-
-// Heartbeat para manter service worker ativo - Optimized for 2025
-setInterval(() => {
-  console.log(`[SW v${SW_VERSION}] Heartbeat - ${new Date().toISOString()}`);
-
-  // Verificar se há clientes conectados
-  clients.matchAll().then(clients => {
-    if (clients.length > 0) {
-      console.log(`[SW] Active clients: ${clients.length}`);
-
-      // Register sync if needed
-      self.registration.sync.register('check-notifications')
-        .catch(err => console.log('[SW] Sync registration failed:', err));
-    }
-  });
-}, 5 * 60 * 1000); // A cada 5 minutos
-
-// Wake Lock API to keep app active (experimental)
-if ('wakeLock' in navigator) {
-  navigator.wakeLock.request('screen').catch(() => {
-    console.log('[SW] Wake Lock not supported');
-  });
-}
-
-console.log(`[SW v${SW_VERSION}] ML Agent Service Worker loaded - Production Ready 2025`);
+console.log(`[SW v${SW_VERSION}] ML Agent Service Worker loaded - iOS PWA Production 2025`);

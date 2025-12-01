@@ -1,50 +1,25 @@
 {
   "name": "ML Agent",
   "short_name": "ML Agent",
-  "description": "Automação inteligente para vendedores do Mercado Livre com notificações push 24/7. Responda perguntas automaticamente com IA, gerencie múltiplas contas e monitore suas vendas em tempo real.",
-  "start_url": "/",
+  "description": "Automação inteligente para vendedores do Mercado Livre",
+  "start_url": "/agente",
   "scope": "/",
+  "id": "/agente",
   "display": "standalone",
-  "display_override": ["fullscreen", "standalone", "minimal-ui"],
-  "orientation": "any",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
   "theme_color": "#000000",
   "background_color": "#000000",
   "lang": "pt-BR",
   "dir": "ltr",
-  "categories": ["business", "productivity", "utilities", "shopping"],
+  "categories": ["business", "productivity"],
   "prefer_related_applications": false,
-  "iarc_rating_id": "",
-  "screenshots": [
-    {
-      "src": "/screenshots/desktop-dashboard.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Dashboard principal com métricas em tempo real"
-    },
-    {
-      "src": "/screenshots/desktop-questions.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Gerenciamento de perguntas com IA"
-    },
-    {
-      "src": "/screenshots/mobile-dashboard.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Dashboard mobile responsivo"
-    },
-    {
-      "src": "/screenshots/mobile-notifications.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Notificações push em tempo real"
-    }
-  ],
   "icons": [
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
     {
       "src": "/icons/icon-72x72.png",
       "sizes": "72x72",
@@ -58,12 +33,6 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/ios-icon-120.png",
-      "sizes": "120x120",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
       "src": "/icons/icon-128x128.png",
       "sizes": "128x128",
       "type": "image/png",
@@ -76,52 +45,10 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/ios-icon-152.png",
-      "sizes": "152x152",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/ios-icon-167.png",
-      "sizes": "167x167",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/ios-icon-180.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-144x144.png",
-      "sizes": "144x144",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-128x128.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-384x384.png",
@@ -133,17 +60,11 @@
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-1024x1024.png",
-      "sizes": "1024x1024",
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     }

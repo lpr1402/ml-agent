@@ -81,8 +81,8 @@ class BrowserNotificationService {
       // Notificação profissional: contexto completo para o vendedor
       const notification = new Notification(`🔔 Nova Pergunta - ${data.sellerName}`, {
         body: `Um cliente enviou uma pergunta sobre "${truncatedProduct}":\n\n${truncatedQuestion}`,
-        icon: '/mlagent-logo-3d.svg', // Logo ML Agent 3D SVG (renderiza maior)
-        badge: '/mlagent-logo-3d.svg',
+        icon: '/mlagent-logo-3d.png', // Logo ML Agent 3D PNG
+        badge: '/mlagent-logo-3d.png',
         tag: `question-${data.sequentialId}`,
         requireInteraction: false, // Não manter aberta
         silent: false
@@ -136,8 +136,8 @@ class BrowserNotificationService {
       
       const notification = new Notification('⚠️ ML Agent - Erro', {
         body: data.message,
-        icon: '/mlagent-logo-3d.svg',
-        badge: '/mlagent-logo-3d.svg',
+        icon: '/mlagent-logo-3d.png',
+        badge: '/mlagent-logo-3d.png',
         tag: data.questionId ? `error-${data.questionId}` : 'error',
         requireInteraction: true
       })
@@ -166,8 +166,8 @@ class BrowserNotificationService {
       
       const notification = new Notification('🔔 ML Agent - Teste', {
         body: 'Notificações ativadas! Você receberá alertas de novas perguntas.',
-        icon: '/mlagent-logo-3d.svg',
-        badge: '/mlagent-logo-3d.svg'
+        icon: '/mlagent-logo-3d.png',
+        badge: '/mlagent-logo-3d.png'
       })
       
       setTimeout(() => notification.close(), 3000)

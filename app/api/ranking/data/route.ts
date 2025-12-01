@@ -72,19 +72,22 @@ export async function GET() {
     // 🎖️ Achievements - Calcular progresso para todas as conquistas
     // Usar stats da primeira conta (ou somar todas? - vou usar a organização toda)
     const orgStats = {
+      lightningCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.lightningCount || 0), 0),
       ultraFastCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.ultraFastCount || 0), 0),
       fastResponsesCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.fastResponsesCount || 0), 0),
+      currentStreak: Math.max(...mlAccounts.map(acc => acc.xpTracking?.currentStreak || 0)),
+      bestStreak: Math.max(...mlAccounts.map(acc => acc.xpTracking?.bestStreak || 0)),
       questionsAnswered: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.questionsAnswered || 0), 0),
-      longestStreak: Math.max(...mlAccounts.map(acc => acc.xpTracking?.longestStreak || 0)),
       firstApprovalCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.firstApprovalCount || 0), 0),
-      earlyBirdCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.earlyBirdCount || 0), 0)
+      earlyBirdCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.earlyBirdCount || 0), 0),
+      lateNightCount: mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.lateNightCount || 0), 0)
     }
 
     // Buscar achievements desbloqueados de todas as contas
     const allAchievements = mlAccounts.flatMap(acc => acc.xpTracking?.achievements || [])
 
-    // Mostrar TODOS os tiers de achievements (30 total)
-    const achievementProgress = AchievementChecker.calculateAllTiersProgress(orgStats, allAchievements)
+    // Mostrar TODOS os tiers de achievements (60 total)
+    const achievementProgress = AchievementChecker.calculateAllProgress(orgStats, allAchievements)
 
     const achievements = achievementProgress.map(progress => {
       const def = ACHIEVEMENTS_MAP[progress.achievementId]
@@ -100,7 +103,8 @@ export async function GET() {
         tierName: def.tierName,
         title: def.title,
         description: def.description,
-        iconType: def.iconType,
+        emoji: def.emoji,
+        iconType: def.type, // 🎯 Mapeamento do tipo para iconType (usado pelo componente)
         progress: progress.progress,
         total: progress.total,
         xpReward: def.xpReward,

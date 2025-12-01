@@ -219,7 +219,7 @@ async function migrateHistoricalXP() {
       console.log(`   Tempo Médio: ${Math.round(xp.avgResponseTimeMinutes)} min`)
       console.log(`   Ultra Rápidas (< 5min): ${xp.ultraFastCount}`)
       console.log(`   Rápidas (< 30min): ${xp.fastResponsesCount}`)
-      console.log(`   Sequência Máxima: ${xp.longestStreak}x`)
+      console.log(`   Sequência Máxima: ${xp.bestStreak}x`)
       console.log(`   Primeira Aprovação: ${xp.firstApprovalCount}`)
       console.log(`   Conquistas: ${xp.achievements.length}`)
 

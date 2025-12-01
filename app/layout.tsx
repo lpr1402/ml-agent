@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { AuthWrapper } from "@/components/auth-wrapper";
 import { PWAInitializer } from "@/components/pwa-initializer";
 import { IOSPWAHandler } from "@/components/ios-pwa-handler";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -14,134 +15,76 @@ const plusJakarta = Plus_Jakarta_Sans({
   display: 'swap',
 });
 
+/**
+ * iOS PWA 2025 - Viewport Configuration
+ * - viewport-fit: cover = fullscreen no iOS (cobre safe areas)
+ * - userScalable: false = previne zoom acidental
+ */
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1, // iOS PWA: Prevenir zoom que pode quebrar fullscreen
+  maximumScale: 1,
   minimumScale: 1,
-  userScalable: false, // iOS PWA: Desabilitar zoom para manter fullscreen
-  themeColor: '#000000',
+  userScalable: false,
   viewportFit: 'cover',
+  themeColor: '#000000',
   colorScheme: 'dark',
 };
 
+/**
+ * iOS PWA 2025 - Metadata Configuration
+ */
 export const metadata: Metadata = {
   metadataBase: new URL('https://gugaleo.axnexlabs.com.br'),
   title: {
     default: 'ML Agent',
     template: '%s | ML Agent'
   },
-  description: "Automação inteligente para vendedores do Mercado Livre com notificações push 24/7",
+  description: "Automação inteligente para vendedores do Mercado Livre",
   manifest: '/manifest.json',
   applicationName: 'ML Agent',
-  authors: [{ name: 'AxnexLabs' }],
-  generator: 'Next.js',
-  keywords: ['mercado livre', 'automação', 'vendas', 'ml agent', 'perguntas'],
-  referrer: 'origin-when-cross-origin',
-  robots: 'index, follow',
-  alternates: {
-    canonical: 'https://gugaleo.axnexlabs.com.br/agente'
-  },
+
+  // Favicons para browser (aba do navegador)
   icons: {
     icon: [
+      { url: '/favicon.ico', sizes: 'any' },
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
       { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
     ],
     shortcut: '/favicon.ico',
+    // Apple Touch Icons - para iOS home screen
     apple: [
-      { url: '/apple-touch-icon.png', sizes: '180x180' },
-      { url: '/icons/ios-icon-152.png', sizes: '152x152' },
-      { url: '/icons/ios-icon-120.png', sizes: '120x120' },
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
   },
+
+  // iOS PWA Configuration
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'ML Agent',
-    startupImage: [
-      // iPhone 14/15 Pro Max
-      {
-        url: '/splash/splash-1290x2796.png',
-        media: '(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)',
-      },
-      // iPhone 14/15 Pro
-      {
-        url: '/splash/splash-1179x2556.png',
-        media: '(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)',
-      },
-      // iPhone 13/12 Pro Max
-      {
-        url: '/splash/splash-1284x2778.png',
-        media: '(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)',
-      },
-      // iPhone 13/12/11 Pro, X, XS
-      {
-        url: '/splash/splash-1125x2436.png',
-        media: '(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)',
-      },
-      // iPhone 11, XR
-      {
-        url: '/splash/splash-828x1792.png',
-        media: '(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)',
-      },
-      // iPad Pro 12.9"
-      {
-        url: '/splash/splash-2048x2732.png',
-        media: '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)',
-      },
-      // iPad Pro 11"
-      {
-        url: '/splash/splash-1668x2388.png',
-        media: '(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)',
-      },
-      // iPad 10.5"
-      {
-        url: '/splash/splash-1668x2224.png',
-        media: '(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2)',
-      },
-      // iPad Mini, Air
-      {
-        url: '/splash/splash-1536x2048.png',
-        media: '(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)',
-      },
-    ],
   },
+
+  // Desabilitar detecção automática de telefone
   formatDetection: {
     telephone: false,
   },
+
+  // Open Graph
   openGraph: {
     type: 'website',
-    siteName: 'ML Agent Pro',
+    siteName: 'ML Agent',
     title: 'ML Agent',
-    description: 'Plataforma premium de automação para vendedores do Mercado Livre com notificações 24/7',
+    description: 'Automação inteligente para vendedores do Mercado Livre',
     images: ['/icons/icon-512x512.png'],
   },
-  twitter: {
-    card: 'summary',
-    title: 'ML Agent Pro',
-    description: 'Plataforma para vendedores do Mercado Livre',
-    images: ['/icons/icon-512x512.png'],
-  },
+
+  // Outras meta tags importantes
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent',
     'apple-mobile-web-app-title': 'ML Agent',
-    'apple-mobile-web-app-orientations': 'portrait-any',
-    'application-name': 'ML Agent',
-    'msapplication-TileColor': '#000000',
-    'msapplication-TileImage': '/icons/icon-144x144.png',
-    'msapplication-config': 'none',
-    'msapplication-tap-highlight': 'no',
-    'msapplication-navbutton-color': '#000000',
-    'msapplication-starturl': '/',
-    'msapplication-tooltip': 'ML Agent - Automação para Mercado Livre',
-    'msapplication-window': 'width=1024;height=768',
-    'theme-color': '#000000',
-    'format-detection': 'telephone=no',
-    'color-scheme': 'dark',
   },
 };
 
@@ -153,99 +96,66 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={plusJakarta.variable}>
       <head>
-        {/* PWA Meta Tags - Produção 2025 */}
+        {/* ========================================
+            iOS PWA 2025 - CONFIGURAÇÃO COMPLETA
+            ======================================== */}
+
+        {/* 1. PWA Capability - CRÍTICO para iOS */}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="ML Agent" />
 
-        {/* Canonical URL - força iOS a usar /agente como URL principal */}
-        <link rel="canonical" href="https://gugaleo.axnexlabs.com.br/agente" />
+        {/* 2. Favicons do Browser (aba do navegador) */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
 
-        {/* Script CRÍTICO: Forçar /agente no iOS PWA + Limpar query params */}
+        {/* 3. Apple Touch Icons - Ícone da Home Screen iOS */}
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" sizes="167x167" href="/icons/ios-icon-167.png" />
+        <link rel="apple-touch-icon" sizes="152x152" href="/icons/ios-icon-152.png" />
+        <link rel="apple-touch-icon" sizes="120x120" href="/icons/ios-icon-120.png" />
+
+        {/* 4. Script de Redirecionamento iOS PWA */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
-            // Detectar se está rodando como PWA standalone
-            var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                              window.matchMedia('(display-mode: fullscreen)').matches ||
-                              window.navigator.standalone === true;
-
+            // Detectar iOS PWA standalone
+            var isStandalone = window.navigator.standalone === true ||
+                              window.matchMedia('(display-mode: standalone)').matches;
             var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-            var search = window.location.search;
             var pathname = window.location.pathname;
-            var hash = window.location.hash;
 
-            // 🎯 iOS PWA: SEMPRE redirecionar para /agente quando abrir em standalone
-            // Isso garante que mesmo que o iOS tenha salvado /login, sempre abre no dashboard
+            // iOS PWA: Redirecionar para /agente se estiver em standalone
             if (isIOS && isStandalone) {
-              console.log('[iOS PWA] Standalone mode detected - pathname:', pathname);
-
-              // Lista de páginas que PODEM ser acessadas em standalone
-              var allowedPages = ['/agente', '/agente/', '/answer/', '/approve/'];
-              var isAllowedPage = allowedPages.some(function(page) {
-                return pathname.startsWith(page);
+              var allowedPaths = ['/agente', '/answer/', '/approve/', '/auth/'];
+              var isAllowed = allowedPaths.some(function(p) {
+                return pathname.startsWith(p);
               });
+              var isAsset = pathname.startsWith('/api/') ||
+                           pathname.startsWith('/_next/') ||
+                           /\\.(js|css|png|jpg|svg|ico|json)$/.test(pathname);
 
-              // Se não está em página permitida E não é API/assets, redirecionar para /agente
-              var isApiOrAsset = pathname.startsWith('/api/') ||
-                                 pathname.startsWith('/_next/') ||
-                                 /\\.(js|css|png|jpg|svg|ico)$/.test(pathname);
-
-              if (!isAllowedPage && !isApiOrAsset) {
-                console.log('[iOS PWA] Redirecting from', pathname, 'to /agente');
+              if (!isAllowed && !isAsset && pathname !== '/') {
                 window.location.replace('/agente');
-                return;
-              }
-            }
-
-            // iOS PWA: Se tem query params OAuth stale, redirecionar para URL limpa
-            if (search && (search.includes('code=') || search.includes('state='))) {
-              console.log('[iOS PWA Protection] Detected OAuth params in URL, cleaning...');
-
-              // Se está em standalone, fazer replace na mesma aba
-              if (isStandalone) {
-                console.log('[iOS PWA] Standalone mode detected, cleaning URL in place');
-                window.history.replaceState({}, '', pathname + hash);
-              } else {
-                // Se não está em standalone mas tem params OAuth, fazer redirect hard
-                console.log('[iOS PWA] Browser mode with OAuth params, redirecting to clean URL');
-                window.location.replace(pathname + hash);
+              } else if (pathname === '/' || pathname === '/login') {
+                window.location.replace('/agente');
               }
             }
           })();
         `}} />
-
-        {/* Ícone principal iOS - imagem especial para tela inicial */}
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon-precomposed.png" />
-        <link rel="icon" type="image/png" href="/apple-touch-icon.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="apple-touch-icon" sizes="152x152" href="/icons/ios-icon-152.png" />
-        <link rel="apple-touch-icon" sizes="167x167" href="/icons/ios-icon-167.png" />
-        <link rel="apple-touch-icon" sizes="120x120" href="/icons/ios-icon-120.png" />
-
-        {/* Windows Tile Images - Microsoft Edge */}
-        <meta name="msapplication-square70x70logo" content="/icons/icon-72x72.png" />
-        <meta name="msapplication-square150x150logo" content="/icons/icon-152x152.png" />
-        <meta name="msapplication-wide310x150logo" content="/icons/icon-192x192.png" />
-        <meta name="msapplication-square310x310logo" content="/icons/icon-384x384.png" />
-
-        {/* iOS Splash Screens - Todas as resoluções */}
-        <link rel="apple-touch-startup-image" href="/splash/splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
       </head>
       <body className={`${plusJakarta.className} antialiased font-sans bg-black`}>
-        <AuthProvider>
-          <AuthWrapper>
-            <Providers>{children}</Providers>
-            <PWAInitializer />
-            <IOSPWAHandler />
-          </AuthWrapper>
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <AuthWrapper>
+              <Providers>{children}</Providers>
+              <PWAInitializer />
+              <IOSPWAHandler />
+            </AuthWrapper>
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

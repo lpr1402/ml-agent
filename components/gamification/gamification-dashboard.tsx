@@ -107,13 +107,17 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
 }
 
 const ACHIEVEMENT_ICONS: Record<string, typeof Zap> = {
-  speed: Zap,
-  dedication: Flame,
+  // 🎯 Achievement types do sistema de gamificação
+  lightning: Zap,      // < 2 min (5x XP!) - Lightning
+  speed: Zap,          // < 5 min (3x XP!) - Ultra Rápido
+  streak: Flame,       // Dias consecutivos
+  volume: Target,      // Total de perguntas
+  quality: Star,       // Primeira aprovação
+  dedication: Flame,   // Horários especiais (madrugada/manhã)
+  // Legacy/fallbacks
   conversion: TrendingUp,
   early_bird: Clock,
-  milestone: Target,
-  quality: Star,
-  streak: Flame
+  milestone: Target
 }
 
 // Helper para formatar tempo

@@ -50,7 +50,7 @@ const nextConfig = {
                 "default-src 'self' https://gugaleo.axnexlabs.com.br",
                 "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://gugaleo.axnexlabs.com.br",
                 "style-src 'self' 'unsafe-inline'",
-                "img-src 'self' data: https: http: *.mlstatic.com",
+                "img-src 'self' data: https: http: *.mlstatic.com api.dicebear.com",
                 "connect-src 'self' https://gugaleo.axnexlabs.com.br wss://gugaleo.axnexlabs.com.br https://api.mercadolibre.com https://api.mercadolivre.com.br",
                 "worker-src 'self' blob:"
               ].join('; ')
@@ -92,7 +92,7 @@ const nextConfig = {
               "default-src 'self' https://gugaleo.axnexlabs.com.br",
               "script-src 'self' 'unsafe-inline' https://gugaleo.axnexlabs.com.br",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https: http2.mlstatic.com *.mlstatic.com",
+              "img-src 'self' data: https: http2.mlstatic.com *.mlstatic.com api.dicebear.com",
               "font-src 'self' data:",
               "connect-src 'self' https://gugaleo.axnexlabs.com.br https://api.mercadolibre.com https://api.mercadolivre.com.br wss://gugaleo.axnexlabs.com.br",
               "frame-src 'none'",
@@ -130,6 +130,11 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'gugaleo.axnexlabs.com.br'
+      },
+      {
+        // DiceBear Avatars for gamification characters
+        protocol: 'https',
+        hostname: 'api.dicebear.com'
       }
     ],
     // Force HTTPS loader for all external images

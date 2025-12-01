@@ -1,6 +1,15 @@
+/**
+ * API Route: Retry Failed Answer
+ * Reenviar resposta que falhou ou reprocessar com Gemini
+ *
+ * MIGRADO: N8N -> Gemini 3.0 Pro (2025-12)
+ */
+
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { logger } from "@/lib/logger"
+import { processQuestionWithAgent } from "@/lib/agent/core/agent-integration"
+import { fetchCompleteProductData } from "@/lib/ml-api/enhanced-product-fetcher"
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
         mlQuestionId: question.mlQuestionId
       })
 
-      // Reusar endpoint de aprovação sem reprocessar pelo N8N
+      // Reusar endpoint de aprovação sem reprocessar
       const approveResponse = await fetch(
         new URL('/api/agent/approve-question', request.url).toString(),
         {
@@ -81,7 +90,7 @@ export async function POST(request: NextRequest) {
       const result = await approveResponse.json()
 
       if (approveResponse.ok) {
-        logger.info("[Retry] Successfully sent to ML without N8N reprocessing", {
+        logger.info("[Retry] Successfully sent to ML without reprocessing", {
           questionId,
           mlQuestionId: question.mlQuestionId
         })
@@ -101,7 +110,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           message: "Answer sent to ML without reprocessing",
-          reprocessedN8N: false,
+          reprocessed: false,
           result
         })
       } else {
@@ -113,13 +122,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: false,
           error: result.error || "Failed to send to ML",
-          reprocessedN8N: false
+          reprocessed: false
         }, { status: 500 })
       }
     }
 
-    // Se não tem resposta da IA, precisa reprocessar pelo N8N
-    logger.info("[Retry] No AI response found, reprocessing through N8N", {
+    // Se não tem resposta da IA, precisa reprocessar com Gemini
+    logger.info("[Retry] No AI response found, reprocessing with Gemini", {
       questionId,
       mlQuestionId: question.mlQuestionId
     })
@@ -144,74 +153,114 @@ export async function POST(request: NextRequest) {
       logger.warn('[Retry] Failed to emit processing event', { error: wsError })
     }
 
-    // Preparar payload para N8N
-    const n8nPayload = {
-      mlQuestionId: question.mlQuestionId,
-      text: question.text,
-      itemId: question.itemId,
-      itemTitle: question.itemTitle || "Produto",
-      itemPrice: question.itemPrice || 0,
-      itemPermalink: question.itemPermalink || "",
-      sellerId: question.sellerId,
-      customerId: question.customerId,
-      dateCreated: question.dateCreated,
-      accountId: question.mlAccount.id,
-      accountNickname: question.mlAccount.nickname || 'Unknown',
-      organizationId: question.mlAccount.organizationId
+    // Descriptografar token para buscar dados
+    const { decryptToken } = await import('@/lib/security/encryption')
+    let mlToken: string | null = null
+
+    try {
+      mlToken = decryptToken({
+        encrypted: question.mlAccount.accessToken,
+        iv: question.mlAccount.accessTokenIV!,
+        authTag: question.mlAccount.accessTokenTag!
+      })
+    } catch (error) {
+      logger.warn("[Retry] Could not decrypt token, using fallback data")
     }
 
-    // Enviar ao N8N
+    // Buscar dados completos do produto
+    let completeProductData = null
+    if (mlToken && question.itemId) {
+      completeProductData = await fetchCompleteProductData(question.itemId, mlToken)
+    }
+
+    if (!completeProductData) {
+      completeProductData = {
+        id: question.itemId,
+        title: question.itemTitle || 'Produto',
+        price: question.itemPrice || 0,
+        permalink: question.itemPermalink || '',
+        available_quantity: 1,
+        sold_quantity: 0,
+        condition: 'not_specified',
+        status: '',
+        category_id: '',
+        listing_type_id: ''
+      }
+    }
+
+    // ✅ Processar com Gemini 3.0 Pro
     try {
-      const n8nResponse = await fetch(
-        "https://n8n.mercadopreciso.com/webhook/9e3797d2-9de8-4be2-b8e7-69ba983c60f8",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(n8nPayload)
-        }
-      )
+      const savedQuestion = {
+        id: question.id,
+        mlQuestionId: question.mlQuestionId,
+        mlAccountId: question.mlAccountId,
+        text: question.text,
+        itemId: question.itemId,
+        itemTitle: question.itemTitle,
+        itemPrice: question.itemPrice,
+        itemPermalink: question.itemPermalink,
+        customerId: question.customerId,
+        sellerId: question.sellerId,
+        dateCreated: question.dateCreated,
+        receivedAt: question.receivedAt,
+        status: 'PROCESSING'
+      }
 
-      if (n8nResponse.ok) {
-        logger.info("[Retry] Question sent to N8N for reprocessing", {
-          questionId,
-          mlQuestionId: question.mlQuestionId
-        })
+      const enrichedData = {
+        itemDetails: completeProductData,
+        itemDescription: completeProductData?.description || null,
+        sellerData: null,
+        buyerData: null
+      }
 
-        return NextResponse.json({
-          success: true,
-          message: "Question sent to N8N for reprocessing",
-          reprocessedN8N: true
+      // Chamar agente Gemini (processamento assíncrono)
+      processQuestionWithAgent(savedQuestion, enrichedData)
+        .then(() => {
+          logger.info(`[Retry] ✅ Gemini processing completed for ${question.mlQuestionId}`)
         })
-      } else {
-        const errorText = await n8nResponse.text()
-        logger.error("[Retry] N8N processing failed", {
-          questionId,
-          status: n8nResponse.status,
-          error: errorText
-        })
+        .catch(async (error) => {
+          logger.error(`[Retry] ❌ Gemini processing failed for ${question.mlQuestionId}`, {
+            error: error.message
+          })
 
-        // Marcar como falha
-        await prisma.question.update({
-          where: { id: questionId },
-          data: {
-            status: 'FAILED',
-            failedAt: new Date(),
-            failureReason: `N8N processing failed: ${errorText}`
+          await prisma.question.update({
+            where: { id: questionId },
+            data: {
+              status: 'FAILED',
+              failedAt: new Date(),
+              failureReason: `Erro no Gemini: ${error.message}`
+            }
+          })
+
+          try {
+            const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+            emitQuestionFailed(
+              question.mlQuestionId,
+              `Erro no processamento: ${error.message}`,
+              true,
+              question.mlAccount.organizationId
+            )
+          } catch (wsError) {
+            logger.warn('[Retry] Failed to emit error event', { error: wsError })
           }
         })
 
-        return NextResponse.json({
-          success: false,
-          error: "N8N processing failed",
-          reprocessedN8N: true
-        }, { status: 500 })
-      }
-    } catch (error) {
-      logger.error("[Retry] Error sending to N8N", {
+      logger.info("[Retry] Question sent to Gemini for reprocessing", {
         questionId,
-        error
+        mlQuestionId: question.mlQuestionId
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "Question sent to Gemini for reprocessing",
+        reprocessed: true,
+        engine: 'gemini-3.0-pro'
+      })
+
+    } catch (error: any) {
+      logger.error("[Retry] Error starting Gemini processing", {
+        questionId,
+        error: error.message
       })
 
       await prisma.question.update({
@@ -219,14 +268,14 @@ export async function POST(request: NextRequest) {
         data: {
           status: 'FAILED',
           failedAt: new Date(),
-          failureReason: String(error)
+          failureReason: error.message
         }
       })
 
       return NextResponse.json({
         success: false,
-        error: "Failed to send to N8N",
-        reprocessedN8N: true
+        error: "Failed to start AI processing",
+        reprocessed: true
       }, { status: 500 })
     }
 
@@ -290,7 +339,7 @@ export async function GET(request: NextRequest) {
       ...question,
       hasAiResponse: !!question.aiSuggestion,
       canRetry: question.status === 'FAILED',
-      needsN8N: !question.aiSuggestion
+      needsReprocessing: !question.aiSuggestion
     })
 
   } catch (error) {

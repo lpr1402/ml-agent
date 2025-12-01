@@ -385,12 +385,12 @@ export const circuitBreakers = {
     volumeThreshold: 30,
     errorThresholdPercentage: 60
   }),
-  
-  n8n: new CircuitBreaker({
-    name: 'n8n',
+
+  gemini: new CircuitBreaker({
+    name: 'gemini',
     failureThreshold: 8,
     successThreshold: 3,
-    timeout: 45000, // 45 seconds
+    timeout: 60000, // 60 seconds
     volumeThreshold: 15,
     errorThresholdPercentage: 50
   })

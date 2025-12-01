@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger'
 import { getValidAvatarUrl } from '@/lib/utils/avatar-utils'
 import { useWebSocket } from '@/hooks/use-websocket'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import { QuestionStatus } from '@/lib/constants/question-status'
 import {
@@ -64,6 +64,7 @@ interface QuestionWithAccount {
     nickname: string
     thumbnail?: string | null
     siteId: string
+    organizationId?: string // ✅ FIX: Adicionar para streaming funcionar
   }
 }
 
@@ -132,8 +133,6 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
   }, [currentPage, pageKey])
   const isFetchingRef = useRef(false)
   const notifiedQuestionsRef = useRef<Set<string>>(new Set())
-  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
-  const [lastApprovedQuestion, setLastApprovedQuestion] = useState<QuestionWithAccount | null>(null)
   const [showErrorAnimation, setShowErrorAnimation] = useState(false)
   const [lastError, setLastError] = useState<{question: QuestionWithAccount | null, message: string} | null>(null)
 
@@ -268,6 +267,19 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
         questionId,
         status
       })
+
+      // 🔴 INLINE: Se pergunta foi respondida, remover da lista de pendentes após 4.5 segundos
+      // Mesmo timing do handleQuestionAction para consistência
+      if (status === 'RESPONDED' && statusFilter === 'pending') {
+        setTimeout(() => {
+          setQuestions(prev => prev.filter(q =>
+            q.mlQuestionId !== questionId && q.id !== questionId
+          ))
+          logger.info('[Multi Questions] ✅ Pergunta aprovada removida da lista de pendentes (WebSocket)', {
+            questionId
+          })
+        }, 4500) // 🎯 AUMENTADO: 4.5s = 4s de animação + 0.5s de margem para fade out suave
+      }
 
       // Send browser notification when AI response arrives (only once)
       const notifKey = `${questionId}-${status}`
@@ -554,6 +566,58 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
     return () => clearInterval(interval)
   }, [mounted, isConnected, fetchQuestions])
 
+  // 🔴 FIX CRÍTICO: Reconciliação banco vs WebSocket
+  // Sincroniza dados do banco com estado React para perguntas em processamento
+  useEffect(() => {
+    if (!mounted || !isConnected) return
+
+    const reconcile = setInterval(async () => {
+      // Buscar apenas perguntas em estado transitório (que podem mudar)
+      const transitionQuestions = questions.filter(q =>
+        ['PROCESSING', 'REVISING', 'APPROVED', 'REVIEWING'].includes(q.status)
+      )
+
+      if (transitionQuestions.length === 0) return
+
+      logger.debug('[Multi Questions] Reconciling with database', {
+        count: transitionQuestions.length,
+        statuses: transitionQuestions.map(q => q.status)
+      })
+
+      try {
+        // Re-fetch apenas essas perguntas específicas
+        const ids = transitionQuestions.map(q => q.id)
+        const response = await apiClient.get(`/api/agent/questions-by-ids?ids=${ids.join(',')}`)
+
+        if (response && response.questions) {
+          // Atualizar apenas perguntas que mudaram
+          setQuestions(prev => prev.map(q => {
+            const updated = response.questions.find((uq: any) => uq.id === q.id)
+            if (!updated) return q
+
+            // Se status ou aiSuggestion mudou, atualizar
+            if (updated.status !== q.status || updated.aiSuggestion !== q.aiSuggestion) {
+              logger.info('[Multi Questions] Reconciliation: question updated', {
+                questionId: q.mlQuestionId,
+                oldStatus: q.status,
+                newStatus: updated.status,
+                hadAiSuggestion: !!q.aiSuggestion,
+                hasAiSuggestion: !!updated.aiSuggestion
+              })
+              return { ...q, ...updated }
+            }
+
+            return q
+          }))
+        }
+      } catch (error) {
+        logger.error('[Multi Questions] Reconciliation error', { error })
+      }
+    }, 30000) // A cada 30 segundos
+
+    return () => clearInterval(reconcile)
+  }, [mounted, isConnected, questions, apiClient])
+
   // Função para processar ação em uma pergunta
   const handleQuestionAction = async (
     questionId: string,
@@ -630,22 +694,18 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
           return q
         }))
 
-        // ✅ MOSTRAR ANIMAÇÃO DE SUCESSO APENAS SE REALMENTE ENVIOU AO ML
+        // ✅ APROVAÇÃO BEM-SUCEDIDA: Remover card após animação inline
         // Verificar: success=true E mlAnswerId presente (confirmação do ML)
         if (action === 'approve' && response.mlAnswerId) {
-          const approvedQuestion = questions.find(q => q.id === questionId)
-          if (approvedQuestion) {
-            // Adicionar mlAnswerId à pergunta aprovada
-            setLastApprovedQuestion({
-              ...approvedQuestion,
-              mlAnswerId: response.mlAnswerId
-            } as QuestionWithAccount)
-            setShowSuccessAnimation(true)
-            setTimeout(() => {
-              setShowSuccessAnimation(false)
-              setLastApprovedQuestion(null)
-            }, 3000)
-          }
+          // 🎯 CRITICAL: Remover card da lista após animação inline de sucesso (4.5 segundos)
+          // A animação inline (ApprovalAnimation) é mostrada por 4s no QuestionCard
+          // Aguardar 4.5s para garantir que a animação complete antes de remover
+          setTimeout(() => {
+            setQuestions(prev => prev.filter(q => q.id !== questionId))
+            logger.info('[Multi Questions] Card removed from pending list after approval', {
+              questionId
+            })
+          }, 4500) // 🎯 AUMENTADO: 4.5s = 4s de animação + 0.5s de margem para fade out suave
         }
 
         // Se for aprovação mas SEM mlAnswerId, não mostrar sucesso (pode ser erro silencioso)
@@ -1250,96 +1310,7 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
   // Render principal
   return (
     <>
-      {/* Animação de Sucesso - Feedback Visual Premium */}
-      {showSuccessAnimation && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
-        >
-          {/* Backdrop suave */}
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 10 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, type: 'spring', stiffness: 300, damping: 25 }}
-            className="relative bg-gradient-to-br from-gray-900/90 via-black/90 to-gray-900/90 backdrop-blur-xl rounded-xl border border-gold/20 p-6 shadow-xl shadow-gold/20 max-w-xs mx-4"
-          >
-            {/* Glow Effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-gold/10 rounded-2xl opacity-50 pointer-events-none" />
-
-            <div className="relative flex flex-col items-center gap-6 text-center">
-              {/* Logo ML Agent */}
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-gold/50 to-yellow-500/50 rounded-full blur-[40px] scale-[1.5] animate-pulse" />
-                <Image
-                  src="/mlagent-logo-3d.svg"
-                  alt="ML Agent"
-                  width={60}
-                  height={60}
-                  className="relative drop-shadow-2xl"
-                  style={{
-                    filter: 'drop-shadow(0 15px 40px rgba(255, 230, 0, 0.4))',
-                  }}
-                  priority
-                />
-              </div>
-
-              {/* Check de Sucesso */}
-              <motion.div
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.3, duration: 0.5, type: 'spring' }}
-                className="relative"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/40 to-green-500/40 rounded-full blur-xl" />
-                <div className="relative bg-gradient-to-br from-emerald-600/30 to-green-600/30 rounded-full p-3 border border-emerald-500/60 backdrop-blur-sm">
-                  <CheckCircle className="h-8 w-8 text-emerald-400" strokeWidth={3} />
-                </div>
-              </motion.div>
-
-              {/* Mensagem de Sucesso */}
-              <div className="space-y-2">
-                <h3 className="text-xl font-semibold text-gold">
-                  Resposta Enviada!
-                </h3>
-                <p className="text-sm text-gray-300">
-                  Enviada com sucesso ao Mercado Livre
-                </p>
-                {lastApprovedQuestion && (
-                  <>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Pergunta #{lastApprovedQuestion.sequentialId || 'N/A'} - {lastApprovedQuestion.mlAccount.nickname}
-                    </p>
-                    {/* Mostrar Answer ID do ML se disponível */}
-                    {lastApprovedQuestion.mlAnswerId && (
-                      <div className="mt-3 px-3 py-2 rounded-lg bg-gradient-to-br from-emerald-900/30 to-green-900/30 border border-emerald-500/30">
-                        <p className="text-[10px] text-emerald-400/70 font-medium mb-0.5">
-                          ID da Resposta no ML
-                        </p>
-                        <p className="text-xs text-emerald-300 font-mono font-semibold">
-                          {lastApprovedQuestion.mlAnswerId}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Progress Bar Animation */}
-              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: '0%' }}
-                  animate={{ width: '100%' }}
-                  transition={{ duration: 2, ease: 'easeOut' }}
-                  className="h-full bg-gradient-to-r from-gold via-yellow-500 to-gold"
-                />
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
+      {/* ✅ REMOVIDO: Animação fullscreen - Agora inline no card */}
 
       {/* ❌ Animação de Erro - Feedback Visual Premium */}
       {showErrorAnimation && lastError && (
@@ -1365,7 +1336,7 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-full blur-[40px] scale-[1.5] animate-pulse" />
                 <Image
-                  src="/mlagent-logo-3d.svg"
+                  src="/mlagent-logo-3d.png"
                   alt="ML Agent"
                   width={56}
                   height={56}
@@ -1477,62 +1448,120 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
       )}
 
 
-      {/* Questions List */}
-      <div className="space-y-4">
+      {/* Questions List - Mobile-First Premium */}
+      <div className="space-y-3 sm:space-y-4">
 
-        {/* Empty State */}
+        {/* Empty State - Mobile Optimized */}
         {filteredQuestions.length === 0 && (
-          <div className="text-center py-12">
-            <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-300 mb-2">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="text-center py-8 sm:py-12 px-4"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+            >
+              <MessageSquare className="h-10 w-10 sm:h-12 sm:w-12 text-gray-600 mx-auto mb-3 sm:mb-4" />
+            </motion.div>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-300 mb-1.5 sm:mb-2">
               Nenhuma pergunta encontrada
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs sm:text-sm text-gray-500 max-w-sm mx-auto">
               {statusFilter === 'pending'
                 ? 'Não há perguntas pendentes no momento'
                 : 'Ajuste os filtros para ver mais resultados'}
             </p>
             {isConnected && (
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full" />
-                <p className="text-xs text-green-500">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="flex items-center justify-center gap-2 mt-3 sm:mt-4"
+              >
+                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <p className="text-[10px] sm:text-xs text-emerald-400 font-medium">
                   Novas perguntas aparecerão automaticamente
                 </p>
-              </div>
+              </motion.div>
             )}
-          </div>
+          </motion.div>
         )}
 
-        {/* Questions Cards */}
-        {paginatedQuestions.map((question) => (
-          <QuestionCard
-            key={question.id}
-            question={{
-              ...question,
-              createdAt: new Date(question.dateCreated),
-              updatedAt: new Date(question.dateCreated),
-              mlAccountId: question.mlAccount.id,
-              processedAt: question.aiProcessedAt ? new Date(question.aiProcessedAt) : null,
-              aiProcessedAt: question.aiProcessedAt ? new Date(question.aiProcessedAt) : null,
-              approvedAt: question.approvedAt ? new Date(question.approvedAt) : null,
-              sentToMLAt: question.sentToMLAt ? new Date(question.sentToMLAt) : null,
-              failedAt: question.failedAt ? new Date(question.failedAt) : null,
-              receivedAt: new Date(question.receivedAt),
-              retryCount: 0,
-              webhookEventId: null,
-              n8nEditCount: 0
-            } as any}
-            onApprove={async (answer) => {
-              await handleQuestionAction(question.id, 'approve', { answer })
-            }}
-            onRevise={async (feedback) => {
-              await handleQuestionAction(question.id, 'revise', { feedback })
-            }}
-            onEdit={async (answer) => {
-              await handleQuestionAction(question.id, 'edit', { answer })
-            }}
-          />
-        ))}
+        {/* Questions Cards - AnimatePresence para animações suaves */}
+        <AnimatePresence mode="popLayout">
+          {paginatedQuestions.map((question) => {
+            // 🎯 CRITICAL: Card é removido do array após 2.5s (tempo da animação de aprovação)
+            // AnimatePresence detecta a remoção e aplica exit animation automaticamente
+            return (
+              <motion.div
+                key={question.id}
+                layout
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scale: 1,
+                  height: 'auto'
+                }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.95,
+                  y: -20,
+                  height: 0,
+                  marginBottom: 0,
+                  transition: {
+                    duration: 0.6,
+                    ease: [0.4, 0, 0.2, 1],
+                    opacity: { duration: 0.3 },
+                    scale: { duration: 0.4 },
+                    y: { duration: 0.4 },
+                    height: { duration: 0.5, delay: 0.1 }
+                  }
+                }}
+                transition={{
+                  layout: {
+                    duration: 0.5,
+                    ease: [0.4, 0, 0.2, 1]
+                  },
+                  opacity: { duration: 0.5 },
+                  y: { duration: 0.6, ease: [0.4, 0, 0.2, 1] },
+                  scale: { duration: 0.6, type: 'spring', stiffness: 200, damping: 25 },
+                  height: { duration: 0.5, ease: [0.4, 0, 0.2, 1] }
+                }}
+                className="will-change-transform"
+              >
+                <QuestionCard
+                  question={{
+                    ...question,
+                    createdAt: new Date(question.dateCreated),
+                    updatedAt: new Date(question.dateCreated),
+                    mlAccountId: question.mlAccount.id,
+                    processedAt: question.aiProcessedAt ? new Date(question.aiProcessedAt) : null,
+                    aiProcessedAt: question.aiProcessedAt ? new Date(question.aiProcessedAt) : null,
+                    approvedAt: question.approvedAt ? new Date(question.approvedAt) : null,
+                    sentToMLAt: question.sentToMLAt ? new Date(question.sentToMLAt) : null,
+                    failedAt: question.failedAt ? new Date(question.failedAt) : null,
+                    receivedAt: new Date(question.receivedAt),
+                    retryCount: 0,
+                    webhookEventId: null,
+                    n8nEditCount: 0
+                  } as any}
+                  onApprove={async (answer) => {
+                    const result = await handleQuestionAction(question.id, 'approve', { answer })
+                    // Retornar resultado para QuestionCard poder mostrar feedback apropriado
+                    return result
+                  }}
+                  onEdit={async (answer) => {
+                    await handleQuestionAction(question.id, 'edit', { answer })
+                  }}
+                />
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
 
         {/* Paginação Minimalista no Final */}
         {filteredQuestions.length <= 5 && totalPages > 1 && (
@@ -1593,8 +1622,12 @@ export const MultiAccountQuestions = memo(function MultiAccountQuestions({
           oldLevel={levelUpData.oldLevel}
           newLevel={levelUpData.newLevel}
           levelName={levelUpData.levelName || 'Novo Nível'}
+          levelEmoji={levelUpData.levelEmoji || '🎉'}
           levelColor={levelUpData.levelColor || 'from-gold to-yellow-500'}
           totalXP={levelUpData.newTotalXP || 0}
+          characterEvolved={levelUpData.characterEvolved}
+          oldCharacter={levelUpData.oldCharacter}
+          newCharacter={levelUpData.newCharacter}
         />
       )}
 

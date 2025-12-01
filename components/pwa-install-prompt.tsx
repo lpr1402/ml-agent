@@ -246,7 +246,7 @@ export function PWAInstallPrompt() {
               {/* Logo & Title */}
               <div className="flex flex-col items-center gap-4 mb-6">
                 <Image
-                  src="/mlagent-logo-3d.svg"
+                  src="/mlagent-logo-3d.png"
                   alt="ML Agent"
                   width={80}
                   height={80}
@@ -256,10 +256,17 @@ export function PWAInstallPrompt() {
                   }}
                 />
                 <div className="text-center">
-                  <div className="flex items-baseline justify-center gap-2 mb-1">
-                    <h3 className="text-2xl font-light text-white tracking-wide">ML Agent</h3>
-                    <span className="text-2xl font-extrabold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">PRO</span>
-                  </div>
+                  {/* Logo ML Agent PRO */}
+                  <Image
+                    src="/mlagent-pro-logo.png"
+                    alt="ML Agent PRO"
+                    width={180}
+                    height={50}
+                    className="mb-2 drop-shadow-lg"
+                    style={{
+                      filter: 'drop-shadow(0 0 15px rgba(212, 175, 55, 0.3))'
+                    }}
+                  />
                   <p className="text-xs text-gray-500 font-light tracking-wider">
                     Instalar no iPhone
                   </p>
@@ -343,7 +350,7 @@ export function PWAInstallPrompt() {
                 {/* Logo */}
                 <div className="flex-shrink-0">
                   <Image
-                    src="/mlagent-logo-3d.svg"
+                    src="/mlagent-logo-3d.png"
                     alt="ML Agent"
                     width={56}
                     height={56}
@@ -357,10 +364,17 @@ export function PWAInstallPrompt() {
                 <div className="flex-1 space-y-3 pr-6">
                   {/* Title */}
                   <div>
-                    <div className="flex items-baseline gap-2 mb-0.5">
-                      <h3 className="text-lg font-light text-white">ML Agent</h3>
-                      <span className="text-lg font-extrabold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent">PRO</span>
-                    </div>
+                    {/* Logo ML Agent PRO */}
+                    <Image
+                      src="/mlagent-pro-logo.png"
+                      alt="ML Agent PRO"
+                      width={140}
+                      height={40}
+                      className="mb-1 drop-shadow-lg"
+                      style={{
+                        filter: 'drop-shadow(0 0 12px rgba(212, 175, 55, 0.3))'
+                      }}
+                    />
                     <p className="text-xs text-gray-500">
                       Aplicativo nativo para {platform === 'windows' ? 'Windows' : 'Android'}
                     </p>

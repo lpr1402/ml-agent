@@ -1,25 +1,24 @@
+/**
+ * API Route: Reprocessar Pergunta com Gemini 3.0 Pro
+ * Reprocessa perguntas que falharam ou ficaram travadas
+ *
+ * MIGRADO: N8N -> Gemini 3.0 Pro (2025-12)
+ */
+
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { buildN8NPayload, fetchBuyerQuestionsHistory } from "@/lib/webhooks/n8n-payload-builder"
 import { fetchCompleteProductData } from "@/lib/ml-api/enhanced-product-fetcher"
-
-const N8N_WEBHOOK_URL = process.env['N8N_WEBHOOK_URL'] || "https://dashboard.axnexlabs.com.br/webhook/processamento"
+import { processQuestionWithAgent } from "@/lib/agent/core/agent-integration"
 
 export async function POST(request: NextRequest) {
   try {
-    // Log detalhado para debug
     logger.info('[Reprocess] Endpoint called', {
       method: request.method,
-      url: request.url,
-      headers: {
-        contentType: request.headers.get('content-type'),
-        origin: request.headers.get('origin'),
-        referer: request.headers.get('referer')
-      }
+      url: request.url
     })
 
-    // Parse do body com tratamento de erro
+    // Parse do body
     let questionId: string
     try {
       const body = await request.json()
@@ -33,17 +32,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!questionId) {
-      logger.warn('[Reprocess] Missing question ID in request')
       return NextResponse.json({ error: "Missing question ID" }, { status: 400 })
     }
 
     logger.info(`[Reprocess] Starting reprocess for question ${questionId}`)
 
-    // Buscar a pergunta com informações completas da conta ML
+    // Buscar a pergunta com informações completas
     const question = await prisma.question.findUnique({
-      where: {
-        id: questionId
-      },
+      where: { id: questionId },
       include: {
         mlAccount: {
           select: {
@@ -61,7 +57,6 @@ export async function POST(request: NextRequest) {
     })
 
     if (!question) {
-      logger.warn(`[Reprocess] Question ${questionId} not found`)
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
 
@@ -69,12 +64,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "ML Account not found for this question" }, { status: 404 })
     }
 
-    // 🎯 Permite reprocessar perguntas SEM resposta da IA que:
-    // 1. Falharam (FAILED, TOKEN_ERROR, ERROR)
-    // 2. Estão travadas (RECEIVED, PROCESSING há mais de 5 minutos sem dados)
+    // Validar status para reprocessamento
     const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR", "RECEIVED", "PROCESSING"]
 
-    // Se já tem resposta da IA, não deve reprocessar (usar revisão em vez disso)
     if (question.aiSuggestion) {
       return NextResponse.json({
         error: "Question already has AI response. Use revision instead.",
@@ -90,14 +82,13 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 🎯 Para perguntas RECEIVED/PROCESSING, verificar se realmente está travada (>5min)
+    // Verificar se realmente está travada (>5min)
     if (question.status === 'RECEIVED' || question.status === 'PROCESSING') {
       const receivedDate = question.receivedAt || question.dateCreated || question.createdAt
       if (receivedDate) {
         const timeSinceReceived = Date.now() - new Date(receivedDate).getTime()
         const fiveMinutesInMs = 5 * 60 * 1000
 
-        // Se ainda não passou 5 minutos E não tem texto genérico, não permite reprocessar
         const hasGenericText = question.text?.includes('Processando') ||
                                question.text?.includes('dados pendentes') ||
                                question.text?.includes('Clique em "Reprocessar"')
@@ -109,26 +100,19 @@ export async function POST(request: NextRequest) {
             timeSinceReceived: Math.floor(timeSinceReceived / 1000 / 60) + ' minutes'
           }, { status: 400 })
         }
-
-        logger.info('[Reprocess] Reprocessing stuck question', {
-          questionId: question.mlQuestionId,
-          timeSinceReceived: Math.floor(timeSinceReceived / 1000 / 60) + ' minutes',
-          hasGenericText
-        })
       }
     }
 
-    // Verificar se a conta está ativa
+    // Verificar conta ativa e token
     if (!question.mlAccount.isActive) {
       return NextResponse.json({ error: "ML Account is not active" }, { status: 400 })
     }
 
-    // Verificar se tem token
     if (!question.mlAccount.accessToken) {
       return NextResponse.json({ error: "No access token available for this ML account" }, { status: 400 })
     }
 
-    // Descriptografar o token da conta específica que recebeu a pergunta
+    // Descriptografar token
     const { decryptToken } = await import('@/lib/security/encryption')
 
     let mlToken: string
@@ -143,10 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to decrypt ML token" }, { status: 500 })
     }
 
-    const sellerId = question.mlAccount.mlUserId
-    const nickname = question.mlAccount.nickname
-
-    logger.info(`[Reprocess] Processing question ${question.mlQuestionId} for seller ${nickname} (${sellerId})`)
+    logger.info(`[Reprocess] Processing question ${question.mlQuestionId} for seller ${question.mlAccount.nickname}`)
 
     // Atualizar status para PROCESSING
     await prisma.question.update({
@@ -155,31 +136,27 @@ export async function POST(request: NextRequest) {
         status: "PROCESSING",
         failureReason: null,
         failedAt: null,
-        retryCount: {
-          increment: 1
-        }
+        retryCount: { increment: 1 }
       }
     })
 
-    // Get user data from ML
-    const userResponse = await fetch("https://api.mercadolibre.com/users/me", {
-      headers: {
-        Authorization: `Bearer ${mlToken}`,
-      },
-    })
-    
-    // Validate user authentication with ML API
-    if (userResponse.ok) {
-      await userResponse.json() // Validate token is working
+    // Emitir evento WebSocket de processamento iniciado
+    try {
+      const { emitQuestionUpdate } = require('@/lib/websocket/emit-events.js')
+      emitQuestionUpdate(question.mlQuestionId, 'PROCESSING', {
+        organizationId: question.mlAccount.organizationId,
+        message: 'Reprocessando com Gemini 3.0 Pro...'
+      })
+    } catch (wsError) {
+      logger.warn('[Reprocess] Failed to emit WebSocket event', { error: wsError })
     }
-    
-    // Fetch COMPLETE product data using Enhanced Product Fetcher
+
+    // Buscar dados completos do produto
     logger.info(`[Reprocess] Fetching complete product data for item ${question.itemId}`)
     let completeProductData = await fetchCompleteProductData(question.itemId, mlToken)
 
     if (!completeProductData) {
       logger.warn(`[Reprocess] Could not fetch complete product data, using fallback`)
-      // Use stored data as fallback
       completeProductData = {
         id: question.itemId,
         title: question.itemTitle || 'Produto',
@@ -192,194 +169,106 @@ export async function POST(request: NextRequest) {
         category_id: '',
         listing_type_id: ''
       }
-    } else {
-      logger.info(`[Reprocess] Complete product data fetched:`, {
-        hasDescription: !!completeProductData.description,
-        variationsCount: completeProductData.variations?.length || 0,
-        picturesCount: completeProductData.pictures?.length || 0
-      })
     }
-    
-    // Get seller info (não utilizado atualmente)
-    await fetch(`https://api.mercadolibre.com/users/${sellerId}`, {
-      headers: {
-        Authorization: `Bearer ${mlToken}`,
-      },
-    }).then(r => r.ok ? r.json() : null)
-    
-    // Buscar informações do COMPRADOR - SEMPRE tentar buscar
-    let buyerData = null
-    if (question.customerId) {
-      try {
-        // Primeiro tentar com token
-        const buyerResponse = await fetch(`https://api.mercadolibre.com/users/${question.customerId}`, {
-          headers: {
-            Authorization: `Bearer ${mlToken}`,
-          },
-        })
-        if (buyerResponse.ok) {
-          buyerData = await buyerResponse.json()
-          logger.info(`[Reprocess] Buyer data found for ${question.customerId}:`, { nickname: buyerData.nickname })
-        } else {
-          // Tentar sem token
-          const publicResponse = await fetch(`https://api.mercadolibre.com/users/${question.customerId}`)
-          if (publicResponse.ok) {
-            buyerData = await publicResponse.json()
-            logger.info(`[Reprocess] Public buyer data found for ${question.customerId}:`, { nickname: buyerData.nickname })
-          }
-        }
-      } catch (error) {
-        logger.warn("Could not fetch buyer data:", { customerId: question.customerId, error })
-      }
-    }
-    
-    // Buscar histórico completo de perguntas do comprador usando o builder
-    const previousQuestions = await fetchBuyerQuestionsHistory(
-      question.customerId || '',
-      question.mlAccount.organizationId,
-      question.mlQuestionId,
-      prisma,
-      decryptToken
-    )
-    
-    // Construir payload unificado com dados COMPLETOS
-    const n8nPayload = await buildN8NPayload(
-      {
-        mlQuestionId: question.mlQuestionId,
-        text: question.text,
-        item_id: question.itemId,
-        customerId: question.customerId
-      },
-      completeProductData, // Dados completos incluindo descrição e variações
-      completeProductData?.description || null, // Descrição já está em completeProductData
-      previousQuestions,
-      {
-        sellerNickname: question.mlAccount.nickname || 'Vendedor'
-      }
-    )
-    
-    // Send to N8N for reprocessing with 2 minute timeout
+
+    // ✅ NOVO: Processar com Gemini 3.0 Pro (em vez de N8N)
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes timeout
-
-      let n8nResponse: Response
-      try {
-        n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(n8nPayload),
-          signal: controller.signal
-        })
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId)
-        const errorMessage = fetchError.name === 'AbortError'
-          ? "IA demorou mais de 2 minutos para responder"
-          : `Erro de conexão: ${fetchError.message}`
-
-        logger.error("[Reprocess] N8N request failed:", { error: errorMessage })
-
-        // Update status to FAILED
-        await prisma.question.update({
-          where: { id: questionId },
-          data: {
-            status: "FAILED",
-            failedAt: new Date(),
-            failureReason: errorMessage
-          }
-        })
-
-        return NextResponse.json({
-          error: fetchError.name === 'AbortError'
-            ? "Timeout: A IA não respondeu em 2 minutos"
-            : "Erro de conexão com serviço de IA"
-        }, { status: 500 })
-      } finally {
-        clearTimeout(timeoutId)
+      // Preparar dados no formato esperado pelo agent
+      const savedQuestion = {
+        id: question.id,
+        mlQuestionId: question.mlQuestionId,
+        mlAccountId: question.mlAccountId,
+        text: question.text,
+        itemId: question.itemId,
+        itemTitle: question.itemTitle,
+        itemPrice: question.itemPrice,
+        itemPermalink: question.itemPermalink,
+        customerId: question.customerId,
+        sellerId: question.sellerId,
+        dateCreated: question.dateCreated,
+        receivedAt: question.receivedAt,
+        status: 'PROCESSING'
       }
-      
-      if (!n8nResponse.ok) {
-        const errorText = await n8nResponse.text()
-        logger.error("[Reprocess] N8N webhook failed:", { error: { error: errorText } })
 
-        // Update status to FAILED with clear error message
-        await prisma.question.update({
-          where: { id: questionId },
-          data: {
-            status: "FAILED",
-            failedAt: new Date(),
-            failureReason: `Erro na IA: ${errorText.substring(0, 200)}`
-          }
-        })
-
-        return NextResponse.json({
-          error: "A IA retornou um erro. Tente novamente.",
-          details: errorText
-        }, { status: 500 })
+      const enrichedData = {
+        itemDetails: completeProductData,
+        itemDescription: completeProductData?.description || null,
+        sellerData: null,
+        buyerData: null
       }
-      
-      logger.info(`[Reprocess] Question ${question.mlQuestionId} sent to N8N for reprocessing`)
 
-      // Set a timeout check after 2 minutes
-      setTimeout(async () => {
-        // Check if question is still PROCESSING after 2 minutes
-        const checkQuestion = await prisma.question.findUnique({
-          where: { id: questionId },
-          select: { status: true }
+      // Chamar agente Gemini (processamento assíncrono com streaming via WebSocket)
+      processQuestionWithAgent(savedQuestion, enrichedData)
+        .then(() => {
+          logger.info(`[Reprocess] ✅ Gemini processing completed for ${question.mlQuestionId}`)
         })
+        .catch(async (error) => {
+          logger.error(`[Reprocess] ❌ Gemini processing failed for ${question.mlQuestionId}`, {
+            error: error.message
+          })
 
-        if (checkQuestion && checkQuestion.status === 'PROCESSING') {
-          logger.error("[Reprocess] Question still processing after 2 minutes", { questionId })
-
+          // Atualizar status para FAILED
           await prisma.question.update({
             where: { id: questionId },
             data: {
               status: 'FAILED',
               failedAt: new Date(),
-              failureReason: 'IA não respondeu em 2 minutos. Tente novamente.'
+              failureReason: `Erro no Gemini: ${error.message}`
             }
           })
-        }
-      }, 120000) // 2 minutes
 
-      // N8N will send response back to /api/n8n/response
+          // Emitir evento de erro
+          try {
+            const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
+            emitQuestionFailed(
+              question.mlQuestionId,
+              `Erro no processamento: ${error.message}`,
+              true,
+              question.mlAccount.organizationId
+            )
+          } catch (wsError) {
+            logger.warn('[Reprocess] Failed to emit error event', { error: wsError })
+          }
+        })
+
+      logger.info(`[Reprocess] ✅ Question ${question.mlQuestionId} sent to Gemini for processing`)
+
       return NextResponse.json({
         success: true,
-        message: "Question sent for reprocessing",
-        questionId: question.id
+        message: "Question sent for reprocessing with Gemini AI",
+        questionId: question.id,
+        engine: 'gemini-3.0-pro'
       })
-      
-    } catch (n8nError) {
-      logger.error("[Reprocess] N8N request error:", { error: { error: n8nError } })
-      
-      // Update status back to FAILED
+
+    } catch (processingError: any) {
+      logger.error("[Reprocess] Failed to start Gemini processing:", { error: processingError.message })
+
       await prisma.question.update({
         where: { id: questionId },
-        data: { 
-          status: "FAILED"
+        data: {
+          status: "FAILED",
+          failedAt: new Date(),
+          failureReason: `Erro ao iniciar processamento: ${processingError.message}`
         }
       })
-      
-      return NextResponse.json({ 
-        error: "Failed to connect to processing service" 
+
+      return NextResponse.json({
+        error: "Failed to start AI processing",
+        details: processingError.message
       }, { status: 500 })
     }
-    
+
   } catch (error) {
     logger.error("[Reprocess] Unexpected error:", {
       error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      type: typeof error
+      stack: error instanceof Error ? error.stack : undefined
     })
 
-    // Retornar erro mais específico em desenvolvimento
-    const errorMessage = process.env.NODE_ENV === 'development'
-      ? `Internal server error: ${error instanceof Error ? error.message : String(error)}`
-      : "Internal server error"
-
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    return NextResponse.json({
+      error: process.env.NODE_ENV === 'development'
+        ? `Internal server error: ${error instanceof Error ? error.message : String(error)}`
+        : "Internal server error"
+    }, { status: 500 })
   }
 }
 
@@ -401,30 +290,29 @@ export async function GET(_request: NextRequest) {
   try {
     const { searchParams } = new URL(_request.url)
     const questionId = searchParams.get("questionId")
-    
+
     if (!questionId) {
       return NextResponse.json({ error: "Missing question ID" }, { status: 400 })
     }
-    
+
     const question = await prisma.question.findUnique({
       where: { id: questionId },
-      select: {
-        id: true,
-        status: true
-      }
+      select: { id: true, status: true, aiSuggestion: true }
     })
-    
+
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
     }
-    
-    const canReprocess = question.status === "FAILED" || question.status === "TOKEN_ERROR" || question.status === "ERROR"
-    
+
+    const allowedStatuses = ["FAILED", "TOKEN_ERROR", "ERROR", "RECEIVED", "PROCESSING"]
+    const canReprocess = allowedStatuses.includes(question.status) && !question.aiSuggestion
+
     return NextResponse.json({
       canReprocess,
-      status: question.status
+      status: question.status,
+      hasAISuggestion: !!question.aiSuggestion
     })
-    
+
   } catch (error) {
     logger.error("[Reprocess] Check error:", { error })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

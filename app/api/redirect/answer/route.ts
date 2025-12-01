@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
       </style>
     </head>
     <body>
-      <img src="/mlagent-logo-3d.svg" alt="ML Agent" class="logo">
+      <img src="/mlagent-logo-3d.png" alt="ML Agent" class="logo">
       <div class="loading"></div>
       <div class="text">Abrindo ML Agent...</div>
       <a href="${fullUrl}" class="button" id="openBtn">Abrir no Navegador</a>

@@ -68,11 +68,21 @@ body {
     background-color: #000000;
   }
 
+  /* 🔴 FIX: Safe area bottom para home indicator do iPhone */
+  .ios-safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   /* For standalone PWA mode on iOS */
   @media (display-mode: standalone) {
     .pwa-header {
       padding-top: env(safe-area-inset-top, 20px);
       background-color: #000000;
+    }
+
+    /* 🔴 FIX: Elementos fixed no bottom devem considerar safe area */
+    .fixed-bottom, [class*="fixed"][class*="bottom-0"] {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
     }
   }
 }
@@ -103,16 +113,27 @@ body {
   html {
     height: 100%;
     width: 100%;
-    overflow: hidden;
+    /* 🔴 FIX: Usar overflow-y auto ao invés de hidden para permitir scroll */
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   body {
-    height: 100%;
+    /* 🔴 FIX: Usar min-height ao invés de height para flexibilidade com safe areas */
+    min-height: 100%;
+    min-height: 100dvh;
     width: 100%;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior: none;
+    overscroll-behavior-y: contain;
     position: relative;
+    /* 🔴 FIX: Safe areas laterais e bottom - top é tratado pelo header sticky */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    /* Background preto para evitar flash branco */
+    background-color: #000000;
   }
 
   #__next {

@@ -314,6 +314,15 @@ async function startWebSocketServer() {
     await redisSub.subscribe('question:events')
     await redisSub.subscribe('metrics:updated')
 
+    // 🤖 AI Agent streaming channels
+    await redisSub.subscribe('agent:token')
+    await redisSub.subscribe('agent:step')
+    await redisSub.subscribe('agent:done')
+    await redisSub.subscribe('agent:error')
+    await redisSub.subscribe('agent:confidence')
+
+    logger.info('✅ Subscribed to all Redis channels including agent streaming')
+
     // Handle Redis messages
     redisSub.on('message', (channel, message) => {
       try {
@@ -401,6 +410,115 @@ async function startWebSocketServer() {
             // Emit metrics update
             if (data.organizationId) {
               io.to(`org:${data.organizationId}`).emit('metrics:updated', data)
+            }
+            break
+
+          // 🤖 AI Agent streaming events
+          case 'agent:token':
+            // Emit token to organization
+            if (data.organizationId) {
+              const room = `org:${data.organizationId}`
+              const clients = io.sockets.adapter.rooms.get(room)
+
+              logger.info('🔥 [WebSocket] RECEIVED agent:token from Redis', {
+                org: data.organizationId,
+                questionId: data.questionId,
+                sequence: data.sequenceNumber,
+                tokenPreview: data.token?.substring(0, 20),
+                clientsInRoom: clients ? clients.size : 0
+              })
+
+              io.to(room).emit('agent:token', {
+                questionId: data.questionId,
+                organizationId: data.organizationId,
+                token: data.token,
+                sequenceNumber: data.sequenceNumber,
+                timestamp: data.timestamp
+              })
+
+              logger.info('✅ [WebSocket] EMITTED agent:token to clients', {
+                org: data.organizationId,
+                sequence: data.sequenceNumber,
+                clientsNotified: clients ? clients.size : 0
+              })
+            }
+            break
+
+          case 'agent:step':
+            // Emit workflow step to organization
+            if (data.organizationId) {
+              io.to(`org:${data.organizationId}`).emit('agent:step', {
+                questionId: data.questionId,
+                organizationId: data.organizationId,
+                step: data.step,
+                data: data.data,
+                timestamp: data.timestamp
+              })
+
+              logger.debug('Emitted agent:step', {
+                org: data.organizationId,
+                questionId: data.questionId,
+                step: data.step
+              })
+            }
+            break
+
+          case 'agent:done':
+            // Emit completion to organization
+            if (data.organizationId) {
+              io.to(`org:${data.organizationId}`).emit('agent:done', {
+                questionId: data.questionId,
+                organizationId: data.organizationId,
+                response: data.response,
+                confidence: data.confidence,
+                processingTime: data.processingTime,
+                tokensUsed: data.tokensUsed,
+                timestamp: data.timestamp
+              })
+
+              logger.info('Emitted agent:done', {
+                org: data.organizationId,
+                questionId: data.questionId,
+                confidence: data.confidence,
+                tokensUsed: data.tokensUsed
+              })
+            }
+            break
+
+          case 'agent:error':
+            // Emit error to organization
+            if (data.organizationId) {
+              io.to(`org:${data.organizationId}`).emit('agent:error', {
+                questionId: data.questionId,
+                organizationId: data.organizationId,
+                error: data.error,
+                code: data.code,
+                timestamp: data.timestamp
+              })
+
+              logger.error('Emitted agent:error', {
+                org: data.organizationId,
+                questionId: data.questionId,
+                error: data.error
+              })
+            }
+            break
+
+          case 'agent:confidence':
+            // Emit confidence update to organization
+            if (data.organizationId) {
+              io.to(`org:${data.organizationId}`).emit('agent:confidence', {
+                questionId: data.questionId,
+                organizationId: data.organizationId,
+                confidence: data.confidence,
+                timestamp: data.timestamp
+              })
+
+              logger.debug('Emitted agent:confidence', {
+                org: data.organizationId,
+                questionId: data.questionId,
+                confidence: data.confidence
+              })
             }
             break
         }

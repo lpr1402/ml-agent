@@ -88,7 +88,7 @@ export function ProActivationModal({ isOpen, onClose, onActivate }: ProActivatio
                   >
                     <div className="relative">
                       <Image
-                        src="/mlagent-logo-3d.svg"
+                        src="/mlagent-logo-3d.png"
                         alt="ML Agent"
                         width={100}
                         height={100}

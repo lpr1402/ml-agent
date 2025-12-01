@@ -1,37 +1,56 @@
 /**
- * 🏆 ACHIEVEMENT SYSTEM - MULTI-LEVEL
- * 6 tipos de conquistas, cada uma com 5 níveis progressivos
- * Total: 30 conquistas possíveis
+ * ACHIEVEMENT SYSTEM 2.0
+ * 6 tipos de conquistas, cada uma com 10 niveis progressivos
+ * Total: 60 conquistas possiveis
+ *
+ * Tipos:
+ * - LIGHTNING: Respostas < 2 min (5x XP)
+ * - SPEED: Respostas < 5 min (3x XP)
+ * - STREAK: Dias consecutivos
+ * - VOLUME: Total de perguntas
+ * - QUALITY: Primeira aprovacao
+ * - DEDICATION: Horarios especiais
  */
 
 import { logger } from '@/lib/logger'
 
-// ========== INTERFACES ==========
+// ========== TYPES ==========
+
+export type AchievementCategory = 'lightning' | 'speed' | 'streak' | 'volume' | 'quality' | 'dedication'
+
+export type AchievementRarity =
+  | 'common'      // Tier 1-2
+  | 'uncommon'    // Tier 3-4
+  | 'rare'        // Tier 5-6
+  | 'epic'        // Tier 7-8
+  | 'legendary'   // Tier 9
+  | 'mythic'      // Tier 10
 
 export interface AchievementDefinition {
   id: string
-  type: string // Tipo base (speed, streak, quality, etc)
-  tier: number // Nível da conquista (1-5)
-  tierName: string // Bronze, Prata, Ouro, Platina, Diamante
+  type: AchievementCategory
+  tier: number
+  tierName: string
   title: string
   description: string
-  iconType: string
+  emoji: string
   target: number
   xpReward: number
-  rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
+  rarity: AchievementRarity
   color: string
-  category: 'speed' | 'milestone' | 'quality' | 'dedication' | 'consistency'
-  tips: string[] // Dicas para alcançar
+  tips: string[]
 }
 
 export interface AchievementProgress {
   achievementId: string
   progress: number
   total: number
+  percent: number
   unlocked: boolean
   unlockedAt: string | null
   currentTier: number
   nextTier: AchievementDefinition | null
+  definition: AchievementDefinition
 }
 
 export interface AchievementCheckResult {
@@ -39,196 +58,212 @@ export interface AchievementCheckResult {
   totalXPRewarded: number
 }
 
-// ========== CONQUISTAS MULTI-LEVEL ==========
+export interface AchievementStats {
+  lightningCount: number    // < 2 min
+  ultraFastCount: number    // < 5 min
+  fastResponsesCount: number // < 10 min (not used for achievements, just stats)
+  currentStreak: number
+  bestStreak: number
+  questionsAnswered: number
+  firstApprovalCount: number
+  earlyBirdCount: number
+  lateNightCount: number
+}
 
-const createAchievementTiers = (
-  baseType: string,
-  baseIcon: string,
-  category: string,
+// ========== TIER CONFIGURATION ==========
+
+const TIER_CONFIG = [
+  { tier: 1, name: 'Bronze', rarity: 'common' as AchievementRarity, color: 'from-amber-700 to-amber-800' },
+  { tier: 2, name: 'Prata', rarity: 'common' as AchievementRarity, color: 'from-slate-400 to-slate-500' },
+  { tier: 3, name: 'Ouro', rarity: 'uncommon' as AchievementRarity, color: 'from-yellow-500 to-yellow-600' },
+  { tier: 4, name: 'Platina', rarity: 'uncommon' as AchievementRarity, color: 'from-cyan-400 to-cyan-500' },
+  { tier: 5, name: 'Diamante', rarity: 'rare' as AchievementRarity, color: 'from-purple-400 to-purple-500' },
+  { tier: 6, name: 'Mestre', rarity: 'rare' as AchievementRarity, color: 'from-red-500 to-red-600' },
+  { tier: 7, name: 'GrandMestre', rarity: 'epic' as AchievementRarity, color: 'from-pink-500 to-pink-600' },
+  { tier: 8, name: 'Lenda', rarity: 'epic' as AchievementRarity, color: 'from-orange-500 to-orange-600' },
+  { tier: 9, name: 'Mitico', rarity: 'legendary' as AchievementRarity, color: 'from-indigo-500 to-indigo-600' },
+  { tier: 10, name: 'GOAT', rarity: 'mythic' as AchievementRarity, color: 'from-yellow-400 via-pink-500 to-purple-600' }
+]
+
+// ========== ACHIEVEMENT FACTORY ==========
+
+function createAchievementTiers(
+  type: AchievementCategory,
   baseName: string,
   baseDescription: string,
+  emoji: string,
   targets: number[],
   rewards: number[],
-  baseTips: string[]
-): AchievementDefinition[] => {
-  const tiers = [
-    { tier: 1, tierName: 'Bronze', rarity: 'common' as const, color: 'from-amber-700 via-orange-600 to-amber-800' },
-    { tier: 2, tierName: 'Prata', rarity: 'rare' as const, color: 'from-slate-300 via-gray-200 to-slate-400' },
-    { tier: 3, tierName: 'Ouro', rarity: 'epic' as const, color: 'from-gold via-gold-light to-gold' },
-    { tier: 4, tierName: 'Platina', rarity: 'legendary' as const, color: 'from-cyan-300 via-blue-400 to-cyan-500' },
-    { tier: 5, tierName: 'Diamante', rarity: 'mythic' as const, color: 'from-purple-400 via-pink-400 to-purple-500' }
-  ]
-
-  return tiers.map((tier, index) => ({
-    id: `${baseType}_tier_${tier.tier}`,
-    type: baseType,
+  tips: string[]
+): AchievementDefinition[] {
+  return TIER_CONFIG.map((tier, index) => ({
+    id: `${type}_tier_${tier.tier}`,
+    type,
     tier: tier.tier,
-    tierName: tier.tierName,
-    title: `${baseName} ${tier.tierName}`,
-    description: `${baseDescription} (${targets[index] || 0} vezes)`,
-    iconType: baseIcon,
+    tierName: tier.name,
+    title: `${baseName} ${tier.name}`,
+    description: `${baseDescription} (${targets[index]?.toLocaleString() || 0})`,
+    emoji,
     target: targets[index] || 0,
     xpReward: rewards[index] || 0,
     rarity: tier.rarity,
     color: tier.color,
-    category: category as any,
-    tips: baseTips
+    tips
   }))
 }
 
-// Velocista (Respostas < 30 min)
+// ========== ACHIEVEMENT DEFINITIONS ==========
+
+// LIGHTNING: Respostas < 2 min (5x XP!) - A conquista mais valiosa
+const LIGHTNING_ACHIEVEMENTS = createAchievementTiers(
+  'lightning',
+  'Lightning',
+  'Respostas em menos de 2 minutos',
+  '⚡',
+  [5, 15, 30, 60, 100, 200, 350, 500, 750, 1000],
+  [300, 600, 1000, 1500, 2500, 4000, 6000, 8000, 12000, 20000],
+  [
+    'Respostas Lightning ganham 5x XP!',
+    'Ative notificacoes push com som',
+    'Mantenha o app sempre aberto',
+    'Use templates de resposta rapida',
+    'Esta e a conquista mais valiosa!'
+  ]
+)
+
+// SPEED: Respostas < 5 min (3x XP!)
 const SPEED_ACHIEVEMENTS = createAchievementTiers(
   'speed',
-  'speed',
-  'speed',
-  'Velocista',
-  'Responda perguntas em menos de 30 minutos',
-  [10, 50, 100, 200, 500],
-  [100, 300, 750, 2000, 5000],
+  'Ultra Rapido',
+  'Respostas em menos de 5 minutos',
+  '🚀',
+  [10, 30, 75, 150, 250, 400, 600, 900, 1200, 1500],
+  [200, 400, 800, 1200, 2000, 3000, 4500, 6000, 9000, 15000],
   [
-    'Ative notificações push para não perder perguntas',
-    'Mantenha templates de respostas prontos',
-    'Responda assim que receber a notificação',
-    'Use o ML Agent para sugestões instantâneas'
+    'Respostas ultra-rapidas ganham 3x XP!',
+    'Responda assim que receber a notificacao',
+    'Use o ML Agent para sugestoes instantaneas',
+    'Clientes valorizam respostas rapidas'
   ]
 )
 
-// Ultra Velocista (Respostas < 5 min - DOBRO XP!)
-const ULTRA_SPEED_ACHIEVEMENTS = createAchievementTiers(
-  'ultra_speed',
-  'speed',
-  'speed',
-  'Flash',
-  'Responda perguntas em menos de 5 minutos',
-  [5, 25, 50, 100, 250],
-  [200, 500, 1200, 3000, 7500],
-  [
-    'Esta é a conquista mais valiosa! DOBRO de XP',
-    'Ative som das notificações',
-    'Tenha o app sempre aberto',
-    'Respostas rápidas = clientes felizes = mais vendas!'
-  ]
-)
-
-// Sequência (Streaks)
+// STREAK: Dias consecutivos (agressivo - quebra apos 1 dia)
 const STREAK_ACHIEVEMENTS = createAchievementTiers(
   'streak',
-  'streak',
-  'dedication',
-  'Combo Master',
-  'Mantenha sequência de respostas seguidas',
-  [5, 10, 20, 50, 100],
-  [150, 400, 1000, 2500, 6000],
+  'Streak Master',
+  'Dias consecutivos de atividade',
+  '🔥',
+  [3, 7, 14, 30, 60, 90, 120, 180, 270, 365],
+  [150, 400, 800, 1500, 3000, 5000, 7500, 12000, 18000, 30000],
   [
-    'Responda todas as perguntas do dia',
-    'Não deixe perguntas acumularem',
-    'Streaks maiores = XP multiplicado!',
-    'Uma resposta por dia mantém a sequência'
+    'Um dia sem atividade quebra o streak!',
+    'Responda pelo menos 1 pergunta por dia',
+    'Streaks longos = bonus de XP massivos',
+    'Consistencia e a chave do sucesso'
   ]
 )
 
-// Qualidade (Primeira aprovação)
+// VOLUME: Total de perguntas respondidas
+const VOLUME_ACHIEVEMENTS = createAchievementTiers(
+  'volume',
+  'Contador',
+  'Total de perguntas respondidas',
+  '📊',
+  [50, 150, 300, 500, 1000, 2000, 3500, 5000, 7500, 10000],
+  [200, 500, 1000, 1800, 3000, 5000, 8000, 12000, 18000, 30000],
+  [
+    'Cada pergunta e uma oportunidade de venda',
+    'Quantidade + Qualidade = Sucesso',
+    'Voce esta construindo um imperio!',
+    'Meta: 10.000 perguntas para GOAT'
+  ]
+)
+
+// QUALITY: Primeira aprovacao (sem revisao)
 const QUALITY_ACHIEVEMENTS = createAchievementTiers(
-  'quality',
-  'quality',
   'quality',
   'Qualidade Premium',
   'Respostas aprovadas na primeira tentativa',
-  [20, 100, 200, 500, 1000],
-  [100, 400, 1000, 2500, 6000],
+  '✨',
+  [25, 75, 150, 300, 500, 800, 1200, 2000, 3000, 4000],
+  [150, 350, 700, 1200, 2000, 3500, 5500, 8000, 12000, 18000],
   [
-    'O ML Agent já sugere respostas excelentes',
-    'Leia a pergunta com atenção',
-    'Respostas completas evitam revisões',
+    'O ML Agent ja sugere respostas excelentes',
+    'Leia a pergunta com atencao',
+    'Respostas completas evitam revisoes',
     'Qualidade > Quantidade'
   ]
 )
 
-// Madrugador
-const EARLY_BIRD_ACHIEVEMENTS = createAchievementTiers(
-  'early_bird',
-  'early_bird',
+// DEDICATION: Horarios especiais (madrugada + manha cedo)
+const DEDICATION_ACHIEVEMENTS = createAchievementTiers(
   'dedication',
-  'Madrugador',
-  'Responda perguntas antes das 8h',
-  [5, 20, 50, 100, 200],
-  [100, 350, 900, 2200, 5500],
+  'Dedicacao Total',
+  'Respostas em horarios especiais',
+  '🌙',
+  [10, 30, 60, 100, 200, 350, 500, 700, 900, 1000],
+  [150, 350, 700, 1200, 2000, 3500, 5500, 8000, 10000, 15000],
   [
-    'Comece o dia vendendo!',
-    'Clientes matinais valorizam respostas rápidas',
-    'Ganhe +25 XP de bônus em cada uma',
-    'Defina um alarme para verificar perguntas'
+    'Madrugada (00h-06h) e manha (06h-08h)',
+    'Bonus de XP extra em cada resposta',
+    'Clientes matinais valorizam dedicacao',
+    'Mostre que voce esta sempre disponivel'
   ]
 )
 
-// Milestone (Total de perguntas)
-const MILESTONE_ACHIEVEMENTS = createAchievementTiers(
-  'milestone',
-  'milestone',
-  'milestone',
-  'Contador de Histórias',
-  'Responda perguntas no total',
-  [50, 200, 500, 1000, 2500],
-  [200, 600, 1500, 4000, 10000],
-  [
-    'Cada pergunta é uma oportunidade de venda',
-    'Consistência é a chave do sucesso',
-    'Quanto mais perguntas, mais vendas',
-    'Você está construindo um império!'
-  ]
-)
+// ========== COMBINED ACHIEVEMENTS ==========
 
-// Combinar todas as conquistas
 export const ACHIEVEMENTS: AchievementDefinition[] = [
-  ...ULTRA_SPEED_ACHIEVEMENTS,
+  ...LIGHTNING_ACHIEVEMENTS,
   ...SPEED_ACHIEVEMENTS,
   ...STREAK_ACHIEVEMENTS,
+  ...VOLUME_ACHIEVEMENTS,
   ...QUALITY_ACHIEVEMENTS,
-  ...EARLY_BIRD_ACHIEVEMENTS,
-  ...MILESTONE_ACHIEVEMENTS
+  ...DEDICATION_ACHIEVEMENTS
 ]
 
-// Mapa por ID para acesso rápido
+// Map by ID for quick access
 export const ACHIEVEMENTS_MAP = ACHIEVEMENTS.reduce((map, achievement) => {
   map[achievement.id] = achievement
   return map
 }, {} as Record<string, AchievementDefinition>)
 
+// Group by type
+export const ACHIEVEMENTS_BY_TYPE = ACHIEVEMENTS.reduce((map, achievement) => {
+  if (!map[achievement.type]) {
+    map[achievement.type] = []
+  }
+  map[achievement.type].push(achievement)
+  return map
+}, {} as Record<AchievementCategory, AchievementDefinition[]>)
+
 // ========== ACHIEVEMENT CHECKER ==========
 
 export class AchievementChecker {
   /**
-   * Verifica quais achievements foram desbloqueados com base nas stats
+   * Check which achievements were unlocked based on stats
    */
   static checkUnlocked(
-    stats: {
-      ultraFastCount: number
-      fastResponsesCount: number
-      questionsAnswered: number
-      longestStreak: number
-      firstApprovalCount: number
-      earlyBirdCount: number
-    },
-    currentAchievements: string[] // IDs já desbloqueados
+    stats: AchievementStats,
+    currentAchievements: string[]
   ): AchievementCheckResult {
     const newlyUnlocked: AchievementDefinition[] = []
     let totalXPRewarded = 0
 
-    // Verificar cada achievement
     for (const achievement of ACHIEVEMENTS) {
-      // Já desbloqueado? Skip
+      // Already unlocked? Skip
       if (currentAchievements.includes(achievement.id)) {
         continue
       }
 
-      // Verificar condição
+      // Check condition
       const unlocked = this.checkCondition(achievement, stats)
 
       if (unlocked) {
         newlyUnlocked.push(achievement)
         totalXPRewarded += achievement.xpReward
 
-        logger.info('[Achievement] Unlocked!', {
+        logger.info('[Achievement 2.0] Unlocked!', {
           achievementId: achievement.id,
           title: achievement.title,
           tier: achievement.tierName,
@@ -237,108 +272,176 @@ export class AchievementChecker {
       }
     }
 
-    return {
-      newlyUnlocked,
-      totalXPRewarded
-    }
+    return { newlyUnlocked, totalXPRewarded }
   }
 
   /**
-   * Verifica condição de um achievement específico
+   * Check condition for a specific achievement
    */
   private static checkCondition(
     achievement: AchievementDefinition,
-    stats: {
-      ultraFastCount: number
-      fastResponsesCount: number
-      questionsAnswered: number
-      longestStreak: number
-      firstApprovalCount: number
-      earlyBirdCount: number
-    }
+    stats: AchievementStats
   ): boolean {
-    const typeCheck = {
-      ultra_speed: () => stats.ultraFastCount >= achievement.target,
-      speed: () => stats.fastResponsesCount >= achievement.target,
-      streak: () => stats.longestStreak >= achievement.target,
+    const checks: Record<AchievementCategory, () => boolean> = {
+      lightning: () => stats.lightningCount >= achievement.target,
+      speed: () => stats.ultraFastCount >= achievement.target,
+      streak: () => stats.bestStreak >= achievement.target,
+      volume: () => stats.questionsAnswered >= achievement.target,
       quality: () => stats.firstApprovalCount >= achievement.target,
-      early_bird: () => stats.earlyBirdCount >= achievement.target,
-      milestone: () => stats.questionsAnswered >= achievement.target
+      dedication: () => (stats.earlyBirdCount + stats.lateNightCount) >= achievement.target
     }
 
-    const checker = typeCheck[achievement.type as keyof typeof typeCheck]
+    const checker = checks[achievement.type]
     return checker ? checker() : false
   }
 
   /**
-   * Calcula progresso de TODOS os tiers de achievements
-   * Retorna array completo para mostrar progresso em cada nível
+   * Calculate progress for all achievements
    */
-  static calculateAllTiersProgress(
-    stats: {
-      ultraFastCount: number
-      fastResponsesCount: number
-      questionsAnswered: number
-      longestStreak: number
-      firstApprovalCount: number
-      earlyBirdCount: number
-    },
+  static calculateAllProgress(
+    stats: AchievementStats,
     unlockedAchievements: Array<{ achievementType: string; unlockedAt: Date }>
   ): AchievementProgress[] {
     const unlockedIds = unlockedAchievements.map(a => a.achievementType)
-    const progressList: AchievementProgress[] = []
 
-    // Calcular progresso por stat type
-    const statMap = {
-      ultra_speed: stats.ultraFastCount,
-      speed: stats.fastResponsesCount,
-      streak: stats.longestStreak,
+    // Get current value for each type
+    const statValues: Record<AchievementCategory, number> = {
+      lightning: stats.lightningCount,
+      speed: stats.ultraFastCount,
+      streak: stats.bestStreak,
+      volume: stats.questionsAnswered,
       quality: stats.firstApprovalCount,
-      early_bird: stats.earlyBirdCount,
-      milestone: stats.questionsAnswered
+      dedication: stats.earlyBirdCount + stats.lateNightCount
     }
 
-    // Para cada achievement, calcular progresso
+    const progressList: AchievementProgress[] = []
+
     for (const achievement of ACHIEVEMENTS) {
-      const progress = statMap[achievement.type as keyof typeof statMap] || 0
+      const progress = Math.min(statValues[achievement.type], achievement.target)
+      const percent = Math.round((progress / achievement.target) * 100)
       const unlocked = unlockedIds.includes(achievement.id)
       const unlockedData = unlockedAchievements.find(a => a.achievementType === achievement.id)
 
-      // Encontrar próximo tier do mesmo tipo
-      const sameTierAchievements = ACHIEVEMENTS
-        .filter(a => a.type === achievement.type)
-        .sort((a, b) => a.tier - b.tier)
-
-      const currentIndex = sameTierAchievements.findIndex(a => a.id === achievement.id)
-      const nextTier = sameTierAchievements[currentIndex + 1] || null
+      // Find next tier
+      const sameTypeAchievements = ACHIEVEMENTS_BY_TYPE[achievement.type]
+        ?.sort((a, b) => a.tier - b.tier) || []
+      const currentIndex = sameTypeAchievements.findIndex(a => a.id === achievement.id)
+      const nextTier = sameTypeAchievements[currentIndex + 1] || null
 
       progressList.push({
         achievementId: achievement.id,
-        progress: Math.min(progress, achievement.target),
+        progress,
         total: achievement.target,
+        percent,
         unlocked,
         unlockedAt: unlockedData ? unlockedData.unlockedAt.toISOString() : null,
         currentTier: achievement.tier,
-        nextTier: nextTier || null
+        nextTier,
+        definition: achievement
       })
     }
 
-    // Ordenar: Não completadas PRIMEIRO (por progresso decrescente), 100% completadas SEMPRE NO FINAL
+    // Sort: Not completed first (by progress desc), completed at the end
     return progressList.sort((a, b) => {
-      const aPercent = (a.progress / a.total) * 100
-      const bPercent = (b.progress / b.total) * 100
+      // Completed always goes to the end
+      if (a.unlocked && !b.unlocked) return 1
+      if (!a.unlocked && b.unlocked) return -1
 
-      // REGRA FUNDAMENTAL: Completadas (100%) SEMPRE vão para o FINAL
-      if (a.unlocked && !b.unlocked) return 1  // a completada vai pra baixo
-      if (!a.unlocked && b.unlocked) return -1 // b completada vai pra baixo
-
-      // Se ambas NÃO completadas: ordenar por % decrescente (mais próximas de 100% primeiro)
+      // Both not completed: sort by percent descending
       if (!a.unlocked && !b.unlocked) {
-        return bPercent - aPercent
+        return b.percent - a.percent
       }
 
-      // Se ambas completadas: manter ordem
-      return 0
+      // Both completed: sort by tier descending (higher tier = more impressive)
+      return b.currentTier - a.currentTier
     })
   }
+
+  /**
+   * Get highest unlocked tier for each type
+   */
+  static getHighestTiers(
+    unlockedAchievements: Array<{ achievementType: string }>
+  ): Record<AchievementCategory, number> {
+    const highest: Record<AchievementCategory, number> = {
+      lightning: 0,
+      speed: 0,
+      streak: 0,
+      volume: 0,
+      quality: 0,
+      dedication: 0
+    }
+
+    for (const { achievementType } of unlockedAchievements) {
+      const achievement = ACHIEVEMENTS_MAP[achievementType]
+      if (achievement && achievement.tier > highest[achievement.type]) {
+        highest[achievement.type] = achievement.tier
+      }
+    }
+
+    return highest
+  }
+
+  /**
+   * Get next achievement to unlock for each type
+   */
+  static getNextAchievements(
+    stats: AchievementStats,
+    unlockedAchievements: string[]
+  ): Record<AchievementCategory, AchievementProgress | null> {
+    const next: Record<AchievementCategory, AchievementProgress | null> = {
+      lightning: null,
+      speed: null,
+      streak: null,
+      volume: null,
+      quality: null,
+      dedication: null
+    }
+
+    const statValues: Record<AchievementCategory, number> = {
+      lightning: stats.lightningCount,
+      speed: stats.ultraFastCount,
+      streak: stats.bestStreak,
+      volume: stats.questionsAnswered,
+      quality: stats.firstApprovalCount,
+      dedication: stats.earlyBirdCount + stats.lateNightCount
+    }
+
+    for (const type of Object.keys(ACHIEVEMENTS_BY_TYPE) as AchievementCategory[]) {
+      const typeAchievements = ACHIEVEMENTS_BY_TYPE[type]?.sort((a, b) => a.tier - b.tier) || []
+
+      // Find first not unlocked
+      for (const achievement of typeAchievements) {
+        if (!unlockedAchievements.includes(achievement.id)) {
+          const progress = Math.min(statValues[type], achievement.target)
+          const percent = Math.round((progress / achievement.target) * 100)
+
+          next[type] = {
+            achievementId: achievement.id,
+            progress,
+            total: achievement.target,
+            percent,
+            unlocked: false,
+            unlockedAt: null,
+            currentTier: achievement.tier,
+            nextTier: typeAchievements[achievement.tier] || null,
+            definition: achievement
+          }
+          break
+        }
+      }
+    }
+
+    return next
+  }
+}
+
+// ========== STATISTICS ==========
+
+export const ACHIEVEMENT_STATS = {
+  totalAchievements: 60,
+  categories: 6,
+  tiersPerCategory: 10,
+  maxTotalXP: ACHIEVEMENTS.reduce((sum, a) => sum + a.xpReward, 0),
+  tierNames: TIER_CONFIG.map(t => t.name)
 }

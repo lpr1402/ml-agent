@@ -64,7 +64,7 @@ async function debugAchievements() {
     ultraFastCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.ultraFastCount || 0), 0),
     fastResponsesCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.fastResponsesCount || 0), 0),
     questionsAnswered: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.questionsAnswered || 0), 0),
-    longestStreak: Math.max(...org.mlAccounts.map(acc => acc.xpTracking?.longestStreak || 0)),
+    bestStreak: Math.max(...org.mlAccounts.map(acc => acc.xpTracking?.bestStreak || 0)),
     firstApprovalCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.firstApprovalCount || 0), 0),
     earlyBirdCount: org.mlAccounts.reduce((sum, acc) => sum + (acc.xpTracking?.earlyBirdCount || 0), 0)
   }
@@ -72,7 +72,7 @@ async function debugAchievements() {
   console.log('Ultra rápidas (< 5min):', orgStats.ultraFastCount)
   console.log('Rápidas (< 30min):', orgStats.fastResponsesCount)
   console.log('Total perguntas:', orgStats.questionsAnswered)
-  console.log('Maior sequência:', orgStats.longestStreak)
+  console.log('Maior sequência:', orgStats.bestStreak)
   console.log('Primeira aprovação:', orgStats.firstApprovalCount)
   console.log('Madrugador:', orgStats.earlyBirdCount)
 

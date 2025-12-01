@@ -184,7 +184,8 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
                 mlUserId: mlAccount.mlUserId,
                 nickname: account?.nickname || 'Conta',
                 thumbnail: account?.thumbnail,
-                siteId: account?.siteId
+                siteId: account?.siteId,
+                organizationId: mlAccount.organizationId // ✅ FIX CRÍTICO: Necessário para streaming funcionar
               }
             })
           }
@@ -295,9 +296,15 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
     let newStatus = 'PROCESSING'
 
     if (existingQuestion) {
-      // Se já tem resposta da IA, deve ser AWAITING_APPROVAL
-      if (existingQuestion.aiSuggestion && existingQuestion.status !== 'REVISING') {
+      // 🔴 FIX CRÍTICO: Se já tem resposta da IA (não vazia e não placeholder), FORÇAR AWAITING_APPROVAL
+      const hasValidAISuggestion = existingQuestion.aiSuggestion &&
+        existingQuestion.aiSuggestion !== 'Processando pergunta recebida do Mercado Livre' &&
+        existingQuestion.aiSuggestion !== 'Pergunta sem texto' &&
+        existingQuestion.aiSuggestion !== 'Erro ao processar pergunta'
+
+      if (hasValidAISuggestion && existingQuestion.status !== 'REVISING') {
         newStatus = 'AWAITING_APPROVAL'
+        logger.info(`[QuestionProcessor] ✅ Question ${questionId} has AI response, forcing AWAITING_APPROVAL status`)
       }
       // Se está revisando, manter REVISING
       else if (existingQuestion.status === 'REVISING') {
@@ -358,7 +365,8 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
           mlUserId: mlAccount.mlUserId,
           nickname: account?.nickname || 'Conta',
           thumbnail: account?.thumbnail,
-          siteId: account?.siteId
+          siteId: account?.siteId,
+          organizationId: mlAccount.organizationId // ✅ FIX CRÍTICO: Necessário para streaming funcionar
         }
       }
 
@@ -562,15 +570,18 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
     )
 
     if (hasValidData) {
-      // ✅ Dados válidos - enviar para processamento
-      logger.info(`[QuestionProcessor] ✅ Dados válidos - enviando para N8N`, {
+      // ✅ Dados válidos - enviar para processamento com AGENTE IA
+      logger.info(`[QuestionProcessor] ✅ Dados válidos - processando com Gemini 3.0 Pro Agent`, {
         questionId,
         text: savedQuestion.text.substring(0, 50),
         itemId: savedQuestion.itemId,
         itemTitle: savedQuestion.itemTitle
       })
 
-      await sendToN8NProcessingOptimized(
+      // NOVO: Processar com agente IA ao invés de N8N
+      const { processQuestionWithAgent } = await import('@/lib/agent/core/agent-integration')
+
+      await processQuestionWithAgent(
         savedQuestion,
         {
           itemDetails: itemDetails,
@@ -579,6 +590,10 @@ export async function processQuestionWebhook(data: WebhookData, mlAccount: MLAcc
           buyerData
         }
       )
+
+      logger.info(`[QuestionProcessor] ✅ Agente IA processando em background com streaming`, {
+        questionId,
+      })
     } else {
       // ❌ Dados incompletos - NÃO ENVIAR
       logger.warn(`[QuestionProcessor] ❌ DADOS INCOMPLETOS - NÃO enviando ao N8N`, {
@@ -834,234 +849,7 @@ async function fetchItemDescription(itemId: string, accessToken: string) {
 //   return statusMap[mlStatus] || 'RECEIVED'
 // }
 
-/**
- * Envia pergunta para processamento no N8N usando FORMATO UNIFICADO
- */
-async function sendToN8NProcessingOptimized(
-  question: any,
-  enrichedData: {
-    itemDetails: any
-    itemDescription: any
-    sellerData: any
-    buyerData: any
-  }
-) {
-  try {
-    const n8nWebhookUrl = process.env['N8N_WEBHOOK_URL']
-
-    if (!n8nWebhookUrl) {
-      logger.info('[QuestionProcessor] N8N webhook not configured')
-      return
-    }
-
-    const { itemDetails, itemDescription } = enrichedData
-
-    // Buscar conta ML com organização
-    const fullMlAccount = await prisma.mLAccount.findUnique({
-      where: { id: question.mlAccountId },
-      include: {
-        organization: true
-      }
-    })
-
-    if (!fullMlAccount) {
-      logger.error('[QuestionProcessor] ML Account not found for question processing')
-      await prisma.question.update({
-        where: { id: question.id },
-        data: {
-          status: 'FAILED',
-          failedAt: new Date(),
-          failureReason: 'ML Account not found'
-        }
-      })
-      return
-    }
-
-    // IMPORTAR FUNÇÕES DO PAYLOAD BUILDER
-    const { buildN8NPayload, fetchBuyerQuestionsHistory } = await import('@/lib/webhooks/n8n-payload-builder')
-    const { decryptToken } = await import('@/lib/security/encryption')
-
-    // Buscar histórico de perguntas do COMPRADOR ESPECÍFICO
-    const buyerQuestions = await fetchBuyerQuestionsHistory(
-      question.customerId || '',
-      fullMlAccount.organizationId,
-      question.mlQuestionId,
-      prisma,
-      decryptToken
-    )
-
-    // CONSTRUIR PAYLOAD UNIFICADO - Formato padrão para processamento
-    const n8nPayload = await buildN8NPayload(
-      {
-        mlQuestionId: question.mlQuestionId,
-        id: question.mlQuestionId,
-        text: question.text,
-        item_id: question.itemId,
-        sellerNickname: fullMlAccount.nickname || 'Vendedor'
-      },
-      itemDetails,
-      itemDescription,
-      buyerQuestions,
-      {
-        sellerNickname: fullMlAccount.nickname
-        // SEM original_response e revision_feedback - apenas para revisão
-      }
-    )
-    
-    // Enviar para N8N
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutos
-      
-      const response = await fetch(n8nWebhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(n8nPayload),
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-      
-      if (response.ok) {
-        logger.info(`[QuestionProcessor] Sent question ${question.id} to N8N with COMPLETE enriched data`, {
-          questionId: question.mlQuestionId,
-          itemId: question.itemId,
-          hasDescription: !!itemDescription?.plain_text,
-          descriptionLength: itemDescription?.plain_text?.length || 0
-        })
-        
-        // ✅ ENTERPRISE FIX: Registrar timestamp EXATO de envio ao N8N
-        const sentToAITimestamp = new Date()
-
-        await prisma.question.update({
-          where: { id: question.id },
-          data: {
-            status: 'PROCESSING',
-            sentToAIAt: sentToAITimestamp, // ⚡ NOVO: Timestamp de envio ao N8N
-            processedAt: sentToAITimestamp // Compatibilidade
-          }
-        })
-      } else {
-        const errorText = await response.text()
-        logger.error('[QuestionProcessor] N8N webhook returned error', {
-          status: response.status,
-          error: errorText
-        })
-
-        await prisma.question.update({
-          where: { id: question.id },
-          data: {
-            status: 'FAILED',
-            failedAt: new Date(),
-            failureReason: errorText.includes('Error in workflow')
-              ? 'Error in workflow'
-              : `N8N error: ${response.status}`
-          }
-        })
-
-        // Emitir evento de erro em tempo real
-        try {
-          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
-          emitQuestionFailed(
-            question.mlQuestionId,
-            errorText.includes('Error in workflow') ? 'Erro no processamento da IA' : `Erro no serviço: ${response.status}`,
-            true, // retryable
-            fullMlAccount.organizationId,
-            {
-              type: 'N8N_ERROR',
-              code: response.status.toString(),
-              hasResponse: false
-            }
-          )
-        } catch (wsError) {
-          logger.warn('[QuestionProcessor] Failed to emit error event', { error: wsError })
-        }
-      }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        logger.error('[QuestionProcessor] N8N request timeout')
-
-        await prisma.question.update({
-          where: { id: question.id },
-          data: {
-            status: 'FAILED',
-            failedAt: new Date(),
-            failureReason: 'N8N processing timeout'
-          }
-        })
-
-        // Emitir evento de timeout
-        try {
-          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
-          emitQuestionFailed(
-            question.mlQuestionId,
-            'Tempo limite de processamento excedido',
-            true, // retryable
-            fullMlAccount.organizationId,
-            {
-              type: 'TIMEOUT',
-              code: 'TIMEOUT',
-              hasResponse: false
-            }
-          )
-        } catch (wsError) {
-          logger.warn('[QuestionProcessor] Failed to emit timeout event', { error: wsError })
-        }
-      } else {
-        logger.error('[QuestionProcessor] Error sending to N8N:', { error })
-
-        await prisma.question.update({
-          where: { id: question.id },
-          data: {
-            status: 'FAILED',
-            failedAt: new Date(),
-            failureReason: `Failed to send to N8N: ${error.message}`
-          }
-        })
-
-        // Emitir evento de erro genérico
-        try {
-          const { emitQuestionFailed } = require('@/lib/websocket/emit-events.js')
-          emitQuestionFailed(
-            question.mlQuestionId,
-            `Erro ao processar: ${error.message}`,
-            true, // retryable
-            fullMlAccount.organizationId,
-            {
-              type: 'CONNECTION_ERROR',
-              code: 'NETWORK_ERROR',
-              hasResponse: false
-            }
-          )
-        } catch (wsError) {
-          logger.warn('[QuestionProcessor] Failed to emit error event', { error: wsError })
-        }
-      }
-    }
-    
-  } catch (error: any) {
-    logger.error('[QuestionProcessor] Critical error in N8N processing:', { error })
-    
-    try {
-      await prisma.question.update({
-        where: { id: question.id },
-        data: { 
-          status: 'FAILED',
-          failedAt: new Date(),
-          failureReason: `Critical error: ${error.message}`
-        }
-      })
-    } catch (updateError) {
-      logger.error('[QuestionProcessor] Failed to update question status:', { updateError })
-    }
-  }
-}
-
-// REMOVIDO: Funções antigas de formatação - usando buildN8NPayload agora
-
-// REMOVIDO: Funções antigas de formatação - todas substituídas por buildN8NPayload
+// NOTA: Código N8N removido - Sistema migrado para Gemini 3.0 Pro (processQuestionWithAgent)
 
 const questionProcessor = {
   processQuestionWebhook

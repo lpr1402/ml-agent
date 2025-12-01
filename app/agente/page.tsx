@@ -298,7 +298,7 @@ export default function AgenteMultiConta() {
             <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
               {/* ML Agent Logo - Clean & Minimal */}
               <Image
-                src="/mlagent-logo-3d.svg"
+                src="/mlagent-logo-3d.png"
                 alt="ML Agent"
                 width={64}
                 height={64}
@@ -308,16 +308,20 @@ export default function AgenteMultiConta() {
                 }}
               />
 
-              {/* Brand Text with Account Count */}
+              {/* Brand Logo - Sempre mostra a imagem ML Agent PRO - DESTACADA */}
               <div className="flex items-center gap-2 sm:gap-3">
-                <h1 className="text-lg sm:text-2xl lg:text-3xl font-light text-white tracking-wide">
-                  ML Agent
-                </h1>
-                {organizationData?.plan && organizationData.plan !== 'TRIAL' && organizationData.plan !== 'FREE' && (
-                  <span className="text-lg sm:text-2xl lg:text-3xl font-bold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider pr-2">
-                    {organizationData.plan.toUpperCase()}
-                  </span>
-                )}
+                <Image
+                  src="/mlagent-pro-logo.png"
+                  alt="ML Agent PRO"
+                  width={1024}
+                  height={230}
+                  className="h-6 xs:h-7 sm:h-8 md:h-10 lg:h-12 w-auto object-contain hover:scale-105 transition-transform duration-300"
+                  style={{
+                    filter: 'drop-shadow(0 0 20px rgba(212, 175, 55, 0.35)) drop-shadow(0 0 30px rgba(212, 175, 55, 0.15))',
+                    maxWidth: '280px'
+                  }}
+                  priority
+                />
 
                 {/* Account Count - Matching MLAccountSwitcher Style */}
                 <div className="hidden sm:flex items-center gap-1.5 ml-2 sm:ml-4 px-3 py-1.5 rounded-lg bg-black/20 border border-white/5">
@@ -715,11 +719,14 @@ export default function AgenteMultiConta() {
             <div className="flex flex-col items-center gap-3 sm:gap-4">
               <span className="text-sm sm:text-base lg:text-lg text-gray-400 font-medium">Uma criação</span>
               <Image
-                src="/axnexlabs-logo.svg"
+                src="/axnexlabs-logo.png"
                 alt="AxnexLabs"
-                width={220}
-                height={80}
-                className="h-10 sm:h-14 lg:h-16 w-auto object-contain opacity-80 hover:opacity-100 transition-all duration-500 hover:scale-105"
+                width={1024}
+                height={450}
+                className="h-12 sm:h-16 md:h-18 lg:h-20 xl:h-24 w-auto object-contain opacity-80 hover:opacity-100 transition-all duration-500 hover:scale-105"
+                style={{
+                  filter: 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.1))'
+                }}
               />
               <span className="text-xs sm:text-sm text-gray-500 font-light">
                 Versão Brasileira 4.1/1911 Hebert Richards

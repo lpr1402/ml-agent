@@ -326,7 +326,7 @@ export function PWAInitializer() {
                   {/* Logo ML Agent 3D */}
                   <div className="relative">
                     <Image
-                      src="/mlagent-logo-3d.svg"
+                      src="/mlagent-logo-3d.png"
                       alt="ML Agent"
                       width={72}
                       height={72}

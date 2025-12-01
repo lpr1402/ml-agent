@@ -343,11 +343,11 @@ export default function LoginClient() {
                   transition={{ delay: 0.2, duration: 0.5 }}
                 >
                   <Image
-                    src="/mlagent-logo-3d.svg"
+                    src="/mlagent-logo-3d.png"
                     alt="ML Agent"
                     width={300}
                     height={300}
-                    className="h-32 sm:h-36 w-auto object-contain"
+                    className="h-32 sm:h-36 md:h-40 w-auto object-contain"
                     style={{ filter: 'drop-shadow(0 0 30px rgba(212, 175, 55, 0.4))' }}
                     priority
                   />
@@ -362,19 +362,16 @@ export default function LoginClient() {
                   {/* Subtle glow */}
                   <div className="absolute inset-0 bg-gold/30 blur-md scale-150" />
 
-                  {/* Modern X - Metallic gold */}
-                  <div className="relative font-extrabold text-3xl sm:text-4xl leading-none" style={{
-                    transform: 'rotate(-10deg)',
-                    fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
-                    textShadow: '0 2px 10px rgba(212,175,55,0.5)',
-                    background: 'linear-gradient(135deg, #f4d03f 0%, #d4af37 50%, #c9a961 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
-                    letterSpacing: '-0.05em'
-                  }}>
-                    ×
-                  </div>
+                  {/* Connection Icon - Premium */}
+                  <Image
+                    src="/connection-icon.png"
+                    alt="Conexão ML Agent × Gugaleo"
+                    width={36}
+                    height={36}
+                    className="h-7 sm:h-8 md:h-9 w-auto object-contain relative"
+                    style={{ filter: 'drop-shadow(0 2px 10px rgba(212,175,55,0.5))' }}
+                    priority
+                  />
                 </motion.div>
 
                 <motion.div
@@ -387,38 +384,46 @@ export default function LoginClient() {
                     alt="Gugaleo"
                     width={300}
                     height={300}
-                    className="h-32 sm:h-36 w-auto object-contain"
+                    className="h-32 sm:h-36 md:h-40 w-auto object-contain"
                     style={{ filter: 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.2))' }}
                     priority
                   />
                 </motion.div>
               </div>
 
-              {/* Title & Subtitle */}
+              {/* Title & Subtitle - Logo PRO Completo */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.5 }}
-                className="flex flex-col items-center gap-1"
+                className="flex flex-col items-center gap-0.5 sm:gap-1"
               >
-                <div className="flex items-baseline gap-2.5 pr-2">
-                  <h1 className="text-3xl sm:text-4xl font-light text-white tracking-wide leading-none">
-                    ML Agent
-                  </h1>
-                  <span className="text-3xl sm:text-4xl font-extrabold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider pr-1 leading-none">
-                    PRO
-                  </span>
+                {/* Logo ML Agent PRO - Imagem Completa - BEM MAIOR E DESTACADA */}
+                <div className="flex items-center justify-center">
+                  <Image
+                    src="/mlagent-pro-logo.png"
+                    alt="ML Agent PRO"
+                    width={1024}
+                    height={230}
+                    className="h-14 xs:h-16 sm:h-20 md:h-24 w-auto object-contain"
+                    style={{
+                      filter: 'drop-shadow(0 0 30px rgba(212, 175, 55, 0.4))',
+                      maxWidth: '90%'
+                    }}
+                    priority
+                  />
                 </div>
 
                 {/* Subtitle */}
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] sm:text-xs text-gray-500 font-medium">Uma criação</span>
                   <Image
-                    src="/axnexlabs-logo.svg"
+                    src="/axnexlabs-logo.png"
                     alt="AxnexLabs"
-                    width={100}
-                    height={30}
-                    className="h-5 sm:h-6 w-auto object-contain opacity-60"
+                    width={1024}
+                    height={450}
+                    className="h-6 sm:h-7 md:h-8 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity duration-300"
+                    priority
                   />
                 </div>
               </motion.div>
@@ -962,7 +967,7 @@ export default function LoginClient() {
               transition={{ duration: 0.6 }}
               className="flex flex-col items-center justify-center p-8 xl:p-12"
             >
-              <div className="flex flex-col items-center gap-6 xl:gap-8">
+              <div className="flex flex-col items-center gap-2 xl:gap-3">
                 {/* Logos Row - Larger on Desktop */}
                 <div className="flex items-center gap-8 xl:gap-10">
                   <motion.div
@@ -971,11 +976,11 @@ export default function LoginClient() {
                     transition={{ delay: 0.2, duration: 0.5 }}
                   >
                     <Image
-                      src="/mlagent-logo-3d.svg"
+                      src="/mlagent-logo-3d.png"
                       alt="ML Agent"
                       width={400}
                       height={400}
-                      className="h-52 xl:h-64 2xl:h-80 w-auto object-contain"
+                      className="h-52 xl:h-60 2xl:h-72 w-auto object-contain"
                       style={{ filter: 'drop-shadow(0 0 40px rgba(212, 175, 55, 0.5))' }}
                       priority
                     />
@@ -985,23 +990,21 @@ export default function LoginClient() {
                     initial={{ opacity: 0, scale: 0.5 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.3, duration: 0.5, type: "spring", stiffness: 200 }}
-                    className="relative flex items-center justify-center w-12 xl:w-14"
+                    className="relative flex items-center justify-center"
                   >
                     {/* Subtle glow */}
                     <div className="absolute inset-0 bg-gold/40 blur-xl" />
 
-                    {/* Simple X - Metallic gold */}
-                    <div className="relative text-gold font-black text-6xl xl:text-7xl" style={{
-                      transform: 'rotate(-12deg)',
-                      fontFamily: 'system-ui, -apple-system, sans-serif',
-                      textShadow: '0 0 15px rgba(212,175,55,0.4)',
-                      background: 'linear-gradient(135deg, #f4d03f 0%, #d4af37 50%, #c9a961 100%)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text'
-                    }}>
-                      ×
-                    </div>
+                    {/* Connection Icon - Premium Desktop */}
+                    <Image
+                      src="/connection-icon.png"
+                      alt="Conexão ML Agent × Gugaleo"
+                      width={48}
+                      height={48}
+                      className="h-10 xl:h-11 2xl:h-12 w-auto object-contain relative"
+                      style={{ filter: 'drop-shadow(0 0 15px rgba(212,175,55,0.4))' }}
+                      priority
+                    />
                   </motion.div>
 
                   <motion.div
@@ -1014,7 +1017,7 @@ export default function LoginClient() {
                       alt="Gugaleo"
                       width={400}
                       height={400}
-                      className="h-44 xl:h-56 2xl:h-64 w-auto object-contain"
+                      className="h-52 xl:h-60 2xl:h-72 w-auto object-contain"
                       style={{ filter: 'drop-shadow(0 0 25px rgba(255, 255, 255, 0.25))' }}
                       priority
                     />
@@ -1026,26 +1029,34 @@ export default function LoginClient() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4, duration: 0.5 }}
-                  className="flex flex-col items-center gap-3 mt-2"
+                  className="flex flex-col items-center gap-0"
                 >
-                  <div className="flex items-baseline gap-4 xl:gap-5 pr-3">
-                    <h1 className="text-5xl xl:text-6xl 2xl:text-7xl font-light text-white tracking-wide leading-none">
-                      ML Agent
-                    </h1>
-                    <span className="text-5xl xl:text-6xl 2xl:text-7xl font-extrabold italic bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent tracking-wider shadow-lg pr-2 leading-none">
-                      PRO
-                    </span>
+                  {/* Logo ML Agent PRO - Imagem Completa - BEM MAIOR E DESTACADA */}
+                  <div className="flex items-center justify-center">
+                    <Image
+                      src="/mlagent-pro-logo.png"
+                      alt="ML Agent PRO"
+                      width={1024}
+                      height={230}
+                      className="h-20 xl:h-24 2xl:h-28 w-auto object-contain"
+                      style={{
+                        filter: 'drop-shadow(0 0 35px rgba(212, 175, 55, 0.5))',
+                        maxWidth: '600px'
+                      }}
+                      priority
+                    />
                   </div>
 
-                  {/* Subtitle */}
-                  <div className="flex items-center gap-2">
+                  {/* Subtitle - Colado na parte inferior */}
+                  <div className="flex items-center gap-2 -mt-1">
                     <span className="text-sm xl:text-base text-gray-500 font-medium">Uma criação</span>
                     <Image
-                      src="/axnexlabs-logo.svg"
+                      src="/axnexlabs-logo.png"
                       alt="AxnexLabs"
-                      width={140}
-                      height={50}
-                      className="h-7 xl:h-8 w-auto object-contain opacity-60"
+                      width={1024}
+                      height={450}
+                      className="h-8 xl:h-9 2xl:h-10 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity duration-300"
+                      priority
                     />
                   </div>
                 </motion.div>

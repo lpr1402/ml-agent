@@ -243,7 +243,7 @@ async function recalculateXP() {
       console.log(`   Ultra Rápidas (<5):   ${xp.ultraFastCount}`)
       console.log(`   Rápidas (<30):        ${xp.fastResponsesCount}`)
       console.log(`   Normais (<60):        ${xp.normalResponsesCount}`)
-      console.log(`   Sequência Máxima:     ${xp.longestStreak}x`)
+      console.log(`   Sequência Máxima:     ${xp.bestStreak}x`)
       console.log(`   Primeira Aprovação:   ${xp.firstApprovalCount}`)
       console.log(`   Com Revisão:          ${xp.revisionCount}`)
       console.log(`   Madrugador:           ${xp.earlyBirdCount}`)

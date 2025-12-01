@@ -83,7 +83,7 @@ export default function AuthSuccessPage() {
           marginBottom: '24px'
         }}>
           <Image
-            src="/mlagent-logo-3d.svg"
+            src="/mlagent-logo-3d.png"
             alt="ML Agent"
             width={64}
             height={64}
